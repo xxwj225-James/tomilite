@@ -23,7 +23,6 @@ TomiLite 是面向独立开发者的 AI 生产力工具。极简设计、零依�
 | 搜索 | FTS5 全文搜索 | 替代 pgvector，零依赖 |
 | 桌面 | Electron | 跨平台安装程序 |
 | 代码共享 | npm workspaces (`@tomilite/shared-ui`) | 共享 UI 组件 |
-| 混淆 | javascript-obfuscator + bytenode | P0 安全 |
 
 ---
 
@@ -197,7 +196,6 @@ LLM 润色摘要（可选），快照存 `user_health_snapshots`。
 - `cn()` 处理动态 class
 - i18n 3 语言全覆盖
 - Pre-commit hook: ESLint + Prettier + TypeScript
-- javascript-obfuscator P0 混淆
 
 ---
 
@@ -216,5 +214,3 @@ LLM 润色摘要（可选），快照存 `user_health_snapshots`。
 | 定时任务 | node-cron + 启动时执行 |
 | 事件通信 | 直接函数调用 |
 | 防抖 | 内存 Map + setTimeout |
-| 代码混淆 | javascript-obfuscator |
-| 字节码加密 | bytenode (.jsc) |
