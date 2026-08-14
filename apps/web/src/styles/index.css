@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ═══ Theme Variables — aligned with TomatoHub ═══ */
+/* ═══ Theme Variables ═══ */
 :root, [data-theme="pipeline"] {
   --brand: #4338CA; --brand-hover: #3730A3;
   --bg: #fafbfc; --surface: #ffffff; --surface2: #f3f4f6; --edge: #e9ebf0;
@@ -315,7 +315,7 @@ pre code.hljs { display: block; overflow-x: auto; padding: 1em; background: #0d1
 .bg-red-soft { background: var(--red-soft); }
 .p-2 { padding: var(--space-2); }
 
-/* ═══ Robot Blink (identical to TomatoHub) ═══ */
+/* ═══ Robot Blink animation ═══ */
 .blink-eye { animation: blink 3s infinite; transform-origin: center; }
 @keyframes blink { 0%, 92%, 96%, 100% { transform: scaleY(1); } 94% { transform: scaleY(0.1); } }
 

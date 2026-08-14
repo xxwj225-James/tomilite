@@ -1,7 +1,7 @@
 /**
- * ⚠️ VENDOR-SPECIFIC — 仅服务于 vendor/pages/* 的 5 个页面 (Board, Backlog, IssueDetail, WikiList, WikiEditor)
- * 主应用 UI 翻译统一使用 @/lib/i18n 的 I18N 字典
- * 新功能请勿在此添加翻译 — 改用 @/lib/i18n
+ * ⚠️ VENDOR-SPECIFIC — serves only the 5 legacy vendor/pages (Board, Backlog, IssueDetail, WikiList, WikiEditor)
+ * Main app UI translations use the I18N dictionary in @/lib/i18n
+ * Do NOT add new translations here — use @/lib/i18n instead
  */
 export const translations = {
   en: {

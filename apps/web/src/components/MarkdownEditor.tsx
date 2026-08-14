@@ -372,7 +372,7 @@ function execBlockCmd(ed: any, cmd: any, arg?: any) {
 }
 
 /**
- * 核心：通过 NodeView 优雅解决 Cell 节点的对齐与渲染绑定
+ * Core: elegantly solve Cell node alignment and rendering binding via NodeView
  */
 class CellNodeView {
   dom: HTMLElement;
@@ -382,7 +382,7 @@ class CellNodeView {
   constructor(node: any, isHeader: boolean) {
     this.node = node;
     this.dom = document.createElement(isHeader ? 'th' : 'td');
-    this.contentDOM = this.dom; // 挂载内容
+    this.contentDOM = this.dom; // mount content
     this.updateStyle(node);
   }
 
@@ -396,7 +396,7 @@ class CellNodeView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     this.updateStyle(node);
-    return true; // 告诉 ProseMirror 节点可以在原有 DOM 上原地更新，无需销毁重绘！
+    return true; // tell ProseMirror the node can update in place on existing DOM, no destroy+redraw needed
   }
 }
 
@@ -457,7 +457,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       })))
       .use(gfm)
       .use(columnResizingPlugin)
-      // 使用 NodeView 完全接管 Cell 视图更新
+      // Use NodeView to fully own Cell view updates
       .use($prose(() => {
         return new Plugin({
           props: {
@@ -688,7 +688,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
   };
 
   /**
-   * 单 Cell 对齐：仅通过 Transaction 更改 Node attrs，让 NodeView 处理渲染
+   * Single-cell alignment: change Node attrs via Transaction only, let NodeView handle rendering
    */
   function execTableCmd(ed: any, t: Tool) {
     ed.action((ctx: any) => {
@@ -738,7 +738,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         callCommand(selectColCommand.key, { pos: tablePos, index: colIdx })(ctx);
         callCommand(deleteSelectedCellsCommand.key)(ctx);
       }
-      // ── Align: 标准纯净的 Node attrs 更新策略 ──
+      // ── Align: clean Node attrs update strategy ──
       else if (t.label === '⟵' || t.label === '⟺' || t.label === '⟶') {
         const align = t.label === '⟵' ? 'left' : t.label === '⟺' ? 'center' : 'right';
 

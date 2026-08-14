@@ -238,7 +238,7 @@ export async function runAgentLoop(
           messages.push({ role: 'user', content: `SYSTEM CHECK: Guard classified as "${parsedIntent}" but NO tool called. Call ${toolMap[parsedIntent]}. Do NOT fake a result.` });
           continue;
         }
-        // Fallback: text claims success (✅ + TL-/created/创建/作成) but no tool called
+        // Fallback: text claims success (✅ + TL-/created/created) but no tool called
         if (/✅|📄|📋|📊/.test(result.content) && /TL-|创建|created|作成/.test(result.content)) {
           llmResponded = true;
           agentLog('[Hallucination] Text claims success but no tool called');

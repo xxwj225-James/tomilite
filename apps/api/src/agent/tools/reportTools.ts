@@ -8,7 +8,7 @@ export async function listReports(args: Record<string, any>): Promise<Array<{ id
   const where: any = { archived: false };
   if (args.query) {
     // Split query into terms. For CJK text without spaces, generate character bigrams
-    // so "12个验证清单" → ["12","2个","个验","验证","证清","清单"] for fuzzy matching.
+    // so a 6-char Chinese phrase becomes char bigrams for fuzzy matching.
     const wsTerms = args.query.split(/[\s,，、]+/).filter((t: string) => t.length > 0);
     const hasCJK = /[一-鿿㐀-䶿]/.test(args.query);
     let terms = wsTerms;
