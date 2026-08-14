@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 
-// ═══ Session-scoped message store — TomiHub model: one message list per session ═══
+// ═══ Session-scoped message store: one message list per session ═══
 
 export interface SessionData {
   id: string;
@@ -84,7 +84,7 @@ export function useChatSessions() {
     return (messagesOrFn: any[] | ((prev: any[]) => any[])) => setMessages(messagesOrFn, sessionId);
   }, [setMessages]);
 
-  // Find and update a message by ID across ALL sessions (TomiHub model)
+  // Find and update a message by ID across ALL sessions
   const updateMessageById = useCallback((messageId: string, patch: Record<string, any>) => {
     setSessionsData(prev => {
       const n = { ...prev };

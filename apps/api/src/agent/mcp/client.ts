@@ -1,5 +1,5 @@
 // ═══ MCP Protocol Client — auto-negotiating transport ═══
-// Supports: legacy (POST /tools/call), plain (TomiHub-style method envelope), JSON-RPC (standard MCP)
+// Supports: legacy (POST /tools/call), plain (method-envelope style), JSON-RPC (standard MCP)
 
 import type { McpToolInfo, McpCallResult, TransportMode } from './types.js';
 
@@ -26,7 +26,7 @@ function buildHeaders(apiKey: string | undefined, extraHeaders?: Record<string, 
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
   };
-  // TomiHub convention first, Bearer fallback
+  // X-Api-Key convention first, Bearer fallback
   if (apiKey) {
     h['X-Api-Key'] = apiKey;
     // Also send as Authorization for servers that expect Bearer
@@ -43,7 +43,7 @@ function buildHeaders(apiKey: string | undefined, extraHeaders?: Record<string, 
 function normalizeResult(data: any): McpCallResult {
   if (!data || typeof data !== 'object') return { ok: true, result: data };
 
-  // TomiHub-style: { status: 'approved'|'denied'|'expired', result?, task_id? }
+  // Plain-protocol style: { status: 'approved'|'denied'|'expired', result?, task_id? }
   if (data.status === 'approved') return { ok: true, status: data.status, result: data.result ?? data };
   if (data.status === 'denied') return { ok: false, status: 'denied', error: 'Request denied by approver' };
   if (data.status === 'expired') return { ok: false, status: 'expired', error: 'Approval request expired' };
@@ -114,7 +114,7 @@ async function parseSSEResponse(response: Response): Promise<any> {
         if (data.jsonrpc === '2.0') {
           accumulated = data; // replace — JSON-RPC sends one complete message
         } else if (data.status && (data.status === 'approved' || data.status === 'denied')) {
-          accumulated = data; // TomiHub HITL terminal
+          accumulated = data; // HITL terminal status
         } else {
           accumulated = data;
         }
@@ -139,7 +139,7 @@ async function negotiateTransport(baseUrl: string, headers: Record<string, strin
     return 'legacy';
   }
 
-  // Try plain (TomiHub-style) first — most common for our use case
+  // Try plain (method-envelope) first — most common for our use case
   try {
     const resp = await fetch(baseUrl, {
       method: 'POST',
@@ -153,7 +153,7 @@ async function negotiateTransport(baseUrl: string, headers: Record<string, strin
         protocolCache.set(key, 'plain');
         return 'plain';
       }
-      // TomiHub returns error for unknown methods but still indicates plain protocol
+      // Servers return error for unknown methods but still indicate plain protocol
       if (data?.error && !data.jsonrpc) {
         protocolCache.set(key, 'plain');
         return 'plain';
@@ -168,7 +168,7 @@ async function negotiateTransport(baseUrl: string, headers: Record<string, strin
       headers: { ...headers, 'Accept': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0', id: 1, method: 'initialize',
-        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'tomilite', version: '2.0.2' } },
+        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'tomilite', version: '2.0.3' } },
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -248,7 +248,7 @@ export function createMCPClient(config: {
 
       const data = await resp.json();
 
-      // Normalize: TomiHub returns { tools: [...] }, JSON-RPC returns { result: { tools: [...] } }
+      // Normalize: plain protocol returns { tools: [...] }, JSON-RPC returns { result: { tools: [...] } }
       let tools: any[];
       if (Array.isArray(data?.tools)) tools = data.tools;
       else if (Array.isArray(data?.result?.tools)) tools = data.result.tools;
@@ -275,7 +275,7 @@ export function createMCPClient(config: {
       } else if (transportMode === 'jsonrpc') {
         body = JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name, arguments: args } });
       } else {
-        // plain / TomiHub-style
+        // plain / method-envelope style
         body = JSON.stringify({ method: 'tools/call', params: { name, arguments: args } });
       }
 
