@@ -2,7 +2,7 @@
 
 AI-powered personal productivity desktop app — chat with an AI agent that manages your tasks, notes, emails, and daily reports. Built with Electron + React + tRPC + SQLite + Milkdown.
 
-> 🌐 **Official Website**: [tomatovector.com](https://tomatovector.com) — AI 驱动的下一代研发生态 · AI-powered next-generation R&D ecosystem
+> 🌐 **Official Website**: [tomatovector.com](https://tomatovector.com) — AI-powered next-generation R&D ecosystem
 >
 > Tomi is an AI agent with a Chat-First workflow: chat with it, and it creates tasks, writes notes, triages email, and generates reports for you.
 
