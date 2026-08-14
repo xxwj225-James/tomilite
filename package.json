@@ -2,9 +2,11 @@
   "name": "tomilite",
   "version": "2.0.2",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "description": "Tomatovector — AI-powered developer personal productivity tool",
   "author": "Tomatovector",
+  "homepage": "https://tomatovector.com",
+  "repository": "https://github.com/xxwj225-James/tomilite",
   "workspaces": [
     "packages/*",
     "apps/*"

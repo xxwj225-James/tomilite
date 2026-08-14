@@ -175,6 +175,10 @@ export function AboutTab() {
         <div className="card-bd text-sm" style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.6 }}>
           <p>{t('本软件以 MIT 许可证开源。可自由使用、修改、分发。', '本ソフトウェアは MIT ライセンスのオープンソースです。自由に使用・改変・配布できます。', 'This software is open source under the MIT License. Free to use, modify, and distribute.')}</p>
           <p className="mt-1">
+            <a href="https://tomatovector.com" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
+              {t('官方网站', '公式サイト', 'Official Website')}
+            </a>
+            {' · '}
             <a href="https://github.com/xxwj225-James/tomilite" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
               {t('GitHub 仓库', 'GitHub リポジトリ', 'GitHub Repository')}
             </a>
