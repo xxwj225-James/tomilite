@@ -1,24 +1,27 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
-import { t, tr, type I18NKey } from '@/lib/i18n';
+import { t, tr } from '@/lib/i18n';
 import { ContentPanel } from '@/components/ContentPanel';
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
 import { dispatchUICommand, useUICommandStore } from '@/stores/uiCommandStore';
-import { useLanguageStore, type Lang } from '@/stores/languageStore';
+import { useLanguageStore } from '@/stores/languageStore';
 import { useLang, useSetLang } from '@/stores/LangContext';
 import { getProvider } from '@/lib/llmProviders';
 import { useChatSessions } from '@/hooks/useChatThreads';
-import { RobotFace } from '@/components/RobotFace';
 import { PanelResizeHandle } from '@/components/PanelResizeHandle';
-import { Msg } from '@/components/chat/Msg';
+import { SessionSidebar } from '@/components/chat/SessionSidebar';
+import { ChatToolbar } from '@/components/chat/ChatToolbar';
+import { UpdateBar } from '@/components/chat/UpdateBar';
+import { WelcomeGuide } from '@/components/chat/WelcomeGuide';
+import { MsgList } from '@/components/chat/MsgList';
+import { MenuNav } from '@/components/chat/MenuNav';
+import { LlmBanner } from '@/components/chat/LlmBanner';
+import { ChatInput } from '@/components/chat/ChatInput';
+import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { ICONS } from '@/components/icons';
-import { MENU, MENU_LABEL, THEMES, THEME_COLORS, LANGS, LANGS_FULL, applyTheme, getTheme } from '@/lib/constants';
+import { LANGS, applyTheme, getTheme } from '@/lib/constants';
 import type { StagedEdit, ChatCard } from '@/types/chat';
 
 // ═══ i18n ═══
-function _t(key: string, lang: string) { return t(key as I18NKey, lang); }
 function _l(zh: string, ja: string, en: string) {
   const lang = useLanguageStore.getState().lang;
   return lang === 'zh' ? zh : lang === 'ja' ? ja : en;
@@ -537,6 +540,33 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
     try { localStorage.removeItem('tl-update-dl'); } catch {}
     setUpdateAvailable((prev: any) => prev ? { version: prev.version, dismissed: true, downloaded: prev.downloaded || false } : prev);
     window.dispatchEvent(new CustomEvent('tl-update-dismissed'));
+  };
+  const handleUpdateInstall = async (): Promise<any> => {
+    const api = (window as any).electronAPI;
+    if (!api?.installUpdate) return null;
+    try {
+      const r = await api.installUpdate();
+      if (r && !r.ok) setUpdateAvailable((prev: any) => prev ? { ...prev, downloaded: false } : prev);
+      return r;
+    } catch {
+      return { ok: false, error: '' };
+    }
+  };
+  const handleUpdateDownload = () => {
+    const api = (window as any).electronAPI;
+    if (api?.startDownload) {
+      setUpdateTimedOut(false);
+      setUpdateError('');
+      api.startDownload();
+      setUpdateProgress(0.1);
+      try { localStorage.setItem('tl-update-dl', JSON.stringify({ active: true, startTime: Date.now(), progress: 0 })); } catch {}
+    } else {
+      window.open(updateAvailable?.downloadUrl || 'https://tomatovector.com/tomilite', '_blank');
+    }
+  };
+  const handleOpenUpdateFolder = () => {
+    const api = (window as any).electronAPI;
+    if (api?.openFolder) api.openFolder(updateFilePath);
   };
   const [updateFilePath, setUpdateFilePath] = useState(() => {
     try { localStorage.removeItem('tl-update-path'); } catch {} return ''; // never survive restart
@@ -1387,6 +1417,50 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
   };
   sendMessageRef.current = sendMessage; // keep ref fresh for onForceCreate callback
 
+  // Menu navigation (used by MenuNav) — unsaved-changes gate + update-seen + clear notifications
+  const handleMenuNav = (key: string) => {
+    if ((window as any).__tl_unsaved && key !== panel) {
+      setLeaveTarget({ type: 'menu', key });
+      return;
+    }
+    setPanel(key);
+    if (key === 'about') setUpdateSeen(true);
+    if (key === 'email' && notifyCount > 0) { fetch('/api/system.clearNotifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(() => setNotifyCount(0)).catch(() => {}); }
+  };
+  // Morning check-in bubble click (used by MenuNav)
+  const handleMorningNotify = () => {
+    if (thinking) return;
+    const text = morningNotify;
+    setMessages(prev => [...prev, { role: 'assistant' as const, text, tool: 'greeting', pinnable: true }]);
+    saveMsg({ role: 'assistant', text, tool: 'greeting', pinnable: true });
+    setMorningNotify(null);
+    setTimeout(() => msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight), 100);
+  };
+  // Evening report bubble click (used by MenuNav) — generate + stream report into chat
+  const handleEveningNotify = async () => {
+    if (thinking || notifyLoading) return;
+    setNotifyLoading(true);
+    const today = new Date().toISOString().substring(0, 10);
+    localStorage.setItem('tl-evening-shown', today);
+    setEveningNotify(null);
+    // Add loading indicator then replace with report
+    const loadingIdx = messages.length;
+    setMessages(prev => [...prev, { role: 'assistant' as const, text: tr(lang,'⏳ 生成日报中...','⏳ 日報生成中...','⏳ Generating report...') }]);
+    try {
+      const r = await api.standup.getEveningReport(lang);
+      const content = r?.reportContent || '';
+      const todayStr = new Date().toISOString().substring(0, 10);
+      const card = r.reportId ? { type: 'report' as const, id: r.reportId, title: `${tr(lang,'📋 晚报','📋 イブニングレポート','📋 Evening Report')} — ${todayStr}`, reportType: 'daily' } : undefined;
+      setMessages(prev => { const copy = [...prev]; copy[loadingIdx] = { role: 'assistant' as const, text: content || (tr(lang,'⚠️ 暂无数据','⚠️ データなし','⚠️ No data')), card }; return copy; });
+      if (content) saveMsg({ role: 'assistant', text: content, card });
+      setReportRefresh(n => n + 1); // refresh Reports panel list
+    } catch {
+      setMessages(prev => { const copy = [...prev]; copy[loadingIdx] = { role: 'assistant' as const, text: tr(lang,'⚠️ 生成失败','⚠️ 生成失敗','⚠️ Failed') }; return copy; });
+    }
+    setNotifyLoading(false);
+    setTimeout(() => msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight), 100);
+  };
+
 
   // Show loading while sessions load (avoids black flash on first launch)
   if (!sessionsLoaded) {
@@ -1396,44 +1470,23 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
   return (
     <div className="app-root">
       <div className="app-shell">
-        <div className="session-sidebar">
-          <div className="session-sidebar-hd">
-            <button className="session-new-btn" onClick={() => { api.chat.createSession(`Chat ${sessions.length + 1}`).then((s: any) => { setSessions(prev => [{ id: s.id, title: s.title, tokenPercent: 0 }, ...prev]); setCurrentSessionId(s.id); chatHook.switchSession(s.id); chatHook.loadSession(s.id); }).catch(() => {}); }}>{t('menu.newChat', lang)}</button>
-          </div>
-          <div className="session-list">
-            {sessions.map(s => (
-              <div key={s.id} className={cn('session-item', currentSessionId === s.id && 'session-item--active')} onClick={() => switchSession(s.id)} onDoubleClick={() => startRename(s)}>
-                {editingSessionId === s.id ? (
-                  <input className="form-input" value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingSessionId(null); }}
-                    onBlur={commitRename} autoFocus onClick={e => e.stopPropagation()}
-                    style={{ fontSize: 11, padding: '2px 6px', flex: 1 }} />
-                ) : (
-                  <span className="session-item-title">{s.title}</span>
-                )}
-                <button className="session-item-delete" onClick={e => { e.stopPropagation(); deleteSession(s.id); }}>×</button>
-              </div>
-            ))}
-          </div>
-          {(() => {
-            const pct = Math.min(100, Math.round((displayTokens / Math.max(maxTokens, 1)) * 100));
-            if (!debugForceShow && pct < 50) return null;
-            const isWarn = pct >= 80;
-            const warnColor = isWarn ? 'var(--amber)' : 'var(--muted)';
-            const hoverText = isWarn ? (lang === 'zh' ? `剩余 ${100-pct}% 上下文空间，点击压缩` : `${100-pct}% context remaining — click to compress`) : '';
-            return (
-              <div style={{ padding: '6px 12px', borderTop: '1px solid var(--edge)', flexShrink: 0, cursor: isWarn ? 'pointer' : 'default' }} onClick={isWarn ? compressChat : undefined} title={hoverText}>
-                <div style={{ height: 3, borderRadius: 2, background: 'var(--surface2)', overflow: 'hidden', marginBottom: 4 }}>
-                  <div style={{ height: '100%', width: pct + '%', background: warnColor, borderRadius: 2, transition: 'width .3s' }} />
-                </div>
-                <div style={{ fontSize: 9, color: warnColor, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{displayTokens >= 1000 ? Math.round(displayTokens / 1000) + 'k' : displayTokens} / {maxTokens >= 1000 ? Math.round(maxTokens / 1000) + 'k' : maxTokens} {t('chat.tokens', lang)}</span>
-                  <span>{pct}%</span>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
+        <SessionSidebar
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          editingSessionId={editingSessionId}
+          editTitle={editTitle}
+          displayTokens={displayTokens}
+          maxTokens={maxTokens}
+          debugForceShow={debugForceShow}
+          onNew={() => { api.chat.createSession(`Chat ${sessions.length + 1}`).then((s: any) => { setSessions(prev => [{ id: s.id, title: s.title, tokenPercent: 0 }, ...prev]); setCurrentSessionId(s.id); chatHook.switchSession(s.id); chatHook.loadSession(s.id); }).catch(() => {}); }}
+          onSwitch={switchSession}
+          onRenameStart={startRename}
+          onRenameChange={setEditTitle}
+          onRenameCommit={commitRename}
+          onRenameCancel={() => setEditingSessionId(null)}
+          onDelete={deleteSession}
+          onCompress={compressChat}
+        />
         <div className="main-chat-wrapper">
           <div className="app-viewport" style={dragOver ? { outline: '2px dashed var(--brand)', outlineOffset: -4 } : {}}
             onPaste={async (e) => {
@@ -1451,72 +1504,10 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
             onDrop={async (e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer?.files?.length) await handleFiles(e.dataTransfer.files); }}
           >
             <div className="app-viewport-chat">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 2px', flexShrink: 0, minHeight: 28 }}>
-                {/* Left: language + theme */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ position: 'relative' }}>
-                    <button onClick={() => setLangMenuOpen(!langMenuOpen)} className="lang-btn lang-btn--active" style={{ padding: '2px 8px', fontSize: 10, gap: 3 }}>{LANGS_FULL[lang]} ▼</button>
-                    {langMenuOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--edge)', borderRadius: 8, padding: 4, minWidth: 130, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                        {LANGS.map(l => (
-                          <button key={l} onClick={() => { setLang(l); setLangMenuOpen(false); fetch('/api/system.saveLanguage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: l }) }).catch(() => {}); }}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 10px', fontSize: 11, border: 'none', borderRadius: 4, background: lang === l ? 'var(--surface2)' : 'transparent', color: lang === l ? 'var(--brand)' : 'var(--ink)', cursor: 'pointer', fontWeight: lang === l ? 600 : 400, fontFamily: 'inherit' }}>
-                            {LANGS_FULL[l]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <span style={{ width: 1, height: 14, background: 'var(--edge)', margin: '0 2px' }} />
-                  <div className="theme-dots" style={{ display: 'flex', gap: 3 }}>
-                    {THEMES.map(th => (<button key={th} onClick={() => setTheme(th)} title={th} className={cn('theme-dot', theme === th && 'theme-dot--active')} style={{ background: THEME_COLORS[th] }} />))}
-                  </div>
-                </div>
-                {/* Right: compress + clear */}
-                {messages.length > 0 && (
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button onClick={compressChat} disabled={compressing} className="btn-ghost btn-xs" title={t('chat.compressTooltip', lang)} style={{ fontSize: 10, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                      {compressing ? t('chat.compressing', lang) : t('chat.compress', lang)}
-                    </button>
-                    <button onClick={clearSession} className="btn-ghost btn-xs" title={t('chat.clearTooltip', lang)} style={{ fontSize: 10, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                      {t('chat.clear', lang)}
-                    </button>
-                  </div>
-                )}
-              </div>
-              {updateAvailable && !updateAvailable.dismissed && (
-                <div className="update-bar">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  {updateError ? (
-                    <span>❌ <strong>v{updateAvailable.version}</strong> {updateError}</span>
-                  ) : updateProgress > 0 && updateProgress < 100 ? (
-                    <span>⬇️ <strong>v{updateAvailable.version}</strong> {tr(lang,'下载中','ダウンロード中','Downloading')}... {Math.round(updateProgress)}%</span>
-                  ) : updateAvailable.downloaded ? (
-                    <span>✅ <strong>v{updateAvailable.version}</strong> {tr(lang,'已下载，点击安装','ダウンロード完了','Downloaded — click to install')}</span>
-                  ) : updateTimedOut ? (
-                    <span>⚠️ <strong>v{updateAvailable.version}</strong> {_l('下载超时，请重试','ダウンロードタイムアウト、再試行','Download timed out, retry')}</span>
-                  ) : (
-                    <span>🚀 <strong>v{updateAvailable.version}</strong> {tr(lang,'可用','利用可能','available')}</span>
-                  )}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {updateAvailable.downloaded ? (
-                      <button className="btn btn-brand btn-xs" onClick={async () => { const api = (window as any).electronAPI; if (api?.installUpdate) { try { const r = await api.installUpdate(); if (r && !r.ok) { setSaveResult({ ok: false, message: lang === 'zh' ? `安装失败: ${r.error || '未知错误'}, 请重试下载` : `Install failed: ${r.error || 'unknown'}. Please retry download.` }); setUpdateAvailable((prev: any) => prev ? { ...prev, downloaded: false } : prev); } } catch(e: any) { setSaveResult({ ok: false, message: lang === 'zh' ? '安装启动失败，请重试' : 'Install failed, please retry.' }); } } }}>{tr(lang,'安装并重启','インストールして再起動','Install & Restart')}</button>
-                    ) : updateProgress > 0 ? null : (
-                      <button className="btn btn-brand btn-xs" onClick={() => { const api = (window as any).electronAPI; if (api?.startDownload) { setUpdateTimedOut(false); setUpdateError(''); api.startDownload(); setUpdateProgress(0.1); try { localStorage.setItem('tl-update-dl', JSON.stringify({ active: true, startTime: Date.now(), progress: 0 })); } catch {} } else { window.open(updateAvailable.downloadUrl || 'https://tomatovector.com/tomilite', '_blank'); } }}>{(updateError || updateTimedOut) ? (_l('🔄 重试','🔄 再試行','🔄 Retry')) : t('chat.download', lang)}</button>
-                    )}
-                    <button className="btn-ghost btn-xs" onClick={() => { if (updateProgress > 0 && updateProgress < 100) { setStopDownloadConfirm(true); } else { dismissUpdateNotification(); } }}>✕</button>
-                  </div>
-                  </div>
-                  {updateFilePath && <div style={{ fontSize: 9, color: 'var(--blue)', wordBreak: 'break-all', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { const api = (window as any).electronAPI; if (api?.openFolder) api.openFolder(updateFilePath); }}>📁 {updateFilePath}</div>}
-                  {updateProgress > 0 && updateProgress < 100 && (
-                    <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden', marginTop: 2 }}>
-                      <div style={{ width: `${Math.round(updateProgress)}%`, height: '100%', background: 'var(--brand)', borderRadius: 2, transition: 'width 0.3s ease' }} />
-                    </div>
-                  )}
-                </div>
-              )}
+              <ChatToolbar lang={lang} setLang={setLang} langMenuOpen={langMenuOpen} setLangMenuOpen={setLangMenuOpen} theme={theme} setTheme={setTheme} messagesCount={messages.length} compressing={compressing} onCompress={compressChat} onClear={clearSession} />
+              <UpdateBar updateAvailable={updateAvailable} updateError={updateError} updateProgress={updateProgress} updateTimedOut={updateTimedOut} updateFilePath={updateFilePath}
+                onInstall={handleUpdateInstall} onDownload={handleUpdateDownload} onClose={dismissUpdateNotification} onOpenFolder={handleOpenUpdateFolder}
+                onStopDownload={() => setStopDownloadConfirm(true)} onResult={setSaveResult} />
               {pinnedText && (
                 <div className="pinned-bar">
                   <span style={{ flex: 1, whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto' }}>{pinnedText}</span>
@@ -1524,271 +1515,30 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
                 </div>
               )}
               <div ref={msgsRef} className="chat-messages" style={{ borderTop: '1px solid var(--edge)', borderBottom: '1px solid var(--edge)' }}>
-                {showWelcome && (<div className="welcome"><div className="welcome-robot"><RobotFace size={36} /></div><div className="welcome-title">{t('app.welcomeTitle', lang)}</div><div className="welcome-desc">{t('app.welcomeDesc', lang)}</div>
-                  {/* Simplified setup guide */}
-                  <div style={{ marginTop: 16, maxWidth: 380, textAlign: 'left', margin: '16px auto 0' }}>
-                    {/* LLM */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>🤖</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupLlm', lang)}</span>
-                      {llmConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-brand btn-xs" style={{ whiteSpace: 'nowrap' }} onClick={() => { (window as any).__tl_settingsTab = 'llm'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupLlmDesc', lang)}
-                    </div>
-                    {!llmConfigured && (
-                      <div style={{ fontSize: 10, color: 'var(--amber)', margin: '-6px 8px 10px', lineHeight: 1.5, fontWeight: 500 }}>
-                        {t('app.welcomeSetupLlmPriority', lang)}
-                      </div>
-                    )}
-                    {/* Email */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>📧</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupEmail', lang)}</span>
-                      {emailConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-xs" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)', whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => { (window as any).__tl_settingsTab = 'email'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupEmailDesc', lang)}
-                    </div>
-                    {/* Git */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>📂</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupGit', lang)}</span>
-                      {gitConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-xs" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)', whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => { (window as any).__tl_settingsTab = 'git'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupGitDesc', lang)}
-                    </div>
-                    {/* API Keys */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>🔑</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupApikey', lang)}</span>
-                      {apikeyConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-xs" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)', whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => { (window as any).__tl_settingsTab = 'apikey'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupApikeyDesc', lang)}
-                    </div>
-                    {/* Standup */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>📅</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupStandup', lang)}</span>
-                      {standupConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-xs" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)', whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => { (window as any).__tl_settingsTab = 'standup'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupStandupDesc', lang)}
-                    </div>
-                    {/* MCP Servers */}
-                    <div style={{ padding: '8px 12px', marginBottom: 6, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 17 }}>🔌</span>
-                      <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{t('app.welcomeSetupMcp', lang)}</span>
-                      {mcpConfigured ? (
-                        <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✅</span>
-                      ) : (
-                        <button className="btn btn-xs" style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--edge)', whiteSpace: 'nowrap', fontSize: 10 }} onClick={() => { (window as any).__tl_settingsTab = 'mcpServers'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}>{t('app.welcomeSetupConfigure', lang)}</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', margin: '0 8px 10px', lineHeight: 1.5 }}>
-                      {t('app.welcomeSetupMcpDesc', lang)}
-                    </div>
-                    {/* Language + Theme row */}
-                    <div style={{ padding: '8px 12px', marginBottom: 8, background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--edge)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: 17 }}>🌐</span>
-                      <select className="form-select" style={{ fontSize: 11, padding: '3px 6px', flex: 1 }} value={lang} onChange={e => { const newLang = e.target.value; setLang(newLang as Lang); fetch('/api/system.saveLanguage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: newLang }) }).catch(() => {}); }}>
-                        {LANGS.map(l => <option key={l} value={l}>{LANGS_FULL[l]}</option>)}
-                      </select>
-                      <span style={{ fontSize: 17 }}>🎨</span>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {THEMES.map(th => (
-                          <button key={th} onClick={() => setTheme(th)} title={th}
-                            style={{ width: 18, height: 18, borderRadius: 4, background: THEME_COLORS[th], border: theme === th ? '2px solid var(--ink)' : '1px solid var(--edge)', cursor: 'pointer' }} />
-                        ))}
-                      </div>
-                    </div>
-                    {/* Congratulations or Start button */}
-                    {llmConfigured && emailConfigured && gitConfigured && apikeyConfigured && standupConfigured && mcpConfigured ? (
-                      <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
-                        <div style={{ fontSize: 15, marginBottom: 2 }}>🎉</div>
-                        <div style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600, marginBottom: 8 }}>
-                          {t('app.welcomeSetupDone', lang)}
-                        </div>
-                        <button className="btn btn-brand btn-sm" onClick={() => { localStorage.setItem('tl-welcome-dismissed', '1'); setShowWelcome(false); }}>
-                          {t('app.welcomeStart', lang)}
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
-                        <button className="btn btn-brand btn-sm" onClick={() => { setShowWelcome(false); }}>
-                          {t('app.welcomeSkip', lang)}
-                        </button>
-                        <div style={{ marginTop: 6 }}>
-                          <button className="btn-ghost btn-xs" style={{ color: 'var(--muted)', fontSize: 10 }} onClick={() => { setShowWelcome(false); localStorage.setItem('tl-welcome-dismissed', '1'); }}>
-                            {t('app.welcomeDontShow', lang)}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="suggestions" style={{ marginTop: 10 }}>{['app.sugg1','app.sugg2','app.sugg3','app.sugg4','app.sugg5'].map(k => (<span key={k} className="suggestion-chip" onClick={() => sendMessage(_t(k, lang))}>{_t(k, lang)}</span>))}</div></div>)}
-                {messages.filter(m => m != null).map((m, i) => { const pinnable = !!(m as any).pinnable || (m.role === 'assistant' && m.tool === 'greeting'); const pinned = pinnable && !!pinnedText && pinnedText === m.text; return <Msg key={i} role={m.role} text={m.text} tool={m.tool} staged={m.staged} card={m.card} onApply={handleApplyEdit} onUndo={handleUndoEdit} thinking={thinking} pinnable={pinnable} isPinned={pinned} onPin={(t) => setPinnedText(prev => prev === t ? null : t)} reasoningContent={(m as any).reasoningContent} />; })}
-                {thinking && (
-                  <div className="msg msg--assistant" style={{ marginBottom: 4 }}>
-                    <div className="msg-bubble msg-bubble--assistant" style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.7 }}>
-                      <span className="agent-spinner" style={{ width: 14, height: 14, border: '2px solid var(--edge)', borderTopColor: 'var(--brand)', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.6s linear infinite' }} />
-                      <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>{agentStatus || t('chat.working', lang)}</span>
-                    </div>
-                  </div>
+                {showWelcome && (
+                  <WelcomeGuide lang={lang} setLang={setLang} theme={theme} setTheme={setTheme}
+                    llmConfigured={llmConfigured} emailConfigured={emailConfigured} gitConfigured={gitConfigured} apikeyConfigured={apikeyConfigured} standupConfigured={standupConfigured} mcpConfigured={mcpConfigured}
+                    onConfigure={(tab) => { (window as any).__tl_settingsTab = tab; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}
+                    onStart={() => { localStorage.setItem('tl-welcome-dismissed', '1'); setShowWelcome(false); }}
+                    onSkip={() => setShowWelcome(false)}
+                    onDontShow={() => { setShowWelcome(false); localStorage.setItem('tl-welcome-dismissed', '1'); }}
+                    onSuggestion={(text) => sendMessage(text)} />
                 )}
+                <MsgList messages={messages} thinking={thinking} agentStatus={agentStatus} pinnedText={pinnedText}
+                  onApply={handleApplyEdit} onUndo={handleUndoEdit}
+                  onPin={(t) => setPinnedText(prev => prev === t ? null : t)} />
               </div>
-              {/* Always-visible navigation toolbar */}
-              <div className="menu-popup">{MENU.map(m => (<button key={m.key} className={cn('menu-item', m.key === panel && 'menu-item--active')}
-                onClick={() => {
-                  if ((window as any).__tl_unsaved && m.key !== panel) {
-                    setLeaveTarget({ type: 'menu', key: m.key });
-                    return;
-                  }
-                  setPanel(m.key);
-                  if (m.key === 'about') setUpdateSeen(true);
-                  if (m.key === 'email' && notifyCount > 0) { fetch('/api/system.clearNotifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(() => setNotifyCount(0)).catch(() => {}); }
-                }}>
-                <span className="menu-item-icon">{ICONS[m.key]}</span>
-                {t(MENU_LABEL[m.key], lang)}
-                {m.key === 'email' && notifyCount > 0 && <span className="notif-badge">{notifyCount}</span>}
-                {m.key === 'mcp' && mcpPending > 0 && <span style={{ position: 'absolute', top: 2, right: 4, background: 'var(--amber)', color: '#fff', fontSize: 9, fontWeight: 700, minWidth: 15, height: 15, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{mcpPending}</span>}
-                {m.key === 'about' && updateAvailable && !updateSeen && <span className="notif-dot" />}
-              </button>))}
-                {/* Morning & Evening notification bubbles */}
-                {(morningNotify || eveningNotify) && (
-                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                    {morningNotify && (
-                      <button className="menu-item" style={{ padding: '4px 6px', cursor: thinking ? 'default' : 'pointer', opacity: thinking ? 0.4 : 1, border: 0, minWidth: 'unset' }}
-                        onClick={() => { if (thinking) return;
-                          const text = morningNotify;
-                          setMessages(prev => [...prev, { role: 'assistant' as const, text, tool: 'greeting', pinnable: true }]);
-                          saveMsg({ role: 'assistant', text, tool: 'greeting', pinnable: true });
-                          setMorningNotify(null);
-                          setTimeout(() => msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight), 100);
-                        }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                          <defs>
-                            <linearGradient id="morning-grad" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stopColor="#fbbf24" /><stop offset="100%" stopColor="#f59e0b" />
-                            </linearGradient>
-                          </defs>
-                          <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4c0-1.1-.9-2-2-2z" fill="url(#morning-grad)" opacity="0.85" />
-                        </svg>
-                      </button>
-                    )}
-                    {eveningNotify && (
-                      <button className="menu-item" style={{ padding: '4px 6px', cursor: thinking || notifyLoading ? 'default' : 'pointer', opacity: thinking ? 0.4 : notifyLoading ? 0.6 : 1, border: 0, minWidth: 'unset' }}
-                        onClick={async () => {
-                          if (thinking || notifyLoading) return;
-                          setNotifyLoading(true);
-                          const today = new Date().toISOString().substring(0, 10);
-                          localStorage.setItem('tl-evening-shown', today);
-                          setEveningNotify(null);
-                          // Add loading indicator then replace with report
-                          const loadingIdx = messages.length;
-                          setMessages(prev => [...prev, { role: 'assistant' as const, text: tr(lang,'⏳ 生成日报中...','⏳ 日報生成中...','⏳ Generating report...') }]);
-                          try {
-                            const r = await api.standup.getEveningReport(lang);
-                            const content = r?.reportContent || '';
-                            const todayStr = new Date().toISOString().substring(0, 10);
-                            const card = r.reportId ? { type: 'report' as const, id: r.reportId, title: `${tr(lang,'📋 晚报','📋 イブニングレポート','📋 Evening Report')} — ${todayStr}`, reportType: 'daily' } : undefined;
-                            setMessages(prev => { const copy = [...prev]; copy[loadingIdx] = { role: 'assistant' as const, text: content || (tr(lang,'⚠️ 暂无数据','⚠️ データなし','⚠️ No data')), card }; return copy; });
-                            if (content) saveMsg({ role: 'assistant', text: content, card });
-                            setReportRefresh(n => n + 1); // refresh Reports panel list
-                          } catch {
-                            setMessages(prev => { const copy = [...prev]; copy[loadingIdx] = { role: 'assistant' as const, text: tr(lang,'⚠️ 生成失败','⚠️ 生成失敗','⚠️ Failed') }; return copy; });
-                          }
-                          setNotifyLoading(false);
-                          setTimeout(() => msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight), 100);
-                        }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                          <defs>
-                            <linearGradient id="evening-grad" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#7c3aed" />
-                            </linearGradient>
-                          </defs>
-                          <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4c0-1.1-.9-2-2-2z" fill="url(#evening-grad)" opacity="0.85" />
-                        </svg>
-                      </button>
-                    )}
-                  </span>
-                )}
-              </div>
-              {/* Soft-gate: LLM API key missing banner */}
+              <MenuNav panel={panel} notifyCount={notifyCount} mcpPending={mcpPending} updateAvailable={updateAvailable} updateSeen={updateSeen} thinking={thinking} morningNotify={morningNotify} eveningNotify={eveningNotify} notifyLoading={notifyLoading}
+                onNav={handleMenuNav} onMorning={handleMorningNotify} onEvening={handleEveningNotify} />
               {!llmConfigured && !llmBannerDismissed && (
-                <div style={{ padding: '10px 14px', background: 'color-mix(in srgb, var(--amber) 10%, var(--surface2))', borderBottom: '1px solid var(--amber)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 600, flex: 1 }}>
-                    ⚠️ {tr(lang,'未配置 LLM API Key，AI 聊天功能不可用。','LLM APIキーが未設定です。','LLM API Key not configured. AI chat unavailable.')}
-                  </span>
-                  <button className="btn btn-brand btn-xs" onClick={() => {
-                    (window as any).__tl_settingsTab = 'llm';
-                    window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' }));
-                  }}>
-                    {tr(lang,'前往配置 →','設定へ →','Configure →')}
-                  </button>
-                  <button className="btn-ghost btn-xs" onClick={() => setLlmBannerDismissed(true)} style={{ color: 'var(--muted)', fontSize: 18, padding: '0 4px' }}>×</button>
-                </div>
+                <LlmBanner
+                  onConfigure={() => { (window as any).__tl_settingsTab = 'llm'; window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'settings' })); }}
+                  onDismiss={() => setLlmBannerDismissed(true)} />
               )}
-              <div className="chat-input-row">
-                {attachedFiles.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingBottom: 6 }}>
-                    {attachedFiles.map((f, i) => (
-                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--surface2)', border: '1px solid var(--edge)', borderRadius: 14, padding: '3px 10px', fontSize: 11, color: 'var(--ink)' }}>
-                        📎 {f.name}
-                        <button onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="chat-input-inner">
-                  <div style={{ position: 'relative' }}>
-                    <button className="chat-plus-btn" onClick={() => { document.getElementById('file-upload')?.click(); }} title={t('chat.uploadFile', lang)} style={{ position: 'relative' }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                    </button>
-                  </div>
-                  <input id="file-upload" type="file" multiple hidden onChange={async (e) => { if (e.target.files) { await handleFiles(e.target.files); e.target.value = ''; } }} />
-                  <div className="chat-input-wrap">
-                    <textarea ref={textareaRef} className="chat-textarea" placeholder={t('chat.placeholder', lang)} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (query.trim()) { sendMessage(); } else { sendMessage(); } } if (e.key === 'Escape' && thinking) { e.preventDefault(); stopStream(); } }} rows={1} />
-                    {thinking ? (
-                      <button className="chat-send-btn chat-send-btn--stop" onClick={stopStream} title={t('chat.sendToInterrupt', lang)} style={{ background: 'var(--brand)', border: 'none' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
-                    ) : (
-                      <button className={cn('chat-send-btn', query.trim() ? 'chat-send-btn--active' : 'chat-send-btn--idle')} onClick={() => sendMessage()} disabled={!query.trim()} title={t('chat.sendEnter', lang)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 10 4 15 9 20" /><path d="M20 4v7a4 4 0 01-4 4H4" /></svg></button>
-                    )}
-                  </div>
-                </div>
-                <div className="chat-hint" style={{ padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {thinking ? (
-                    <span style={{ fontSize: 11, color: 'var(--brand)', fontWeight: 500 }}>{t('chat.hintEsc', lang)}</span>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: 'var(--surface2)', color: 'var(--ink)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--edge)' }}>Enter → {t('chat.send', lang)}</span>
-                      <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: 'var(--surface2)', color: 'var(--ink)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--edge)' }}>(Shift + Enter) → {t('chat.newLine', lang)}</span>
-                    </>
-                  )}
-                </div>
-              </div>
+              <ChatInput query={query} setQuery={setQuery} attachedFiles={attachedFiles}
+                onRemoveFile={(i) => setAttachedFiles(prev => prev.filter((_, j) => j !== i))}
+                onFiles={handleFiles}
+                thinking={thinking} onSend={() => sendMessage()} onStop={stopStream} textareaRef={textareaRef} />
             </div>
             <PanelResizeHandle panelOpen={!!panel} />
             <ContentPanel panel={panel} emailRefresh={emailRefresh} onClose={() => {
@@ -1809,14 +1559,16 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
           </div>
         </div>
       </div>
-      <ConfirmDialog
-        open={!!leaveTarget}
-        title={tr(lang,'未保存的更改','保存されていない変更','Unsaved Changes')}
-        message={tr(lang,'有未保存的内容，离开将丢失更改。确定离开？','保存されていない変更があります。このまま離れますか？','Unsaved changes will be lost. Leave anyway?')}
-        lang={lang}
-        confirmLabel={tr(lang,'离开','閉じる','Leave')}
-        cancelLabel={tr(lang,'取消','キャンセル','Cancel')}
-        onConfirm={() => {
+      <ConfirmDialogs
+        leaveTarget={leaveTarget}
+        compressConfirm={compressConfirm}
+        compressMsg={compressMsg}
+        deleteTarget={deleteTarget}
+        deleting={deleting}
+        saveResult={saveResult}
+        stopDownloadConfirm={stopDownloadConfirm}
+        updateAvailable={updateAvailable}
+        onLeaveConfirm={() => {
           const target = leaveTarget;
           setLeaveTarget(null);
           (window as any).__tl_unsaved = null;
@@ -1824,61 +1576,16 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
           else if (target?.type === 'menu') setPanel(target.key!);
           setTimeout(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }, 50);
         }}
-        onCancel={() => { setLeaveTarget(null); setTimeout(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }, 50); }}
-      />
-      <ConfirmDialog
-        open={compressConfirm}
-        title={t('chat.compressTitle', lang)}
-        message={t('chat.compressMessage', lang)}
-        lang={lang}
-        onConfirm={executeCompress}
-        onCancel={() => setCompressConfirm(false)}
-      />
-      <ConfirmDialog
-        open={!!compressMsg}
-        variant="alert"
-        title={compressMsg}
-        message=""
-        lang={lang}
-        onConfirm={() => setCompressMsg('')}
-        onCancel={() => setCompressMsg('')}
-      />
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title={_l('删除','削除','Delete')}
-        message={tr(lang,`确定删除 "${deleteTarget?.title || ''}" 吗？此操作无法撤销。`,`"${deleteTarget?.title || ''}"を削除しますか？元に戻せません。`,`Delete "${deleteTarget?.title || ''}"? This cannot be undone.`)}
-        lang={lang}
-        confirmLabel={_l('删除','削除','Delete')}
-        cancelLabel={tr(lang,'取消','キャンセル','Cancel')}
-        onConfirm={executeDelete}
-        onCancel={() => { setDeleteTarget(null); setTimeout(() => textareaRef.current?.focus(), 50); }}
-      />
-      <ConfirmDialog
-        open={deleting}
-        variant="alert"
-        loading
-        message={tr(lang,'🗑️ 删除中...','🗑️ 削除中...','🗑️ Deleting...')}
-        lang={lang}
-        onConfirm={() => {}}
-        onCancel={() => {}}
-      />
-      <ConfirmDialog
-        open={!!saveResult}
-        variant="alert"
-        message={saveResult?.message || ''}
-        lang={lang}
-        onConfirm={() => setSaveResult(null)}
-        onCancel={() => setSaveResult(null)}
-      />
-      <ConfirmDialog
-        open={stopDownloadConfirm}
-        title={_l('停止下载','ダウンロード停止','Stop Download')}
-        message={lang === 'zh' ? `确定要停止下载 v${updateAvailable?.version || ''} 吗？` : `Stop downloading v${updateAvailable?.version || ''}?`}
-        lang={lang}
-        confirmLabel={_l('停止','停止','Stop')}
-        cancelLabel={tr(lang,'取消','キャンセル','Cancel')}
-        onConfirm={() => { setStopDownloadConfirm(false); dismissUpdateNotification(); }}
-        onCancel={() => { setStopDownloadConfirm(false); }}
+        onLeaveCancel={() => { setLeaveTarget(null); setTimeout(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }, 50); }}
+        onCompressConfirm={executeCompress}
+        onCompressCancel={() => setCompressConfirm(false)}
+        onCompressMsgClose={() => setCompressMsg('')}
+        onDeleteConfirm={executeDelete}
+        onDeleteCancel={() => { setDeleteTarget(null); setTimeout(() => textareaRef.current?.focus(), 50); }}
+        onDeletingClose={() => {}}
+        onSaveResultClose={() => setSaveResult(null)}
+        onStopDownloadConfirm={() => { setStopDownloadConfirm(false); dismissUpdateNotification(); }}
+        onStopDownloadCancel={() => setStopDownloadConfirm(false)}
       />
     </div>
   );
