@@ -1,0 +1,20 @@
+{
+  "name": "@tomilite/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "db:migrate": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx src/seed.ts",
+    "build": "tsc && prisma generate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}

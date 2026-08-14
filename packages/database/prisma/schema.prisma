@@ -1,0 +1,505 @@
+// ==========================================
+// TomiLite — Personal Edition Database Schema
+// SQLite via Prisma | Single user, zero tenant
+// ==========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══ User Profile (single user) ═══
+model User {
+  id             String   @id @default(uuid())
+  displayName    String   @default("Developer")
+  email          String?
+  aiLanguage     String   @default("en")
+  theme          String   @default("system")
+  focusState     String   @default("available")
+  focusScore     Int      @default(0)
+  preferences    String   @default("{}") // JSON
+  createdAt      String   @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt      String   @default(dbgenerated("(datetime('now','localtime'))"))
+
+  focusSessions  FocusSession[]
+  notes          PersonalNote[]
+}
+
+// ═══ Projects (single default project) ═══
+model Project {
+  id          String   @id @default(uuid())
+  name        String   @default("My Project")
+  key         String   @default("TL")
+  description String?
+  status      String   @default("active")
+  methodology String   @default("scrum")
+  createdAt   String   @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt   String   @default(dbgenerated("(datetime('now','localtime'))"))
+
+  issues      Issue[]
+  boards      Board[]
+  sprints     Sprint[]
+  wikiPages   KnowledgePage[]
+  reports     Report[]
+}
+
+// ═══ Issues ═══
+model Issue {
+  id              String   @id @default(uuid())
+  projectId       String
+  issueNumber     Int
+  title           String
+  description     String?
+  type            String   @default("task")
+  status          String   @default("todo")
+  priority        String   @default("medium")
+  assignee        String?
+  parentId        String?
+  storyPoints     Float?
+  remainingPoints Float?
+  labels          String   @default("")
+  sortOrder       Float    @default(0)
+  dueDate         String?
+  gitRepo         String?
+  createdAt       String   @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt       String   @default(dbgenerated("(datetime('now','localtime'))"))
+
+  project    Project       @relation(fields: [projectId], references: [id])
+  parent     Issue?        @relation("IssueParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children   Issue[]       @relation("IssueParent")
+  comments   Comment[]
+  changelog  IssueChangelog[]
+  boardCards BoardCard[]
+  gitRefs    GitCommitRef[]
+  smartEmail SmartEmail?
+
+  @@index([projectId, status])
+}
+
+// ═══ Kanban Board ═══
+model Board {
+  id        String   @id @default(uuid())
+  projectId String
+  name      String   @default("Kanban")
+  type      String   @default("kanban")
+  settings  String   @default("{}")
+  createdAt String   @default(dbgenerated("(datetime('now','localtime'))"))
+
+  project   Project       @relation(fields: [projectId], references: [id])
+  columns   BoardColumn[]
+  cards     BoardCard[]
+}
+
+model BoardColumn {
+  id             String   @id @default(uuid())
+  boardId        String
+  name           String
+  mappedStatuses String   @default("")
+  wipLimit       Int?
+  sortOrder      Int      @default(0)
+
+  board  Board        @relation(fields: [boardId], references: [id])
+  cards  BoardCard[]
+}
+
+model BoardCard {
+  id       String @id @default(uuid())
+  boardId  String
+  columnId String
+  issueId  String
+  position Int    @default(0)
+
+  board  Board        @relation(fields: [boardId], references: [id])
+  column BoardColumn  @relation(fields: [columnId], references: [id])
+  issue  Issue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, issueId])
+}
+
+// ═══ Sprints ═══
+model Sprint {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  goal        String?
+  startDate   String
+  endDate     String
+  status      String   @default("planning")
+  startedAt   String?
+  completedAt String?
+  createdAt   String   @default(dbgenerated("(datetime('now','localtime'))"))
+
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+// ═══ Comments ═══
+model Comment {
+  id        String @id @default(uuid())
+  issueId   String
+  body      String
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+}
+
+// ═══ Issue Changelog ═══
+model IssueChangelog {
+  id        String @id @default(uuid())
+  issueId   String
+  field     String
+  oldValue  String?
+  newValue  String?
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+}
+
+// ═══ Knowledge Pages (Wiki/Notes) ═══
+model KnowledgePage {
+  id        String @id @default(uuid())
+  projectId String
+  title     String
+  content   String?
+  vector    String? // JSON float array — embedding vector for semantic search
+  category  String @default("general")
+  status    String @default("active")
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+// ═══ Daily Motto ═══
+model DailyMotto {
+  id        String @id @default(uuid())
+  text      String
+  date      String
+  lang      String @default("en")
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  @@unique([date, lang])
+}
+
+// ═══ Reports ═══
+model Report {
+  id              String @id @default(uuid())
+  projectId       String
+  reportType      String
+  title           String
+  content         String
+  vector          String? // JSON float array — embedding vector for semantic search
+  originalContent String?
+  emailSummary    String?  // AI-distilled daily email digest
+  context         String  @default("{}")
+  status          String  @default("draft")
+  generatedAt     String  @default(dbgenerated("(datetime('now','localtime'))"))
+  archived        Boolean @default(false)
+  createdAt       String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+// ═══ Personal Notes (quick TODO / markdown) ═══
+model PersonalNote {
+  id        String @id @default(uuid())
+  title     String
+  content   String?
+  category  String @default("todo")
+  pinned    Boolean @default(false)
+  status    String  @default("active")
+  createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  userId String
+  user   User    @relation(fields: [userId], references: [id])
+}
+
+// ═══ IDE Focus Sessions ═══
+model FocusSession {
+  id           String @id @default(uuid())
+  userId       String
+  startTime    String @default(dbgenerated("(datetime('now','localtime'))"))
+  endTime      String?
+  focusState   String
+  totalMinutes Int    @default(0)
+  source       String @default("ide") // "ide" | "web"
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+
+// ═══ Smart Email (AI-analyzed, zero-storage) ═══
+model SmartEmail {
+  id          String @id @default(uuid())
+  messageId   String @unique // IMAP Message-ID for dedup
+  uid         Int    // IMAP UID for fast on-demand fetch
+  fromAddr    String
+  toAddr      String
+  cc          String?
+  subject     String
+  date        String
+  category    Int    // 1=urgent reply, 2=reply today, 3=FYI only, 4=other
+  summary     String // AI-extracted summary (150 chars, structured for cat 3)
+  replyDraft   String? // AI-generated reply draft (cat 1/2 only)
+  bodySnapshot String? // First 5000 chars of email body (for "Read Original")
+  issueId      String? @unique // FK to Issue (cat 1/2 auto-create)
+  isRead      Boolean @default(false)
+  isReplied   Boolean @default(false)
+  isProcessed Boolean @default(false) // (cat 3: read) || (cat 1/2: replied)
+  processedAt String?
+  topicGroup  String? // AI topic grouping (set during email reception)
+  archived    Boolean @default(false)
+  createdAt   String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@index([isProcessed, category])
+}
+
+// ═══ Git Work Dirs (user's working directories to scan) ═══
+model GitWorkDir {
+  id        String @id @default(uuid())
+  path      String @unique
+  enabled   Boolean @default(true)
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  repos GitRepo[]
+}
+
+// ═══ Git Repos (auto-discovered from work dirs) ═══
+model GitRepo {
+  id            String @id @default(uuid())
+  workDirId     String?
+  name          String
+  localPath     String @unique
+  branch        String @default("main")
+  enabled       Boolean @default(true)
+  lastScannedAt String?
+  createdAt     String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  workDir  GitWorkDir?     @relation(fields: [workDirId], references: [id])
+  refs     GitCommitRef[]
+  commits  GitCommit[]
+}
+
+// ═══ Git Commit Refs (issue references from commit messages) ═══
+model GitCommitRef {
+  id         String @id @default(uuid())
+  repoId     String
+  issueId    String?
+  commitHash String
+  message    String
+  issueKey   String  // e.g. "TL-3" or "#5"
+  action     String  @default("ref") // ref | fix | close | implement
+  createdAt  String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  repo  GitRepo @relation(fields: [repoId], references: [id])
+  issue Issue?  @relation(fields: [issueId], references: [id], onDelete: SetNull)
+}
+
+// ═══ Git Commits (all tracked commits, for report/health data) ═══
+model GitCommit {
+  id           String @id @default(uuid())
+  repoId       String
+  hash         String @unique
+  author       String
+  email        String
+  message      String
+  timestamp    String // ISO commit date
+  filesChanged Int    @default(0)
+  additions    Int    @default(0)
+  deletions    Int    @default(0)
+  archived     Boolean @default(false)
+  createdAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  repo GitRepo @relation(fields: [repoId], references: [id])
+
+  @@index([timestamp])
+  @@index([repoId])
+}
+
+// ═══ LLM Provider Master Data ═══
+model LlmProviderMaster {
+  id           String @id @default(uuid())
+  name         String @unique
+  displayName  String
+  apiBaseUrl   String
+  requiresKey  Boolean @default(true)
+
+  providers LlmProvider[]
+}
+
+// ═══ LLM Provider Config ═══
+model LlmProvider {
+  id          String @id @default(uuid())
+  providerId  String @unique
+  apiKey      String?  // AES-256-GCM encrypted
+  isActive    Boolean @default(true)
+  createdAt   String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  provider     LlmProviderMaster @relation(fields: [providerId], references: [id])
+  flashConfigs LlmConfig[]       @relation("FlashProvider")
+  proConfigs   LlmConfig[]       @relation("ProProvider")
+}
+
+// ═══ LLM Config ═══
+model LlmConfig {
+  id              String @id @default(uuid())
+  flashProviderId String?
+  proProviderId   String?
+  flashModel      String @default("deepseek-chat")
+  proModel        String @default("deepseek-reasoner")
+  ollamaUrl       String @default("")
+  ollamaEnabled   Boolean @default(false)
+  contextWindow   Int    @default(100000)
+  maxOutputTokens Int    @default(8192)
+
+  flashProvider LlmProvider? @relation("FlashProvider", fields: [flashProviderId], references: [id])
+  proProvider   LlmProvider? @relation("ProProvider", fields: [proProviderId], references: [id])
+}
+
+// ═══ AI Decision Feedback (self-learning) ═══
+model AiDecisionFeedback {
+  id            String @id @default(uuid())
+  featureType   String
+  aiOutput      String
+  humanAction   String
+  humanCorrected String?
+  issueKey      String?
+  context       String?
+  createdAt     String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ System Config ═══
+model SystemConfig {
+  key         String @id
+  value       String
+  description String?
+  updatedAt   String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ Knowledge Cache ═══
+model KnowledgeCache {
+  id        String @id @default(uuid())
+  content   String // Markdown knowledge map content
+  tasksHash String // Hash of task list + lang to detect changes
+  lang      String // Language of the content (en/zh/ja etc.)
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ Health Snapshots ═══
+model UserHealthSnapshot {
+  id           String @id @default(uuid())
+  healthScore  Int
+  healthLevel  String
+  dimensions   String @default("{}")
+  summary      String?
+  lang         String?
+  total        Int    @default(0)
+  createdAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ MCP Audit Logs ═══
+model McpAuditLog {
+  id          String @id @default(uuid())
+  toolName    String
+  arguments   String @default("{}")
+  status      String // executed | approved | denied | expired | pending
+  result      String @default("{}")
+  confirmedBy String @default("system")
+  issueKey    String?
+  agentName   String @default("external")
+  apiKeyName  String?
+  createdAt   String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ API Keys ═══
+model ApiKey {
+  id         String   @id @default(uuid())
+  name       String
+  keyPrefix  String   @default("tl_")
+  keyHash    String   @unique
+  scopes     String   @default("read,write")
+  hitlMode   String   @default("manual")
+  isActive   Boolean  @default(true)
+  useCount   Int      @default(0)
+  lastUsedAt String?
+  expiresAt  String?
+  createdAt  String   @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ MCP Servers ═══
+model McpServer {
+  id              String  @id @default(uuid())
+  name            String
+  url             String
+  apiKey          String?          // AES-256-GCM encrypted (lib/crypto.ts)
+  enabled         Boolean @default(true)
+  transport       String  @default("http")   // http | jsonrpc | legacy | auto
+  headers         String?          // JSON, encrypted — extra headers beyond apiKey
+  status          String  @default("unknown") // unknown | online | offline | error
+  lastError       String?
+  lastConnectedAt String?
+  toolsJson       String?          // cached tools/list result for cold-start injection
+  toolCount       Int     @default(0)
+  hitlMode        String  @default("none")   // none | poll | confirm
+  hitlConfirmUrl  String?          // template for HITL approve endpoint
+  createdAt       String  @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt       String?
+}
+
+// ═══ Integrations (Email / Slack / etc.) ═══
+model Integration {
+  id        String @id @default(uuid())
+  type      String // imap | gmail | slack
+  config    String // JSON
+  enabled   Boolean @default(true)
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ In-App Feedback ═══
+model FeedbackItem {
+  id        String @id @default(uuid())
+  type      String // bug | feature | general
+  title     String
+  body      String
+  email     String?
+  status    String @default("open") // open | acknowledged | closed
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ Chat Sessions ═══
+model ChatSession {
+  id           String @id @default(uuid())
+  title        String @default("New Chat")
+  tokenPercent Int    @default(0)
+  createdAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  messages ChatMessage[]
+}
+
+// ═══ Chat Messages ═══
+model ChatMessage {
+  id        String @id @default(uuid())
+  sessionId String
+  role      String // user | assistant
+  text      String
+  tool             String?
+  staged           String? // JSON for StagedEdit
+  card             String? // JSON for ChatCard
+  reasoningContent String? // DeepSeek reasoning_content for multi-turn tool calls
+  pinnable          Boolean @default(false)
+  threadId          String? // null = main thread; UUID = sub-thread
+  createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([threadId])
+}

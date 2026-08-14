@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="pipeline">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:3192;">
+  <title>TomiLite</title>
+  <script src="/theme-init.js"></script>
+</head>
+<body class="bg-surface-app text-ink-primary">
+  <div id="root" style="min-height:100vh"></div>
+  <div id="fatal-error" style="display:none;position:fixed;inset:0;background:#1a0000;color:#ff4444;padding:40px;font-family:monospace;font-size:12px;z-index:9999;overflow:auto;white-space:pre-wrap"></div>
+  <script src="/error-handler.js"></script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

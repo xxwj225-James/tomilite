@@ -1,0 +1,20 @@
+{
+  "name": "@tomilite/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@tomilite/shared": "*",
+    "@tomilite/database": "*",
+    "@trpc/server": "^11.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0"
+  }
+}

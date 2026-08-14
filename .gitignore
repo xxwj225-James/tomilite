@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+.env
+.env.local
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.vite/
+packages/database/prisma/generated/
+.turbo/
+.claude/mcp.json
+.encryption_key
+.api_token
+*.log

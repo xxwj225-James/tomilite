@@ -1,0 +1,83 @@
+#!/bin/bash
+# ==========================================
+# TomiLite Pre-Commit Hook (Native Git)
+# Auto-checks on every commit:
+#   1. lint-staged (ESLint + Prettier on staged)
+#   2. typecheck (tsc --noEmit full project)
+# Any failure → commit blocked.
+# ==========================================
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo ""
+echo -e "${GREEN}🍅 TomiLite Pre-Commit${NC}"
+
+# ─── Check: node_modules exists ───
+if [ ! -f "node_modules/.bin/lint-staged" ]; then
+  echo -e "${RED}❌ node_modules not found${NC}"
+  echo "   Run ${YELLOW}npm install${NC} first."
+  echo ""
+  exit 1
+fi
+
+FAILED=0
+
+# ─── 1/2: lint-staged (ESLint + Prettier) ───
+echo ""
+echo "  [1/2] ESLint + Prettier on staged files..."
+if npx lint-staged; then
+  echo -e "  ${GREEN}✅ lint-staged passed${NC}"
+else
+  echo -e "  ${RED}❌ lint-staged failed${NC}"
+  FAILED=1
+fi
+
+# ─── 2/2: typecheck per package ───
+echo ""
+echo "  [2/2] TypeScript type check..."
+TYPEFAIL=0
+for pkg_dir in apps/api apps/web packages/shared; do
+  echo "    $pkg_dir..."
+  if [ "$pkg_dir" = "apps/web" ]; then
+    OUT=$(npx tsc -p "$pkg_dir/tsconfig.json" --noEmit 2>&1)
+    REAL=$(echo "$OUT" | grep "error TS" | grep -v "src/vendor/" | wc -l)
+    if [ "$REAL" -gt 0 ]; then
+      echo "$OUT" | grep "error TS" | grep -v "src/vendor/" | head -5
+      echo -e "    ${RED}❌ $pkg_dir ($REAL real errors)${NC}"
+      TYPEFAIL=1
+    else
+      echo -e "    ${GREEN}✅ $pkg_dir${NC}"
+    fi
+  elif npx tsc -p "$pkg_dir/tsconfig.json" --noEmit 2>&1; then
+    echo -e "    ${GREEN}✅ $pkg_dir${NC}"
+  else
+    echo -e "    ${RED}❌ $pkg_dir${NC}"
+    TYPEFAIL=1
+  fi
+done
+if [ $TYPEFAIL -eq 0 ]; then
+  echo -e "  ${GREEN}✅ typecheck passed${NC}"
+else
+  echo -e "  ${RED}❌ typecheck failed${NC}"
+  FAILED=1
+fi
+
+# ─── Result ───
+echo ""
+if [ $FAILED -eq 0 ]; then
+  echo -e "${GREEN}✅ All checks passed. Committing...${NC}"
+  echo ""
+  exit 0
+else
+  echo -e "${RED}❌ Commit blocked. Fix errors above and try again.${NC}"
+  echo "   ${YELLOW}npm run lint:fix${NC} — auto-fix lint errors"
+  echo "   ${YELLOW}npm run typecheck${NC} — check types manually"
+  echo ""
+  exit 1
+fi
+

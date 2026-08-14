@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TomiLite</title>
+<style>
+:root {
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-ja: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+  --font-zh: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+}
+/* ═══ Theme: Pipeline (default) ═══ */
+[data-theme="pipeline"] {
+  --bg: #0d0d0d; --surface: #1a1a1a; --surface2: #222; --edge: #2a2a2a;
+  --ink: #f0f0f0; --muted: #888; --brand: #5E6AD2; --brand-soft: rgba(94,106,210,0.12);
+  --green: #22c55e; --amber: #f59e0b; --purple: #a855f7; --blue: #3b82f6;
+}
+/* ═══ Theme: Hub ═══ */
+[data-theme="hub"] {
+  --bg: #f8f9fb; --surface: #fff; --surface2: #f0f2f5; --edge: #e4e6eb;
+  --ink: #1c1e21; --muted: #65676b; --brand: #1877F2; --brand-soft: rgba(24,119,242,0.08);
+  --green: #00a400; --amber: #f7a700; --purple: #8b5cf6; --blue: #1877F2;
+}
+/* ═══ Theme: Canvas ═══ */
+[data-theme="canvas"] {
+  --bg: #fff; --surface: #fafafa; --surface2: #f5f5f5; --edge: #e0e0e0;
+  --ink: #202124; --muted: #5f6368; --brand: #1A73E8; --brand-soft: rgba(26,115,232,0.08);
+  --green: #0d904f; --amber: #ea8600; --purple: #9334e6; --blue: #1A73E8;
+}
+/* ═══ Theme: Quantum ═══ */
+[data-theme="quantum"] {
+  --bg: #0a0e0a; --surface: #121712; --surface2: #1a1f1a; --edge: #2a3a2a;
+  --ink: #d4ffd4; --muted: #6b8b6b; --brand: #76B900; --brand-soft: rgba(118,185,0,0.12);
+  --green: #76B900; --amber: #b8a000; --purple: #9b59b6; --blue: #3498db;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--ink); height:100vh; display:flex; overflow:hidden; }
+body[lang="ja"] { font-family:var(--font-ja); }
+body[lang="zh"] { font-family:var(--font-zh); }
+button { cursor:pointer; font-family:inherit; }
+::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-thumb { background:var(--edge); border-radius:2px; }
+
+/* ═══ APP SHELL ═══ */
+.app { width:420px; min-width:380px; height:100vh; display:flex; flex-direction:column; background:var(--bg); border-right:1px solid var(--edge); position:relative; z-index:10; transition:width .3s; }
+.app.maximized { width:100vw; border-right:none; }
+
+/* ═══ TOPBAR ═══ */
+.topbar { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-bottom:1px solid var(--edge); background:var(--surface); flex-shrink:0; }
+.topbar-logo { display:flex; align-items:center; gap:8px; }
+.topbar-logo svg { width:20px; height:20px; }
+.topbar-logo span { font-weight:700; font-size:14px; }
+.topbar-right { display:flex; align-items:center; gap:6px; }
+.focus-indicator { font-size:11px; color:var(--green); display:flex; align-items:center; gap:4px; }
+.focus-dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); }
+
+/* ═══ LANG SWITCHER ═══ */
+.lang-switcher { display:flex; gap:1px; background:var(--surface2); border-radius:14px; padding:2px; }
+.lang-btn { background:none; border:none; color:var(--muted); font-size:10px; padding:3px 8px; border-radius:12px; cursor:pointer; font-weight:500; transition:all .15s; }
+.lang-btn:hover { color:var(--ink); }
+.lang-btn.active { background:var(--brand); color:#fff; font-weight:600; }
+.lang-btn.disabled { opacity:0.35; cursor:not-allowed; }
+
+/* ═══ TOPBAR BUTTONS ═══ */
+.topbar-btn { background:none; border:none; color:var(--muted); font-size:15px; padding:4px 6px; border-radius:4px; }
+.topbar-btn:hover { color:var(--ink); background:var(--surface2); }
+
+/* ═══ VIEWPORT ═══ */
+.viewport { flex:1; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+
+/* ─── CHAT ─── */
+.chat-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.chat-messages { flex:1; overflow-y:auto; padding:12px; }
+.chat-input-area { padding:8px 12px; border-top:1px solid var(--edge); display:flex; gap:8px; align-items:flex-end; background:var(--surface); }
+.chat-input-area input { flex:1; background:var(--bg); border:1px solid var(--edge); border-radius:20px; padding:9px 16px; color:var(--ink); font-size:13px; font-family:inherit; outline:none; }
+.chat-input-area input::placeholder { color:var(--muted); }
+.chat-input-area input:focus { border-color:var(--brand); }
+.btn-send { background:var(--brand); color:#fff; border:none; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.btn-plus { background:var(--surface2); color:var(--muted); border:1px solid var(--edge); border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:16px; transition:all .15s; }
+.btn-plus:hover { border-color:var(--brand); color:var(--brand); background:var(--brand-soft); }
+
+/* ─── MESSAGES ─── */
+.msg { margin-bottom:10px; display:flex; gap:8px; font-size:12px; line-height:1.55; animation:fadeIn .2s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.msg.user { justify-content:flex-end; }
+.msg.user .bubble { background:var(--brand); color:#fff; border-radius:14px 14px 4px 14px; }
+.msg.assistant .bubble { background:var(--surface2); color:var(--ink); border-radius:14px 14px 14px 4px; }
+.msg .bubble { padding:8px 12px; max-width:88%; }
+.msg .bubble p { margin:0; } .msg .bubble p+p { margin-top:4px; }
+.msg .bubble strong { color:var(--ink); }
+.msg .bubble code { background:rgba(0,0,0,0.3); padding:1px 5px; border-radius:3px; font-size:10px; }
+.msg .tool-tag { font-size:10px; color:var(--purple); background:rgba(168,85,247,0.12); padding:2px 7px; border-radius:3px; margin-top:4px; display:inline-block; }
+
+/* ─── WELCOME ─── */
+.welcome { text-align:center; padding:24px 12px; }
+.welcome .icon { font-size:36px; margin-bottom:8px; }
+.welcome h4 { font-size:15px; margin-bottom:4px; }
+.welcome p { font-size:11px; color:var(--muted); margin-bottom:14px; }
+.suggestions { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+.suggestion { font-size:11px; padding:6px 12px; border-radius:16px; border:1px solid var(--edge); background:var(--surface2); color:var(--muted); cursor:pointer; transition:all .15s; }
+.suggestion:hover { border-color:var(--brand); color:var(--brand); background:var(--brand-soft); }
+
+/* ─── + MENU ─── */
+.menu-popup { position:absolute; bottom:60px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--edge); border-radius:12px; padding:6px; display:flex; gap:4px; flex-wrap:wrap; max-width:380px; justify-content:center; box-shadow:0 8px 30px rgba(0,0,0,0.5); z-index:50; transition:all .2s; }
+.menu-popup.hidden { opacity:0; transform:translateX(-50%) translateY(10px); pointer-events:none; }
+.menu-item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:10px; color:var(--muted); border:none; background:transparent; transition:all .15s; min-width:56px; }
+.menu-item:hover { background:var(--brand-soft); color:var(--brand); }
+.menu-item .mi-icon { font-size:18px; }
+
+/* ─── CONTENT PANEL ─── */
+.content-panel { position:absolute; inset:0; background:var(--bg); z-index:40; display:flex; flex-direction:column; transition:transform .25s ease; }
+.content-panel.hidden { transform:translateY(100%); pointer-events:none; }
+.panel-header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--edge); background:var(--surface); flex-shrink:0; }
+.panel-header h3 { font-size:13px; display:flex; align-items:center; gap:8px; }
+.panel-body { flex:1; overflow:auto; }
+
+/* ═══ CARDS ═══ */
+.card { background:var(--surface); border:1px solid var(--edge); border-radius:var(--radius); margin:6px; }
+.card-hd { padding:10px 14px; border-bottom:1px solid var(--edge); font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:space-between; }
+.card-bd { padding:10px 14px; }
+.card-list { padding:0; }
+.card-list .row { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--edge); font-size:11px; }
+.card-list .row:last-child { border-bottom:none; }
+
+/* ═══ UTILITY ═══ */
+.badge { display:inline-flex; padding:1px 7px; border-radius:3px; font-size:10px; font-weight:500; }
+.badge-todo { background:var(--surface2); color:var(--muted); }
+.badge-progress { background:rgba(245,158,11,0.15); color:var(--amber); }
+.badge-done { background:rgba(34,197,94,0.15); color:var(--green); }
+.badge-critical { background:rgba(239,68,68,0.15); color:var(--brand); }
+.badge-high { background:rgba(249,115,22,0.15); color:#f97316; }
+.badge-epic { background:rgba(168,85,247,0.15); color:var(--purple); }
+.stat-val { font-size:24px; font-weight:700; }
+.stat-lbl { font-size:10px; color:var(--muted); margin-top:2px; }
+.grid-4 { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; padding:6px; }
+.flex { display:flex; } .items-center { align-items:center; } .justify-between { justify-content:space-between; }
+.flex-1 { flex:1; } .flex-wrap { flex-wrap:wrap; } .gap-1 { gap:4px; } .gap-2 { gap:8px; } .gap-3 { gap:12px; }
+.text-muted { color:var(--muted); font-size:10px; }
+.text-sm { font-size:11px; } .text-xs { font-size:10px; }
+.mt-1 { margin-top:4px; } .mt-2 { margin-top:8px; } .mt-3 { margin-top:12px; } .mb-2 { margin-bottom:8px; } .mb-3 { margin-bottom:12px; }
+.hidden { display:none !important; }
+.progress { height:3px; background:var(--edge); border-radius:2px; overflow:hidden; flex:1; }
+.progress-bar { height:100%; background:var(--brand); border-radius:2px; }
+
+/* ═══ KANBAN ═══ */
+.kanban { display:flex; gap:6px; padding:6px; overflow-x:auto; }
+.kanban-col { min-width:170px; background:var(--surface2); border-radius:var(--radius); }
+.kanban-col-hd { padding:8px 10px; font-size:10px; font-weight:600; border-bottom:1px solid var(--edge); display:flex; justify-content:space-between; }
+.kanban-col-bd { padding:4px; }
+.kanban-card { background:var(--surface); border:1px solid var(--edge); border-radius:5px; padding:7px; margin-bottom:3px; font-size:10px; }
+.kanban-card:hover { border-color:var(--brand); }
+
+/* ═══ FORMS ═══ */
+.btn { border:none; border-radius:6px; padding:5px 12px; font-size:11px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }
+.btn-brand { background:var(--brand); color:#fff; }
+.btn-secondary { background:var(--surface); color:var(--ink); border:1px solid var(--edge); }
+.btn-ghost { background:transparent; color:var(--muted); padding:4px 8px; font-size:10px; }
+.btn-xs { padding:3px 7px; font-size:10px; } .btn-sm { padding:5px 10px; font-size:11px; }
+.form-input, .form-select { background:var(--bg); border:1px solid var(--edge); border-radius:5px; padding:7px 10px; color:var(--ink); font-size:11px; font-family:inherit; width:100%; }
+.form-textarea { background:var(--bg); border:1px solid var(--edge); border-radius:5px; padding:8px 12px; color:var(--ink); font-size:12px; font-family:inherit; width:100%; resize:vertical; min-height:100px; line-height:1.5; }
+.form-label { font-size:10px; color:var(--muted); font-weight:500; margin-bottom:3px; display:block; }
+.form-grp { margin-bottom:8px; }
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--edge); padding:0 6px; }
+.tab { padding:8px 14px; font-size:11px; color:var(--muted); border-bottom:2px solid transparent; background:none; border-top:none; border-left:none; border-right:none; cursor:pointer; }
+.tab.active { color:var(--brand); border-bottom-color:var(--brand); font-weight:600; }
+
+/* ═══ MODAL ═══ */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; display:flex; align-items:center; justify-content:center; }
+.modal { background:var(--surface); border:1px solid var(--edge); border-radius:12px; width:100%; max-width:440px; max-height:75vh; overflow:auto; }
+.modal-hd { padding:12px 16px; border-bottom:1px solid var(--edge); display:flex; align-items:center; justify-content:space-between; }
+.modal-bd { padding:16px; }
+.changelog { font-size:11px; line-height:1.6; }
+.changelog h2 { font-size:13px; margin:8px 0 4px; }
+.changelog ul { padding-left:14px; }
+.changelog code { background:var(--surface2); padding:1px 4px; border-radius:3px; font-size:10px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ APP ═══ -->
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="topbar-logo">
+      <svg width="20" height="20" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#ef4444"/><circle cx="11" cy="13" r="2" fill="#fff"/><circle cx="21" cy="13" r="2" fill="#fff"/><path d="M10 20c3-3 9-3 12 0" stroke="#fff" stroke-width="1.5" fill="none"/><line x1="16" y1="2" x2="16" y2="7" stroke="#0a0" stroke-width="2"/><circle cx="16" cy="2" r="2" fill="#0a0"/></svg>
+      <span data-i18n="appName">TomiLite</span>
+    </div>
+    <div class="topbar-right">
+      <div class="focus-indicator"><span class="focus-dot"></span><span data-i18n="focusLabel">Deep Flow</span> <span id="focus-min">47m</span></div>
+      <div class="lang-switcher" id="lang-switcher">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="zh">中</button>
+        <button class="lang-btn" data-lang="ja">日</button>
+      </div>
+      <button class="topbar-btn" id="btn-max" title="Maximize" onclick="toggleMax()">⛶</button>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="chat-area" id="chat-area">
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-area">
+        <input id="chat-input" data-i18n-placeholder="chatPlaceholder" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter')sendMessage()">
+        <button class="btn-plus" id="btn-plus" onclick="toggleMenu()" title="Menu">+</button>
+        <button class="btn-send" onclick="sendMessage()">↑</button>
+      </div>
+    </div>
+
+    <div class="menu-popup hidden" id="menu-popup">
+      <button class="menu-item" onclick="openPanel('home')"><span class="mi-icon">🏠</span><span data-i18n="menuHome">Home</span></button>
+      <button class="menu-item" onclick="openPanel('board')"><span class="mi-icon">📋</span><span data-i18n="menuBoard">Board</span></button>
+      <button class="menu-item" onclick="openPanel('backlog')"><span class="mi-icon">📝</span><span data-i18n="menuBacklog">Backlog</span></button>
+      <button class="menu-item" onclick="openPanel('issues')"><span class="mi-icon">🎫</span><span data-i18n="menuIssue">Issue</span></button>
+      <button class="menu-item" onclick="openPanel('notes')"><span class="mi-icon">📔</span><span data-i18n="menuNotes">Notes</span></button>
+      <button class="menu-item" onclick="openPanel('reports')"><span class="mi-icon">📊</span><span data-i18n="menuReports">Reports</span></button>
+      <button class="menu-item" onclick="openPanel('settings')"><span class="mi-icon">⚙️</span><span data-i18n="menuSettings">Settings</span></button>
+    </div>
+
+    <div class="content-panel hidden" id="content-panel">
+      <div class="panel-header"><h3 id="panel-title">📋 Panel</h3><button class="btn-ghost" onclick="closePanel()" style="font-size:16px">✕</button></div>
+      <div class="panel-body" id="panel-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ UPDATE MODAL ═══ -->
+<div class="modal-overlay hidden" id="update-modal">
+  <div class="modal">
+    <div class="modal-hd"><span id="update-title">🚀 v0.2.0 Available</span><button class="btn-ghost" onclick="toggleModal('update-modal')">✕</button></div>
+    <div class="modal-bd">
+      <div class="changelog mb-2" id="update-changelog"></div>
+      <div class="flex gap-2 justify-between"><button class="btn btn-secondary btn-sm" onclick="toggleModal('update-modal')" data-i18n="updateLater">Later</button><button class="btn btn-brand btn-sm" data-i18n="updateInstall">⬇ Download & Install</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// i18n — All UI strings in 3 languages
+// ═══════════════════════════════════════════
+const I18N = {
+  en: {
+    appName: 'TomiLite',
+    focusLabel: 'Deep Flow',
+    chatPlaceholder: 'Ask me anything...',
+    menuHome: 'Home', menuBoard: 'Board', menuBacklog: 'Backlog', menuIssue: 'Issue',
+    menuNotes: 'Notes', menuReports: 'Reports', menuSettings: 'Settings',
+    welcomeTitle: 'TomiLite AI Agent',
+    welcomeDesc: 'Your productivity assistant. Create issues, search notes, generate reports — all through conversation.',
+    suggestion1: '📋 Tasks in progress?',
+    suggestion2: '🐛 Create bug',
+    suggestion3: '🔗 Git activity',
+    suggestion4: '📊 Daily report',
+    suggestion5: '📔 Search notes',
+    thinking: '⏳ Thinking...',
+    panelHome: '🏠 Home',
+    panelBoard: '📋 Kanban Board',
+    panelBacklog: '📝 Backlog',
+    panelIssue: '🎫 Issue Detail',
+    panelNotes: '📔 Notes',
+    panelReports: '📊 Reports',
+    panelSettings: '⚙️ Settings',
+    // Home
+    statOpenTasks: 'Open Tasks',
+    statCompletion: 'Completion',
+    statGitToday: 'Git Today',
+    statFlowStreak: 'Flow Streak',
+    cardActiveTasks: '📋 Active Tasks',
+    cardRecentGit: '🔗 Recent Git',
+    // Board
+    colTodo: '📥 To Do',
+    colInProgress: '🔄 In Progress',
+    colReview: '👀 Review',
+    colDone: '✅ Done',
+    // Issue
+    descLabel: 'Description',
+    commentsLabel: '💬 Comments',
+    detailsLabel: 'Details',
+    statusLabel: 'Status',
+    priorityLabel: 'Priority',
+    storyPointsLabel: 'Story Points',
+    gitLabel: 'Git',
+    aiReviewLabel: '🤖 AI Review',
+    // Notes
+    newNote: '+ New Note',
+    saveNote: 'Save',
+    deleteNote: 'Delete',
+    // Reports
+    dailyReport: 'Daily',
+    weeklyReport: 'Weekly',
+    genReport: '🤖 Generate',
+    reportTitle: '📅 Daily Report — Jun 27',
+    reportTasks: '📋 Tasks',
+    reportEmail: '📧 Email Digest',
+    reportFocus: '🎯 Focus',
+    reportGenBy: '🤖 Generated with Ollama',
+    // Settings
+    tabGeneral: 'General',
+    tabTheme: 'Theme',
+    tabGit: 'Git',
+    tabLlm: 'Cloud API',
+    themePipeline: 'Clean Pipeline',
+    themeHub: 'Connected Hub',
+    themeCanvas: 'Material Canvas',
+    themeQuantum: 'Quantum Grid',
+    aboutTitle: 'About',
+    aboutText: 'AI-powered developer productivity',
+    dataPath: 'Data path',
+    gitTitle: 'Watched Repos',
+    gitDesc: 'Commit messages with "fix #N" auto-close issues.',
+    gitSetup: 'Manual Setup',
+    llmTitle: 'Cloud API',
+    llmProvider: 'Provider',
+    llmBaseUrl: 'Base URL',
+    llmApiKey: 'API Key',
+    llmFlashModel: 'Quick Tasks Model',
+    llmProModel: 'Heavy Tasks Model',
+    llmTestConn: 'Test Connection',
+    llmTestOk: '✅ Connection OK',
+    llmTestFail: '❌ Connection Failed',
+    llmApiKeyHint: 'sk-...',
+    llmFlashHint: 'Fast model for triage & classification',
+    llmProHint: 'Deep reasoning for reports & drafts',
+    addRepo: 'Add',
+    removeRepo: 'Remove',
+    repoNamePlaceholder: 'Repo name',
+    repoPathPlaceholder: '/path/to/repo',
+    // Update
+    updateTitle: '🚀 v0.2.0 Available',
+    updateItem1: '🎯 IDE Focus Tracking',
+    updateItem2: '📧 Email Triage (Beta)',
+    updateItem3: '🔗 Git Hook Integration',
+    updateItem4: '📊 AI Reports',
+    updateLater: 'Later',
+    updateInstall: '⬇ Download & Install',
+    // Agent responses
+    agentCreated: 'Created issue',
+    agentReport: 'Daily Report',
+    agentStatus: 'Current Status',
+    agentGit: 'Git Activity',
+    agentSearch: 'Found in your notes',
+    agentEstimate: 'Updated story points',
+    agentHelp: 'I can help with',
+  },
+  zh: {
+    appName: 'TomiLite',
+    focusLabel: '深度心流',
+    chatPlaceholder: '随时问我...',
+    menuHome: '首页', menuBoard: '看板', menuBacklog: '待办', menuIssue: '任务',
+    menuNotes: '笔记', menuReports: '报告', menuSettings: '设置',
+    welcomeTitle: 'TomiLite AI 助手',
+    welcomeDesc: '你的个人效率助手。创建任务、搜索笔记、生成报告 — 全部通过对话完成。',
+    suggestion1: '📋 进行中的任务？',
+    suggestion2: '🐛 创建缺陷',
+    suggestion3: '🔗 Git 动态',
+    suggestion4: '📊 日报生成',
+    suggestion5: '📔 搜索笔记',
+    thinking: '⏳ 思考中...',
+    panelHome: '🏠 首页',
+    panelBoard: '📋 看板',
+    panelBacklog: '📝 待办列表',
+    panelIssue: '🎫 任务详情',
+    panelNotes: '📔 笔记',
+    panelReports: '📊 报告',
+    panelSettings: '⚙️ 设置',
+    statOpenTasks: '待处理',
+    statCompletion: '完成率',
+    statGitToday: '今日提交',
+    statFlowStreak: '心流时长',
+    cardActiveTasks: '📋 进行中任务',
+    cardRecentGit: '🔗 最近提交',
+    colTodo: '📥 待办',
+    colInProgress: '🔄 进行中',
+    colReview: '👀 审查中',
+    colDone: '✅ 已完成',
+    descLabel: '描述',
+    commentsLabel: '💬 评论',
+    detailsLabel: '详情',
+    statusLabel: '状态',
+    priorityLabel: '优先级',
+    storyPointsLabel: '故事点',
+    gitLabel: 'Git',
+    aiReviewLabel: '🤖 AI 评审',
+    newNote: '+ 新建笔记',
+    saveNote: '保存',
+    deleteNote: '删除',
+    dailyReport: '日报',
+    weeklyReport: '周报',
+    genReport: '🤖 生成',
+    reportTitle: '📅 日报 — 6月27日',
+    reportTasks: '📋 任务摘要',
+    reportEmail: '📧 邮件摘要',
+    reportFocus: '🎯 专注分析',
+    reportGenBy: '🤖 由 Ollama 生成',
+    tabGeneral: '通用',
+    tabTheme: '主题',
+    tabGit: 'Git',
+    tabLlm: 'Cloud API',
+    aboutTitle: '关于',
+    aboutText: 'AI 驱动的开发者效率工具',
+    dataPath: '数据路径',
+    gitTitle: '已监听仓库',
+    gitDesc: '提交信息中的 "fix #N" 将自动关闭任务。',
+    gitSetup: '手动配置',
+    llmTitle: 'Cloud API',
+    llmProvider: '供应商',
+    llmBaseUrl: '接口地址',
+    llmApiKey: 'API 密钥',
+    llmFlashModel: '快速任务模型',
+    llmProModel: '深度任务模型',
+    llmTestConn: '测试连接',
+    llmTestOk: '✅ 连接成功',
+    llmTestFail: '❌ 连接失败',
+    llmApiKeyHint: 'sk-...',
+    llmFlashHint: '用于分类和分流（< 2秒）',
+    llmProHint: '用于报告和草稿（深度推理）',
+    addRepo: '添加',
+    removeRepo: '移除',
+    repoNamePlaceholder: '仓库名',
+    repoPathPlaceholder: '/路径/到/仓库',
+    updateTitle: '🚀 发现新版本 v0.2.0',
+    updateItem1: '🎯 IDE 心流追踪',
+    updateItem2: '📧 邮件分流 (Beta)',
+    updateItem3: '🔗 Git Hook 集成',
+    updateItem4: '📊 AI 报告生成',
+    updateLater: '稍后',
+    updateInstall: '⬇ 下载并安装',
+    agentCreated: '已创建任务',
+    agentReport: '日报',
+    agentStatus: '当前状态',
+    agentGit: 'Git 动态',
+    agentSearch: '笔记搜索结果',
+    agentEstimate: '已更新故事点',
+    agentHelp: '我可以帮你',
+  },
+  ja: {
+    appName: 'TomiLite',
+    focusLabel: 'ディープフロー',
+    chatPlaceholder: '何でも聞いてください...',
+    menuHome: 'ホーム', menuBoard: 'ボード', menuBacklog: 'バックログ', menuIssue: '課題',
+    menuNotes: 'ノート', menuReports: 'レポート', menuSettings: '設定',
+    welcomeTitle: 'TomiLite AI エージェント',
+    welcomeDesc: 'あなたの生産性アシスタント。課題作成、ノート検索、レポート生成 — すべて会話で完結。',
+    suggestion1: '📋 進行中のタスクは？',
+    suggestion2: '🐛 バグを作成',
+    suggestion3: '🔗 Git アクティビティ',
+    suggestion4: '📊 日次レポート',
+    suggestion5: '📔 ノートを検索',
+    thinking: '⏳ 考え中...',
+    panelHome: '🏠 ホーム',
+    panelBoard: '📋 かんばん',
+    panelBacklog: '📝 バックログ',
+    panelIssue: '🎫 課題詳細',
+    panelNotes: '📔 ノート',
+    panelReports: '📊 レポート',
+    panelSettings: '⚙️ 設定',
+    statOpenTasks: '未完了',
+    statCompletion: '完了率',
+    statGitToday: '今日のコミット',
+    statFlowStreak: 'フロー時間',
+    cardActiveTasks: '📋 進行中タスク',
+    cardRecentGit: '🔗 最近のコミット',
+    colTodo: '📥 ToDo',
+    colInProgress: '🔄 進行中',
+    colReview: '👀 レビュー',
+    colDone: '✅ 完了',
+    descLabel: '説明',
+    commentsLabel: '💬 コメント',
+    detailsLabel: '詳細',
+    statusLabel: 'ステータス',
+    priorityLabel: '優先度',
+    storyPointsLabel: 'ストーリーポイント',
+    gitLabel: 'Git',
+    aiReviewLabel: '🤖 AI レビュー',
+    newNote: '+ 新規ノート',
+    saveNote: '保存',
+    deleteNote: '削除',
+    dailyReport: '日次',
+    weeklyReport: '週次',
+    genReport: '🤖 生成',
+    reportTitle: '📅 日次レポート — 6月27日',
+    reportTasks: '📋 タスク概要',
+    reportEmail: '📧 メールダイジェスト',
+    reportFocus: '🎯 フォーカス分析',
+    reportGenBy: '🤖 Ollama で生成',
+    tabGeneral: '一般',
+    tabTheme: 'テーマ',
+    tabGit: 'Git',
+    tabLlm: 'Cloud API',
+    aboutTitle: 'について',
+    aboutText: 'AI駆動の開発者生産性ツール',
+    dataPath: 'データパス',
+    gitTitle: '監視リポジトリ',
+    gitDesc: 'コミットメッセージの "fix #N" で課題が自動クローズされます。',
+    gitSetup: '手動設定',
+    llmTitle: 'Cloud API',
+    llmProvider: 'プロバイダ',
+    llmBaseUrl: 'ベースURL',
+    llmApiKey: 'APIキー',
+    llmFlashModel: '高速タスクモデル',
+    llmProModel: '推論タスクモデル',
+    llmTestConn: '接続テスト',
+    llmTestOk: '✅ 接続成功',
+    llmTestFail: '❌ 接続失敗',
+    llmApiKeyHint: 'sk-...',
+    llmFlashHint: '分類とトリアージ用（2秒未満）',
+    llmProHint: 'レポートと下書き用（深い推論）',
+    addRepo: '追加',
+    removeRepo: '削除',
+    repoNamePlaceholder: 'リポジトリ名',
+    repoPathPlaceholder: '/パス/リポジトリ',
+    updateTitle: '🚀 v0.2.0 が利用可能',
+    updateItem1: '🎯 IDE フォーカス追跡',
+    updateItem2: '📧 メールトリアージ (Beta)',
+    updateItem3: '🔗 Git Hook 統合',
+    updateItem4: '📊 AI レポート',
+    updateLater: '後で',
+    updateInstall: '⬇ ダウンロード & インストール',
+    agentCreated: '課題を作成しました',
+    agentReport: '日次レポート',
+    agentStatus: '現在の状況',
+    agentGit: 'Git アクティビティ',
+    agentSearch: 'ノート検索結果',
+    agentEstimate: 'ストーリーポイントを更新しました',
+    agentHelp: 'お手伝いできること',
+  }
+};
+
+// ═══ CURRENT LANGUAGE ═══
+let lang = 'en';
+
+function t(key) { return I18N[lang][key] || I18N['en'][key] || key; }
+
+function setLang(l) {
+  lang = l;
+  document.body.setAttribute('lang', l);
+  // Update lang buttons
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+  // Update all i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+  // Re-render active view
+  if (panelOpen) renderPanel(currentPanelName);
+  else if (msgs.querySelector('.welcome')) showWelcome();
+}
+
+document.getElementById('lang-switcher').addEventListener('click', e => {
+  const btn = e.target.closest('.lang-btn');
+  if (btn) setLang(btn.dataset.lang);
+});
+
+// ═══ MAXIMIZE ═══
+let maximized = false;
+function toggleMax() {
+  maximized = !maximized;
+  document.getElementById('app').classList.toggle('maximized', maximized);
+  document.getElementById('btn-max').textContent = maximized ? '🗗' : '⛶';
+}
+
+// ═══ + MENU ═══
+let menuOpen = false;
+function toggleMenu() { menuOpen = !menuOpen; document.getElementById('menu-popup').classList.toggle('hidden', !menuOpen); }
+function hideMenu() { menuOpen = false; document.getElementById('menu-popup').classList.add('hidden'); }
+
+// ═══ CONTENT PANEL ═══
+let panelOpen = false, currentPanelName = '';
+
+function openPanel(name) {
+  hideMenu(); panelOpen = true; currentPanelName = name;
+  document.getElementById('content-panel').classList.remove('hidden');
+  document.getElementById('chat-area').style.display = 'none';
+  renderPanel(name);
+}
+function closePanel() {
+  panelOpen = false; currentPanelName = '';
+  document.getElementById('content-panel').classList.add('hidden');
+  document.getElementById('chat-area').style.display = '';
+}
+
+function renderPanel(name) {
+  document.getElementById('panel-title').textContent = t('panel' + name.charAt(0).toUpperCase() + name.slice(1));
+  const body = document.getElementById('panel-body');
+
+  // Issue data (localized)
+  const issueStatus = { en: 'In Progress', zh: '进行中', ja: '進行中' };
+  const issuePriority = { en: 'High', zh: '高', ja: '高' };
+
+  switch(name) {
+    case 'home':
+      body.innerHTML = `
+        <div class="grid-4">
+          <div class="card card-bd"><div class="stat-val" style="color:var(--brand)">12</div><div class="stat-lbl">${t('statOpenTasks')}</div></div>
+          <div class="card card-bd"><div class="stat-val" style="color:var(--green)">68%</div><div class="stat-lbl">${t('statCompletion')}</div></div>
+          <div class="card card-bd"><div class="stat-val" style="color:var(--purple)">7</div><div class="stat-lbl">${t('statGitToday')}</div></div>
+          <div class="card card-bd"><div class="stat-val" style="color:var(--blue)">47m</div><div class="stat-lbl">${t('statFlowStreak')}</div></div>
+        </div>
+        <div class="card"><div class="card-hd">${t('cardActiveTasks')}</div><div class="card-list">
+          <div class="row"><span style="width:45px;color:var(--muted)">TL-3</span><span class="flex-1">OAuth2 login flow</span><span class="badge badge-progress">${issueStatus[lang]}</span><span class="text-muted">8sp</span></div>
+          <div class="row"><span style="width:45px;color:var(--muted)">TL-7</span><span class="flex-1">WebSocket memory leak</span><span class="badge badge-critical">critical</span><span class="text-muted">3sp</span></div>
+          <div class="row"><span style="width:45px;color:var(--muted)">TL-12</span><span class="flex-1">Auth unit tests</span><span class="badge badge-progress">${issueStatus[lang]}</span><span class="text-muted">5sp</span></div>
+        </div></div>
+        <div class="card"><div class="card-hd">${t('cardRecentGit')}</div><div class="card-list">
+          <div class="row"><span style="width:55px;font-size:9px;color:var(--muted);font-family:monospace">abc123f</span><span class="flex-1">fix #3 — OAuth redirect</span><span class="badge badge-done">done</span></div>
+          <div class="row"><span style="width:55px;font-size:9px;color:var(--muted);font-family:monospace">def456a</span><span class="flex-1">implement #7 — WS pool</span><span class="badge badge-progress">in progress</span></div>
+        </div></div>`;
+      break;
+
+    case 'board':
+      body.innerHTML = `
+        <div class="kanban">
+          <div class="kanban-col"><div class="kanban-col-hd">${t('colTodo')} <span class="badge badge-todo">5</span></div><div class="kanban-col-bd">
+            <div class="kanban-card"><div class="key">TL-15</div><div class="title">Update API docs</div></div>
+            <div class="kanban-card"><div class="key">TL-16</div><div class="title">Dark mode palette</div></div>
+            <div class="kanban-card"><div class="key">TL-18</div><div class="title">WebRTC research</div></div>
+            <div class="kanban-card"><div class="key">TL-20</div><div class="title">Profile redesign</div></div>
+            <div class="kanban-card"><div class="key">TL-21</div><div class="title">CSV export</div></div>
+          </div></div>
+          <div class="kanban-col"><div class="kanban-col-hd">${t('colInProgress')} <span class="badge badge-progress">4</span></div><div class="kanban-col-bd">
+            <div class="kanban-card"><div class="key">TL-3</div><div class="title">OAuth2 login</div></div>
+            <div class="kanban-card"><div class="key">TL-7</div><div class="title">WebSocket fix</div></div>
+            <div class="kanban-card"><div class="key">TL-12</div><div class="title">Auth tests</div></div>
+            <div class="kanban-card"><div class="key">TL-19</div><div class="title">DB batching</div></div>
+          </div></div>
+          <div class="kanban-col"><div class="kanban-col-hd">${t('colReview')} <span class="badge badge-progress">2</span></div><div class="kanban-col-bd">
+            <div class="kanban-card"><div class="key">TL-5</div><div class="title">Email templates</div></div>
+            <div class="kanban-card"><div class="key">TL-8</div><div class="title">Rate limiting</div></div>
+          </div></div>
+          <div class="kanban-col"><div class="kanban-col-hd">${t('colDone')} <span class="badge badge-done">2</span></div><div class="kanban-col-bd">
+            <div class="kanban-card"><div class="key">TL-1</div><div class="title">CI setup</div></div>
+            <div class="kanban-card"><div class="key">TL-2</div><div class="title">DB schema v1</div></div>
+          </div></div>
+        </div>`;
+      break;
+
+    case 'backlog':
+      body.innerHTML = `
+        <div style="padding:6px 10px"><input class="form-input" placeholder="🔍 ${lang==='zh'?'搜索...':lang==='ja'?'検索...':'Search...'}" style="max-width:250px"></div>
+        <div style="padding:6px 10px;border-bottom:1px solid var(--edge);display:flex;gap:6px">
+          <input class="form-input" placeholder="${lang==='zh'?'快速创建...':lang==='ja'?'クイック作成...':'Quick create...'}" style="flex:1">
+          <select class="form-select" style="width:70px"><option>${lang==='zh'?'任务':lang==='ja'?'タスク':'Task'}</option><option>Bug</option><option>Story</option></select>
+          <button class="btn btn-brand btn-xs">${lang==='zh'?'创建':lang==='ja'?'作成':'Create'}</button>
+        </div>
+        <div class="card-list">
+          <div class="row"><span style="color:var(--muted);cursor:grab">≡</span><span style="width:45px;color:var(--muted)">TL-16</span><span class="flex-1">Dark mode palette</span><span class="badge badge-todo">task</span><span class="badge badge-high">high</span><span class="text-muted">1sp</span></div>
+          <div class="row"><span style="color:var(--muted);cursor:grab">≡</span><span style="width:45px;color:var(--muted)">TL-18</span><span class="flex-1">WebRTC research</span><span class="badge badge-epic">epic</span><span class="badge badge-todo">low</span><span class="text-muted">8sp</span></div>
+          <div class="row"><span style="color:var(--muted);cursor:grab">≡</span><span style="width:45px;color:var(--muted)">TL-22</span><span class="flex-1">Sentry monitoring</span><span class="badge badge-todo">story</span><span class="badge badge-high">high</span><span class="text-muted">5sp</span></div>
+        </div>`;
+      break;
+
+    case 'issues':
+      body.innerHTML = `
+        <div class="card"><div class="card-hd">${t('descLabel')}</div><div class="card-bd text-sm" style="line-height:1.6">${lang==='zh'?'添加 OAuth2 认证，支持 Google、GitHub、Microsoft。使用 PKCE 流程，加密存储刷新令牌。':lang==='ja'?'OAuth2 認証を追加。Google、GitHub、Microsoft に対応。PKCE フロー、暗号化トークン保存。':'Add OAuth2 auth supporting Google, GitHub, Microsoft. PKCE flow. Encrypted token storage.'}</div></div>
+        <div class="card"><div class="card-hd">${t('commentsLabel')} <span class="text-muted">2</span></div><div class="card-list">
+          <div class="row"><span><strong style="font-size:11px">You</strong> <span class="text-muted">· 2h</span></span><div class="flex-1 text-sm">${lang==='zh'?'Google OAuth 已完成，正在处理 GitHub。':lang==='ja'?'Google OAuth 完了。GitHub 対応中。':'Google OAuth done. Working on GitHub.'}</div></div>
+          <div class="row"><span><strong style="font-size:11px">System</strong> <span class="text-muted">· 30m</span></span><div class="flex-1 text-sm">🤖 ${lang==='zh'?'提交 abc123f 自动关闭: "fix #3"':lang==='ja'?'コミット abc123f により自動クローズ: "fix #3"':'Auto-closed by commit abc123f: "fix #3"'}</div></div>
+        </div><div class="flex gap-2 p-2"><input class="form-input" placeholder="${lang==='zh'?'添加评论...':lang==='ja'?'コメント追加...':'Add comment...'}" style="flex:1"><button class="btn btn-brand btn-xs">${lang==='zh'?'发送':lang==='ja'?'送信':'Send'}</button></div></div>
+        <div class="card"><div class="card-hd">${t('detailsLabel')}</div><div class="card-bd text-sm">
+          <div class="flex justify-between mb-1"><span class="text-muted">${t('statusLabel')}</span><span class="badge badge-progress">${issueStatus[lang]}</span></div>
+          <div class="flex justify-between mb-1"><span class="text-muted">${t('priorityLabel')}</span><span class="badge badge-high">${issuePriority[lang]}</span></div>
+          <div class="flex justify-between mb-1"><span class="text-muted">${t('storyPointsLabel')}</span><strong>8</strong></div>
+          <div class="flex justify-between"><span class="text-muted">${t('gitLabel')}</span><span style="color:var(--purple);font-size:10px">abc123f (fix)</span></div>
+        </div></div>
+        <div class="card" style="border-color:rgba(59,130,246,0.3);background:linear-gradient(135deg, rgba(59,130,246,0.06), rgba(168,85,247,0.06))">
+          <div class="card-hd">${t('aiReviewLabel')} <span style="color:var(--blue);font-size:18px">85/100</span></div>
+          <div class="card-bd text-sm"><p>${lang==='zh'?'⚠️ 8sp — 建议拆分':lang==='ja'?'⚠️ 8sp — 分割を推奨':'⚠️ 8sp — consider splitting'}</p><p>${lang==='zh'?'💡 每个 OAuth 供应商单独提交 PR':lang==='ja'?'💡 OAuth プロバイダごとに個別 PR':'💡 Create separate PR per OAuth provider'}</p></div>
+        </div>`;
+      break;
+
+    case 'notes':
+      body.innerHTML = `
+        <div class="card-list">
+          <div style="padding:8px 14px;background:var(--brand-soft);cursor:pointer;font-size:11px"><strong>📌 Architecture</strong><div class="text-muted">Jun 27</div></div>
+          <div style="padding:8px 14px;cursor:pointer;font-size:11px"><span>📝 Sprint 3 Notes</span><div class="text-muted">Jun 26</div></div>
+          <div style="padding:8px 14px;cursor:pointer;font-size:11px"><span>💡 Feature Ideas</span><div class="text-muted">Jun 24</div></div>
+          <div style="padding:8px 14px"><button class="btn btn-brand btn-sm" style="width:100%">${t('newNote')}</button></div>
+        </div>
+        <div class="card"><div class="card-hd">✏️ Architecture Decisions</div><div class="card-bd">
+          <textarea class="form-textarea"># Architecture
+
+## Database — SQLite single file
+## AI — Ollama local + DeepSeek cloud
+## Frontend — Vite + React + symlink
+## Git — post-commit hook driven</textarea>
+          <div class="flex gap-2 mt-2 justify-end"><button class="btn btn-secondary btn-sm">${t('deleteNote')}</button><button class="btn btn-brand btn-sm">${t('saveNote')}</button></div>
+        </div></div>`;
+      break;
+
+    case 'reports':
+      body.innerHTML = `
+        <div style="padding:6px;display:flex;gap:6px"><select class="form-select" style="width:auto"><option>${t('dailyReport')}</option><option>${t('weeklyReport')}</option></select><button class="btn btn-brand btn-sm">${t('genReport')}</button></div>
+        <div class="card"><div class="card-hd">${t('reportTitle')}</div><div class="card-bd text-sm" style="line-height:1.7">
+          <p style="font-weight:600">${t('reportTasks')}</p><p>${lang==='zh'?'✅ 3 已完成 · 🔄 4 进行中 · 📥 2 新增':lang==='ja'?'✅ 3 完了 · 🔄 4 進行中 · 📥 2 新規':'✅ 3 done · 🔄 4 in progress · 📥 2 new'}</p>
+          <p style="font-weight:600;margin-top:8px">${t('reportEmail')}</p><p class="text-muted">${lang==='zh'?'HR: 福利截止日延至7月15日 · GitHub: 2个PR待审 · 3封垃圾邮件已拦截':lang==='ja'?'HR: 福利厚生期限7月15日 · GitHub: 2 PRレビュー · 3通スパムブロック':'HR: Benefits Jul 15 · GitHub: 2 PRs · 3 spam blocked'}</p>
+          <p style="font-weight:600;margin-top:8px">${t('reportFocus')}</p><p>${lang==='zh'?'🔒 深度心流 47分钟 · 🎯 专注 3小时12分 · 💤 2次会议':lang==='ja'?'🔒 ディープフロー 47分 · 🎯 集中 3h12m · 💤 2会議':'🔒 Deep Flow 47 min · 🎯 3h 12m focused · 💤 2 meetings'}</p>
+          <p class="text-muted mt-2" style="border-top:1px solid var(--edge);padding-top:8px">${t('reportGenBy')} deepseek-r1:7b</p>
+        </div></div>`;
+      break;
+
+    case 'settings':
+      body.innerHTML = `
+        <div class="tabs">
+          <button class="tab active" onclick="this.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('[id^=st-]').forEach(e=>e.classList.add('hidden'));document.getElementById('st-gen').classList.remove('hidden')">${t('tabGeneral')}</button>
+          <button class="tab" onclick="this.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('[id^=st-]').forEach(e=>e.classList.add('hidden'));document.getElementById('st-git').classList.remove('hidden')">${t('tabGit')}</button>
+          <button class="tab" onclick="this.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('[id^=st-]').forEach(e=>e.classList.add('hidden'));document.getElementById('st-llm').classList.remove('hidden')">${t('tabLlm')}</button>
+        </div>
+        <div id="st-gen">
+          <div class="card"><div class="card-hd">${t('tabTheme')}</div><div class="card-bd">
+            <div class="flex gap-2 flex-wrap" id="theme-btns">
+              <button class="theme-btn" data-theme="pipeline" onclick="setTheme('pipeline')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:2px solid var(--edge);background:var(--surface2);color:var(--ink);cursor:pointer;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:#5E6AD2"></span>Clean Pipeline</button>
+              <button class="theme-btn" data-theme="hub" onclick="setTheme('hub')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:2px solid var(--edge);background:var(--surface2);color:var(--ink);cursor:pointer;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:#1877F2"></span>Connected Hub</button>
+              <button class="theme-btn" data-theme="canvas" onclick="setTheme('canvas')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:2px solid var(--edge);background:var(--surface2);color:var(--ink);cursor:pointer;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:#1A73E8"></span>Material Canvas</button>
+              <button class="theme-btn" data-theme="quantum" onclick="setTheme('quantum')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:2px solid var(--edge);background:var(--surface2);color:var(--ink);cursor:pointer;font-size:11px"><span style="width:16px;height:16px;border-radius:50%;background:#76B900"></span>Quantum Grid</button>
+            </div>
+          </div></div>
+          <div class="card"><div class="card-hd">${t('aboutTitle')}</div><div class="card-bd text-sm"><p>TomiLite v0.1.0</p><p class="text-muted mt-1">${t('aboutText')}</p><p class="text-muted mt-1">${t('dataPath')}: <code style="background:var(--surface2);padding:2px 6px;border-radius:3px">~/.tomilite.db</code></p></div></div>
+        </div>
+        <div id="st-git" class="hidden"><div class="card"><div class="card-hd">${t('gitTitle')}</div><div class="card-bd text-sm">
+          <p class="text-muted mb-2">${t('gitDesc')}</p>
+          <div class="flex gap-2 mb-2"><input class="form-input" placeholder="${t('repoNamePlaceholder')}" style="flex:1"><input class="form-input" placeholder="${t('repoPathPlaceholder')}" style="flex:1"><button class="btn btn-brand btn-xs">${t('addRepo')}</button></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--edge);font-size:11px"><div><strong>api-gateway</strong><div class="text-muted">~/projects/api-gateway</div></div><button class="btn-ghost btn-xs" style="color:var(--brand)">${t('removeRepo')}</button></div>
+          <div style="background:var(--bg);border-radius:6px;padding:8px;margin-top:8px"><pre style="font-size:10px;color:var(--muted)">tomat init --repo ~/my-project</pre><div class="text-muted mt-1" style="font-size:9px">${t('gitSetup')}</div></div>
+        </div></div></div>
+        <div id="st-llm" class="hidden">
+          <div class="card"><div class="card-hd">${t('llmTitle')}</div><div class="card-bd">
+            <div class="form-grp">
+              <label class="form-label">${t('llmProvider')}</label>
+              <select class="form-select" id="llm-provider" onchange="updateLlmProvider()">
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="moonshot">Moonshot</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div class="form-grp">
+              <label class="form-label">${t('llmBaseUrl')}</label>
+              <input class="form-input" id="llm-base-url" value="https://api.deepseek.com" placeholder="https://api.deepseek.com">
+            </div>
+            <div class="form-grp">
+              <label class="form-label">${t('llmApiKey')}</label>
+              <div style="display:flex;gap:6px">
+                <input class="form-input" type="password" id="llm-api-key" placeholder="${t('llmApiKeyHint')}" style="flex:1">
+                <button class="btn btn-secondary btn-sm" onclick="toggleApiKey()" style="flex-shrink:0">👁</button>
+              </div>
+            </div>
+            <div class="form-grp">
+              <label class="form-label">${t('llmFlashModel')}</label>
+              <select class="form-select" id="llm-flash">
+                <option>deepseek-chat</option>
+                <option>deepseek-v4-flash</option>
+                <option>gpt-4o-mini</option>
+                <option>claude-haiku-4-5</option>
+              </select>
+              <span class="text-muted" style="margin-top:2px;display:block">${t('llmFlashHint')}</span>
+            </div>
+            <div class="form-grp">
+              <label class="form-label">${t('llmProModel')}</label>
+              <select class="form-select" id="llm-pro">
+                <option>deepseek-reasoner</option>
+                <option>deepseek-v4-pro</option>
+                <option>gpt-4o</option>
+                <option>claude-sonnet-4-6</option>
+              </select>
+              <span class="text-muted" style="margin-top:2px;display:block">${t('llmProHint')}</span>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button class="btn btn-brand btn-sm" onclick="testLlmConnection()">${t('llmTestConn')}</button>
+              <span id="llm-test-result" style="font-size:11px;display:flex;align-items:center"></span>
+            </div>
+          </div></div>
+        </div>`;
+      break;
+  }
+}
+
+// ═══ LLM SETTINGS ═══
+const PROVIDER_URLS = {
+  deepseek: 'https://api.deepseek.com',
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  moonshot: 'https://api.moonshot.cn/v1',
+  custom: '',
+};
+
+const PROVIDER_MODELS = {
+  deepseek: { flash: ['deepseek-chat', 'deepseek-v4-flash'], pro: ['deepseek-reasoner', 'deepseek-v4-pro'] },
+  openai: { flash: ['gpt-4o-mini', 'gpt-3.5-turbo'], pro: ['gpt-4o', 'gpt-4-turbo'] },
+  anthropic: { flash: ['claude-haiku-4-5'], pro: ['claude-sonnet-4-6', 'claude-opus-4-8'] },
+  moonshot: { flash: ['moonshot-v1-8k'], pro: ['moonshot-v1-32k'] },
+  custom: { flash: [], pro: [] },
+};
+
+function updateLlmProvider() {
+  const provider = document.getElementById('llm-provider').value;
+  document.getElementById('llm-base-url').value = PROVIDER_URLS[provider] || '';
+  const models = PROVIDER_MODELS[provider] || { flash: [], pro: [] };
+  const flashSel = document.getElementById('llm-flash');
+  const proSel = document.getElementById('llm-pro');
+  flashSel.innerHTML = models.flash.map(m => `<option>${m}</option>`).join('') || '<option>(enter model name)</option>';
+  proSel.innerHTML = models.pro.map(m => `<option>${m}</option>`).join('') || '<option>(enter model name)</option>';
+}
+
+function toggleApiKey() {
+  const inp = document.getElementById('llm-api-key');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ═══ THEME ═══
+const THEMES = ['pipeline', 'hub', 'canvas', 'quantum'];
+function getTheme() { return localStorage.getItem('tomilite-theme') || 'pipeline'; }
+function setTheme(key) {
+  document.documentElement.setAttribute('data-theme', key);
+  localStorage.setItem('tomilite-theme', key);
+  // Update active indicator
+  document.querySelectorAll('.theme-btn').forEach(b => {
+    b.style.borderColor = b.dataset.theme === key ? 'var(--brand)' : 'var(--edge)';
+  });
+}
+
+// ═══ LLM ═══
+  const el = document.getElementById('llm-test-result');
+  el.textContent = '⏳ Testing...';
+  el.style.color = 'var(--muted)';
+  setTimeout(() => {
+    el.textContent = t('llmTestOk');
+    el.style.color = 'var(--green)';
+    setTimeout(() => { el.textContent = ''; }, 3000);
+  }, 1200);
+}
+
+function testLlmConnection() {
+  const el = document.getElementById('llm-test-result');
+  el.textContent = '⏳';
+  el.style.color = 'var(--muted)';
+  setTimeout(() => {
+    el.textContent = t('llmTestOk');
+    el.style.color = 'var(--green)';
+    setTimeout(() => { el.textContent = ''; }, 3000);
+  }, 1200);
+}
+
+// ═══ MODAL ═══
+function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+// ═══ CHAT ═══
+const msgs = document.getElementById('chat-messages');
+
+// Localized AI responses
+const AI_RESPONSES = {
+  created: {
+    en: ['✅ Created: <strong>TL-24 — Login page crashes</strong><br><br>Type: Bug · Priority: High · Status: Todo<br><br>View it in 📋 Board.', 'create_issue'],
+    zh: ['✅ 已创建: <strong>TL-24 — 登录页面崩溃</strong><br><br>类型: 缺陷 · 优先级: 高 · 状态: 待办<br><br>在 📋 看板查看。', 'create_issue'],
+    ja: ['✅ 作成しました: <strong>TL-24 — ログインページクラッシュ</strong><br><br>種類: バグ · 優先度: 高 · ステータス: ToDo<br><br>📋 ボードで確認。', 'create_issue'],
+  },
+  report: {
+    en: ['📊 <strong>Daily Report — Jun 27</strong><br><br>✅ 3 completed: CI setup, DB schema, Rate limiting<br>🔄 4 in progress: OAuth2, WebSocket fix, Auth tests, DB batching<br>📧 4 emails processed, 3 spam blocked<br>🎯 3h 12m focused time<br><br>Open 📊 Reports for full view.', 'generate_report'],
+    zh: ['📊 <strong>日报 — 6月27日</strong><br><br>✅ 3 已完成: CI搭建, 数据库schema, 限流中间件<br>🔄 4 进行中: OAuth2, WebSocket修复, 认证测试, 数据库批处理<br>📧 处理4封邮件, 拦截3封垃圾<br>🎯 专注时间 3小时12分<br><br>打开 📊 报告查看完整内容。', 'generate_report'],
+    ja: ['📊 <strong>日次レポート — 6月27日</strong><br><br>✅ 3 完了: CI設定, DBスキーマ, レート制限<br>🔄 4 進行中: OAuth2, WebSocket修正, 認証テスト, DBバッチ<br>📧 4通処理, 3通スパムブロック<br>🎯 集中時間 3h12m<br><br>📊 レポートで全内容を確認。', 'generate_report'],
+  },
+  status: {
+    en: ['<strong>Current Status</strong><br><br>📥 Todo: 5 issues<br>🔄 In Progress: 4 issues<br>👀 Review: 2 issues<br>✅ Done: 2 issues<br><br>68% completion — on track.', 'get_project_stats'],
+    zh: ['<strong>当前状态</strong><br><br>📥 待办: 5个任务<br>🔄 进行中: 4个任务<br>👀 审查中: 2个任务<br>✅ 已完成: 2个任务<br><br>完成率 68% — 进度正常。', 'get_project_stats'],
+    ja: ['<strong>現在の状況</strong><br><br>📥 ToDo: 5件<br>🔄 進行中: 4件<br>👀 レビュー: 2件<br>✅ 完了: 2件<br><br>完了率 68% — 順調です。', 'get_project_stats'],
+  },
+  git: {
+    en: ['<strong>Today\'s Git Activity</strong><br><br>• <code>abc123f</code> — fix #3 · 2h ago<br>• <code>def456a</code> — implement #7 · 1h ago<br><br>2 commits linked to issues.', 'list_git_refs'],
+    zh: ['<strong>今日 Git 动态</strong><br><br>• <code>abc123f</code> — fix #3 · 2小时前<br>• <code>def456a</code> — implement #7 · 1小时前<br><br>2个提交已关联任务。', 'list_git_refs'],
+    ja: ['<strong>今日のGitアクティビティ</strong><br><br>• <code>abc123f</code> — fix #3 · 2時間前<br>• <code>def456a</code> — implement #7 · 1時間前<br><br>2コミットが課題に紐づいています。', 'list_git_refs'],
+  },
+  search: {
+    en: ['Found in your notes:<br><br>1. <strong>📌 Architecture Decisions</strong> — SQLite + Ollama + Vite<br>2. <strong>💡 Feature Ideas</strong> — WebRTC voice notes<br><br>Open 📔 Notes to view?', 'search_knowledge'],
+    zh: ['在你的笔记中找到:<br><br>1. <strong>📌 架构决策</strong> — SQLite + Ollama + Vite<br>2. <strong>💡 功能想法</strong> — WebRTC 语音笔记<br><br>打开 📔 笔记查看？', 'search_knowledge'],
+    ja: ['ノートから見つかりました:<br><br>1. <strong>📌 アーキテクチャ決定</strong> — SQLite + Ollama + Vite<br>2. <strong>💡 機能アイデア</strong> — WebRTC 音声ノート<br><br>📔 ノートを開きますか？', 'search_knowledge'],
+  },
+  estimate: {
+    en: ['Updated TL-3 story points to <strong>5sp</strong> (Fibonacci ✅).', 'update_issue'],
+    zh: ['已将 TL-3 故事点更新为 <strong>5sp</strong> (Fibonacci ✅)。', 'update_issue'],
+    ja: ['TL-3 のストーリーポイントを <strong>5sp</strong> に更新しました (Fibonacci ✅)。', 'update_issue'],
+  },
+  help: {
+    en: ['I can help with:<br><br>🐛 <strong>Create</strong> issues and tasks<br>📋 <strong>Check</strong> project status<br>📔 <strong>Search</strong> notes and wiki<br>📊 <strong>Generate</strong> reports<br>🔗 <strong>View</strong> git activity<br><br>What would you like to do?'],
+    zh: ['我可以帮你:<br><br>🐛 <strong>创建</strong> 任务和缺陷<br>📋 <strong>查看</strong> 项目状态<br>📔 <strong>搜索</strong> 笔记和 Wiki<br>📊 <strong>生成</strong> 日报/周报<br>🔗 <strong>查看</strong> Git 动态<br><br>你想做什么？'],
+    ja: ['お手伝いできること:<br><br>🐛 課題やタスクを<strong>作成</strong><br>📋 プロジェクト状況を<strong>確認</strong><br>📔 ノートやWikiを<strong>検索</strong><br>📊 レポートを<strong>生成</strong><br>🔗 Gitアクティビティを<strong>表示</strong><br><br>何をしますか？'],
+  },
+};
+
+const SUGGESTIONS = {
+  en: ['📋 Tasks in progress?', '🐛 Create bug', '🔗 Git activity', '📊 Daily report', '📔 Search notes'],
+  zh: ['📋 进行中的任务？', '🐛 创建缺陷', '🔗 Git 动态', '📊 生成日报', '📔 搜索笔记'],
+  ja: ['📋 進行中のタスクは？', '🐛 バグを作成', '🔗 Git アクティビティ', '📊 日次レポート', '📔 ノートを検索'],
+};
+
+function showWelcome() {
+  const s = SUGGESTIONS[lang];
+  msgs.innerHTML = `
+    <div class="welcome">
+      <div class="icon">🍅</div>
+      <h4>${t('welcomeTitle')}</h4>
+      <p>${t('welcomeDesc')}</p>
+      <div class="suggestions">
+        <span class="suggestion" onclick="useSuggestion('${s[0]}')">${s[0]}</span>
+        <span class="suggestion" onclick="useSuggestion('${s[1]}')">${s[1]}</span>
+        <span class="suggestion" onclick="useSuggestion('${s[2]}')">${s[2]}</span>
+        <span class="suggestion" onclick="useSuggestion('${s[3]}')">${s[3]}</span>
+        <span class="suggestion" onclick="useSuggestion('${s[4]}')">${s[4]}</span>
+      </div>
+    </div>`;
+}
+
+function useSuggestion(text) {
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+function addMsg(role, text, tool) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  let h = '<div class="bubble">' + text.replace(/\n/g, '<br>');
+  if (tool) h += '<span class="tool-tag">🔧 ' + tool + '</span>';
+  h += '</div>';
+  d.innerHTML = h;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function sendMessage() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  if (msgs.querySelector('.welcome')) msgs.innerHTML = '';
+  addMsg('user', text);
+  addMsg('assistant', '<span style="color:var(--muted)">' + t('thinking') + '</span>');
+  setTimeout(() => {
+    msgs.lastChild.remove();
+    const l = text.toLowerCase();
+    let resp;
+    if ((l.includes('create')||l.includes('new')||l.includes('创建')||l.includes('作成'))&&(l.includes('bug')||l.includes('issue')||l.includes('task')||l.includes('缺陷')||l.includes('バグ')||l.includes('任务')||l.includes('課題'))) {
+      resp = AI_RESPONSES.created;
+    } else if (l.includes('report')||l.includes('daily')||l.includes('报告')||l.includes('日报')||l.includes('レポート')) {
+      resp = AI_RESPONSES.report;
+    } else if (l.includes('progress')||l.includes('status')||l.includes('task')||l.includes('状态')||l.includes('進捗')||l.includes('状況')||l.includes('进行中')||l.includes('進行中')) {
+      resp = AI_RESPONSES.status;
+    } else if (l.includes('git')||l.includes('commit')) {
+      resp = AI_RESPONSES.git;
+    } else if (l.includes('search')||l.includes('note')||l.includes('architecture')||l.includes('搜索')||l.includes('検索')||l.includes('笔记')||l.includes('ノート')) {
+      resp = AI_RESPONSES.search;
+    } else if (l.includes('story point')||l.includes('estimate')||l.includes('故事点')||l.includes('ポイント')) {
+      resp = AI_RESPONSES.estimate;
+    } else {
+      resp = AI_RESPONSES.help;
+    }
+    addMsg('assistant', ...resp[lang] ? [resp[lang][0], resp[lang][1]] : [resp.en[0], resp.en[1]]);
+    if (!window._updateShown) { window._updateShown = true; setTimeout(() => { if (!panelOpen) renderUpdateModal(); }, 3000); }
+  }, 700);
+}
+
+function renderUpdateModal() {
+  document.getElementById('update-title').textContent = t('updateTitle');
+  document.getElementById('update-changelog').innerHTML = `<h2>What's New</h2><ul><li>${t('updateItem1')}</li><li>${t('updateItem2')}</li><li>${t('updateItem3')}</li><li>${t('updateItem4')}</li></ul>`;
+  toggleModal('update-modal');
+}
+
+// ═══ INIT ═══
+setLang('en');
+setTheme(getTheme());
+showWelcome();
+setTimeout(() => document.getElementById('chat-input').focus(), 300);
+document.addEventListener('click', e => {
+  if (!e.target.closest('#menu-popup') && !e.target.closest('#btn-plus')) hideMenu();
+});
+</script>
+</body>
+</html>

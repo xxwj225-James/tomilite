@@ -1,0 +1,12 @@
+{
+  "name": "@tomilite/email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@tomilite/database": "*",
+    "imapflow": "^1.0.0",
+    "mailparser": "^3.7.0"
+  }
+}

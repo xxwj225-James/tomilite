@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "paths": {
+      "@tomilite/shared": ["./packages/shared/src"],
+      "@tomilite/database": ["./packages/database/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".turbo"]
+}

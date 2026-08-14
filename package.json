@@ -1,0 +1,217 @@
+{
+  "name": "tomilite",
+  "version": "2.0.2",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Tomatovector — AI-powered developer personal productivity tool",
+  "author": "Tomatovector",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev --parallel",
+    "build": "turbo build",
+    "build:prod": "turbo build && npm run obfuscate && npm run build:frontend",
+    "obfuscate": "node scripts/obfuscate.js",
+    "build:frontend": "(cd apps/web && vite build)",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "turbo typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,css,md}\"",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "setup": "git config core.hooksPath .githooks && echo '✅ Git hooks configured.'",
+    "focus": "node scripts/tomat-focus.js",
+    "tomat": "node scripts/tomat-init.js",
+    "uninstall": "node scripts/uninstall.js",
+    "electron:dev": "electron electron/main.js",
+    "electron:build": "electron-builder --publish=never",
+    "electron:build:win": "electron-builder --win --publish=never",
+    "electron:build:mac": "electron-builder --mac --publish=never",
+    "electron:build:linux": "electron-builder --linux --publish=never",
+    "pack": "node -e \"try{require('fs').unlinkSync(require('os').homedir()+'/.tomilite/debug.flag')}catch(e){}\" && prisma generate --schema=packages/database/prisma/schema.prisma && npm run build:frontend && node scripts/bundle-api.js && node scripts/obfuscate.js && node scripts/clean-engines.js && node scripts/generate-icons.js && electron-builder --win --publish=never",
+    "pack:debug": "node -e \"var d=require('os').homedir()+'/.tomilite';require('fs').mkdirSync(d,{recursive:true});require('fs').writeFileSync(d+'/debug.flag','')\" && prisma generate --schema=packages/database/prisma/schema.prisma && npm run build:frontend && node scripts/bundle-api.js && node scripts/obfuscate.js && node scripts/clean-engines.js && node scripts/generate-icons.js && electron-builder --win --publish=never",
+    "pack:dir": "npm run build:frontend && node scripts/bundle-api.js && node scripts/clean-engines.js && node scripts/generate-icons.js && electron-builder --win --publish=never --dir",
+    "db:migrate": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "clean": "turbo clean && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --max-warnings 0",
+      "prettier --write"
+    ],
+    "*.{js,json,css,md}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^20.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^9.16.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.0",
+    "javascript-obfuscator": "^4.1.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.2.0",
+    "rollup-plugin-javascript-obfuscator": "^1.0.4",
+    "sharp": "^0.35.3",
+    "tsx": "^4.7.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "electron/main.js",
+  "build": {
+    "appId": "dev.tomilite.app",
+    "productName": "TomiLite",
+    "copyright": "Copyright © 2026 Tomatovector",
+    "publish": {
+      "provider": "generic",
+      "url": "https://tomatovector.com/tomilite/updates/"
+    },
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "apps/**/*",
+      "packages/**/*",
+      "node_modules/**/*",
+      "node_modules/.prisma/**",
+      "electron/**/*",
+      "package.json",
+      "!**/*.tsbuildinfo",
+      "!**/*.db",
+      "!**/*.db-journal",
+      "!**/prisma/generated/client/**",
+      "!**/prisma/generated/*.node",
+      "!**/prisma/generated/*.node.tmp*",
+      "!**/*.db-wal",
+      "!**/*.db-shm",
+      "!**/.env",
+      "!**/node_modules/.cache",
+      "!**/node_modules/typescript/**",
+      "!**/node_modules/@types/**",
+      "!**/node_modules/eslint/**",
+      "!**/node_modules/prettier/**",
+      "!**/node_modules/turbo-*/**",
+      "!**/node_modules/tsx/**",
+      "!**/node_modules/electron-builder/**",
+      "!**/node_modules/@electron/**",
+      "!**/node_modules/.cache",
+      "!**/node_modules/.bin",
+      "!**/*.map",
+      "!**/*.tsbuildinfo",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!apps/api/src/**/*",
+      "!apps/web/src/**/*",
+      "!packages/*/src/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "packages/database/prisma/schema.prisma",
+        "to": "prisma/schema.prisma"
+      },
+      {
+        "from": "node_modules/.prisma",
+        "to": "app/node_modules/.prisma"
+      }
+    ],
+    "asar": false,
+    "asarUnpack": [
+      "node_modules/prisma/**",
+      "node_modules/@prisma/**"
+    ],
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      "category": "public.app-category.productivity",
+      "icon": "electron/icon.png",
+      "artifactName": "Tomatovector-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.png",
+      "artifactName": "TomiLite-Setup-${version}.${ext}",
+      "signtoolOptions": {}
+    },
+    "appx": {
+      "applicationId": "Tomatovector.TomiLite",
+      "displayName": "TomiLite",
+      "publisherDisplayName": "Tomatovector",
+      "identityName": "Tomatovector.TomiLite",
+      "publisher": "CN=Tomatovector",
+      "backgroundColor": "#6366f1",
+      "languages": [
+        "en-US",
+        "zh-CN",
+        "ja-JP"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TomiLite",
+      "installerIcon": "electron/icon.ico",
+      "uninstallerIcon": "electron/icon.ico",
+      "license": "LICENSE",
+      "include": "electron/installer.nsh"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "electron/icon.png",
+      "category": "Office",
+      "artifactName": "TomiLite-${version}-linux.${ext}"
+    }
+  },
+  "dependencies": {
+    "@fontsource/geist-sans": "^5.3.0",
+    "@milkdown/kit": "^7.21.2",
+    "@milkdown/react": "^7.21.2",
+    "@prisma/client": "^5.0.0",
+    "bytenode": "^1.6.0",
+    "docx": "^9.7.1",
+    "dompurify": "^3.4.11",
+    "electron-updater": "^6.8.9",
+    "highlight.js": "^11.11.1",
+    "mammoth": "^1.12.0",
+    "nodemailer": "^9.0.1",
+    "pdfjs-dist": "^5.4.624",
+    "prisma": "^5.0.0",
+    "terser": "^5.48.0",
+    "undici": "^6.28.0",
+    "xlsx": "^0.18.5"
+  }
+}

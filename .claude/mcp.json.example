@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tomatoHub": {
+      "type": "http",
+      "url": "http://localhost:8000/api/v1/mcp",
+      "headers": {
+        "X-Api-Key": "ai_pm_... (generate from TomatoHub → Profile → API Keys)"
+      }
+    }
+  }
+}
