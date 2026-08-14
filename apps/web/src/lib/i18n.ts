@@ -507,13 +507,98 @@ const I18N = {
   'app.entityNote': { en: 'note', zh: '笔记', ja: 'ノート', th: 'บันทึก', mi: 'tuhipoka', ru: 'заметка' },
   'app.entityTask': { en: 'task', zh: '任务', ja: 'タスク', th: 'งาน', mi: 'mahi', ru: 'задача' },
   'app.entityReport': { en: 'report', zh: '报告', ja: 'レポート', th: 'รายงาน', mi: 'pūrongo', ru: 'отчёт' },
+
+  // ═══ Chat actions & status messages (App refactor) ═══
+  'chat.appliedToEditor': { en: '✅ Applied to editor. You can continue editing or click **Save** to save, or ask me to adjust.', zh: '✅ 已应用到编辑器。你可以继续修改或点击 **Save** 保存，也可以让我再调整。', ja: '✅ エディタに適用しました。引き続き編集するか **Save** をクリックして保存、または調整を依頼してください。' },
+  'chat.revertedEdit': { en: '↩ Reverted changes back to previous content.', zh: '↩ 已撤销修改，恢复到之前的内容。', ja: '↩ 変更を元に戻し、以前の内容に復元しました。' },
+  'chat.cancelledCreate': { en: 'OK, creation cancelled.', zh: '好的，已取消创建。', ja: 'キャンセルしました。' },
+  'chat.revertedToPrev': { en: '✅ Reverted to previous content.', zh: '✅ 已恢复到修改前的内容。', ja: '✅ 以前の内容に復元しました。' },
+  'chat.interrupted': { en: 'Interrupted', zh: '已中断', ja: '中断されました' },
+  'chat.noAiContent': { en: 'Sorry, the AI returned no content. Please retry or check your API configuration.', zh: '抱歉，AI 未返回内容。请重试或检查 API 配置。', ja: 'AIが応答しませんでした。再試行するか、API設定を確認してください。' },
+  'chat.tooMany': { en: 'Max 3 concurrent tasks', zh: '最多同时运行 3 个任务', ja: '同時実行は最大3件です' },
+  'chat.thinkingRound': { en: '💭 Thinking... (round {n})', zh: '💭 思考中（第 {n} 轮）', ja: '💭 考え中（{n}ラウンド目）' },
+  'chat.titleMismatch': { en: '⚠️ Title mismatch — only other fields applied. Use create_issue for a new task.', zh: '⚠️ 标题与当前任务不匹配，仅应用了其他字段。如需新建请使用 create_issue。', ja: '⚠️ タイトルが現在のタスクと一致しません。他のフィールドのみ適用しました。新規作成には create_issue を使用してください。' },
+  'chat.replyDraftUpdated': { en: '📧 **Reply draft updated**. Reply "undo" to revert.', zh: '📧 **回复草稿已更新**。回复「撤销」恢复原稿。', ja: '📧 **返信下書きが更新されました**。「元に戻す」で復元。' },
+  'chat.callFailed': { en: '❌ Call failed: {err}', zh: '❌ 调用失败: {err}', ja: '❌ 呼び出しに失敗しました: {err}' },
+  'chat.contextRemaining': { en: '{pct}% context remaining — click to compress', zh: '剩余 {pct}% 上下文空间，点击压缩', ja: '残り {pct}% のコンテキスト、クリックで圧縮' },
+  'chat.generatingReport': { en: '⏳ Generating report...', zh: '⏳ 生成日报中...', ja: '⏳ 日報生成中...' },
+  'chat.reportFailed': { en: '⚠️ Failed', zh: '⚠️ 生成失败', ja: '⚠️ 生成失敗' },
+  'chat.actionPolish': { en: 'Polish', zh: '润色', ja: '推敲' },
+  'chat.actionTranslate': { en: 'Translate (ask target language first)', zh: '翻译（先确认目标语言）', ja: '翻訳（翻訳先の言語を確認）' },
+  'chat.actionSummarize': { en: 'Summarize into 3 bullet points', zh: '总结为3个要点', ja: '3つの要点に要約' },
+  'chat.actionExpand': { en: 'Expand into a detailed version', zh: '扩写为更详细的版本', ja: '詳細版に拡張' },
+  'chat.blockedSimilar': { en: '⚠️ {n} similar {entity}(s)', zh: '⚠️ 发现 {n} 个相似{entity}', ja: '⚠️ {entity}が{n}件類似しています' },
+
+  // ═══ Dialogs ═══
+  'dialog.unsavedMessage': { en: 'Unsaved changes will be lost. Leave anyway?', zh: '有未保存的内容，离开将丢失更改。确定离开？', ja: '保存されていない変更があります。このまま離れますか？' },
+  'dialog.deleteConfirm': { en: 'Delete "{title}"? This cannot be undone.', zh: '确定删除 "{title}" 吗？此操作无法撤销。', ja: '「{title}」を削除しますか？元に戻せません。' },
+  'dialog.deleting': { en: '🗑️ Deleting...', zh: '🗑️ 删除中...', ja: '🗑️ 削除中...' },
+  'dialog.stopDownload': { en: 'Stop Download', zh: '停止下载', ja: 'ダウンロード停止' },
+  'dialog.stopDownloadMessage': { en: 'Stop downloading v{version}?', zh: '确定要停止下载 v{version} 吗？', ja: 'v{version} のダウンロードを停止しますか？' },
+  'dialog.stop': { en: 'Stop', zh: '停止', ja: '停止' },
+
+  // ═══ Update / OTA ═══
+  'update.installRestart': { en: 'Install & Restart', zh: '安装并重启', ja: 'インストールして再起動' },
+  'update.retry': { en: '🔄 Retry', zh: '🔄 重试', ja: '🔄 再試行' },
+  'update.timedOut': { en: 'Download timed out, retry', zh: '下载超时，请重试', ja: 'ダウンロードタイムアウト、再試行' },
+  'update.available': { en: 'available', zh: '可用', ja: '利用可能' },
+  'update.downloadFailed': { en: 'Download failed', zh: '下载失败', ja: 'ダウンロード失敗' },
+  'update.installFailed': { en: 'Install failed: {err}. Please retry download.', zh: '安装失败: {err}, 请重试下载', ja: 'インストール失敗: {err}、ダウンロードを再試行してください' },
+  'update.installLaunchFailed': { en: 'Install failed, please retry.', zh: '安装启动失败，请重试', ja: 'インストールの起動に失敗しました。再試行してください' },
+  'update.downloadedInstall': { en: 'Downloaded — click to install', zh: '已下载，点击安装', ja: 'ダウンロード完了' },
+
+  // ═══ Delete / save-as ═══
+  'delete.deletedLabel': { en: '🗑️ Deleted {label}', zh: '🗑️ 已删除 {label}', ja: '🗑️ 削除済み {label}' },
+  'delete.saveDialogUnavailable': { en: 'Save dialog not available', zh: '保存对话框不可用', ja: '保存ダイアログが利用できません' },
+  'delete.savedFile': { en: '✅ "{title}" saved', zh: '✅ 已保存 "{title}"', ja: '✅ 「{title}」を保存しました' },
+  'delete.saveFileFailed': { en: 'Failed to save "{title}"', zh: '保存 "{title}" 失败', ja: '「{title}」の保存に失敗' },
+
+  // ═══ Editor hints ═══
+  'editor.updatedContent': { en: 'Updated Content', zh: '修改后内容', ja: '変更後の内容' },
+  'editor.descModified': { en: 'Modified ({n} chars)', zh: '描述已修改 ({n} 字符)', ja: '説明変更済み ({n} 文字)' },
+  'editor.noteCreateHint': { en: '📝 **You\'re creating a new note**\nTell me what you need — I can help optimize structure, translate, add details, fix grammar... Just let me know!', zh: '📝 **你正在创建新笔记**\n告诉我你的需求，我可以帮你：优化内容结构、翻译成其他语言、补充细节、修正语法……直接说出你的想法就好！', ja: '📝 **新しいノートを作成中です**\n内容の最適化、翻訳、詳細の追加、文法修正などお手伝いできます。お気軽にお申し付けください！' },
+  'editor.noteEditHint': { en: '📔 **You\'re editing "{title}"**\nNeed help optimizing, translating, or rewriting? Just tell me what you need~', zh: '📔 **你正在编辑《{title}》**\n需要我帮忙优化、翻译、改写吗？直接告诉我你的需求～', ja: '📔 **「{title}」を編集中です**\n最適化、翻訳、書き換えなどお手伝いできます。お気軽にどうぞ～' },
+  'editor.taskCreateHint': { en: '📝 **You\'re creating a new task**\nTell me the title, description, and priority — I\'ll help organize and create it~', zh: '📝 **你正在创建新Task**\n告诉我标题、描述、优先级，我帮你整理并创建～', ja: '📝 **新しいタスクを作成中です**\nタイトル、説明、優先度を教えてください。整理して作成します～' },
+  'editor.taskViewHint': { en: '📋 **You\'re viewing TL-{num} "{title}"**\nStatus: {status} · Priority: {priority}{sp}\nNeed help updating status, modifying content, or splitting subtasks?', zh: '📋 **你正在查看 TL-{num}「{title}」**\n状态: {status} · 优先级: {priority}{sp}\n需要我帮忙更新状态、修改内容，或者拆分子任务吗？', ja: '📋 **TL-{num}「{title}」を表示中**\nステータス: {status} · 優先度: {priority}{sp}\nステータス更新、内容修正、サブタスク分割をお手伝いできます。' },
+  'editor.reportHint': { en: '📊 **You\'re editing a report**\nTell me what you need — I can help generate, optimize, add data, or adjust formatting.', zh: '📊 **你正在编辑报告**\n告诉我你的需求，我可以帮你：生成报告、优化内容、补充数据、调整格式。', ja: '📊 **レポートを編集中です**\n生成、内容最適化、データ追加、書式調整などお手伝いできます。' },
+
+  // ═══ Misc ═══
+  'misc.llmNotConfigured': { en: 'LLM API Key not configured. AI chat unavailable.', zh: '未配置 LLM API Key，AI 聊天功能不可用。', ja: 'LLM APIキーが未設定です。' },
+  'misc.goConfigure': { en: 'Configure →', zh: '前往配置 →', ja: '設定へ →' },
+  'misc.configureLlmKey': { en: '⚙️ Configure LLM API Key →', zh: '⚙️ 前往设置 LLM API Key →', ja: '⚙️ LLM APIキーを設定 →' },
+  'misc.forceCreateFailed': { en: 'Creation failed', zh: '创建失败', ja: '作成失敗' },
+  'misc.createdSuccess': { en: '✅ Created successfully', zh: '✅ 创建成功', ja: '✅ 作成成功' },
+  'misc.createFailedRetry': { en: '❌ Creation failed, please retry', zh: '❌ 创建失败，请重试', ja: '❌ 作成失敗、再試行' },
+  'misc.networkError': { en: '❌ Network error', zh: '❌ 网络错误', ja: '❌ ネットワークエラー' },
+  'misc.thinkingLabel': { en: 'Thinking', zh: '思考过程', ja: '思考プロセス' },
+
+  // ═══ Agent context signals (ephemeral 🔔 messages) ═══
+  'agent.enteredNotes': { en: 'Opened Notes panel', zh: '打开了 Notes 面板', ja: 'Notes パネルを開きました' },
+  'agent.enteredTasks': { en: 'Opened Tasks panel', zh: '打开了 Tasks 面板', ja: 'Tasks パネルを開きました' },
+  'agent.exitedNotes': { en: 'Exited Notes panel', zh: '退出了 Notes 面板', ja: 'Notes パネルを閉じました' },
+  'agent.exitedTasks': { en: 'Exited Tasks panel', zh: '退出了 Tasks 面板', ja: 'Tasks パネルを閉じました' },
+  'agent.enteredReports': { en: 'Opened Reports panel', zh: '打开了 Reports 面板', ja: 'Reports パネルを開きました' },
+  'agent.exitedReports': { en: 'Exited Reports panel', zh: '退出了 Reports 面板', ja: 'Reports パネルを閉じました' },
+  'agent.enteredEmail': { en: 'Opened Email panel', zh: '打开了 Email 面板', ja: 'Email パネルを開きました' },
+  'agent.exitedEmail': { en: 'Exited Email panel', zh: '退出了 Email 面板', ja: 'Email パネルを閉じました' },
+  'agent.openedReport': { en: 'Opened report editor', zh: '用户打开了Report编辑', ja: 'ユーザーがレポートエディタを開きました' },
+  'agent.createdNote': { en: 'Created a new note', zh: '用户创建了新笔记', ja: 'ユーザーが新しいノートを作成しました' },
+  'agent.openedNote': { en: 'Opened note "{title}"', zh: '用户打开了笔记《{title}》', ja: 'ユーザーがノート「{title}」を開きました' },
+  'agent.newTaskForm': { en: 'Opened new task form "{title}"', zh: '用户打开了新建Task表单「{title}」', ja: 'ユーザーが新規タスクフォーム「{title}」を開きました' },
+  'agent.openedTask': { en: 'Opened task TL-{num} "{title}"', zh: '用户打开了 Task TL-{num}「{title}」', ja: 'ユーザーがタスク TL-{num}「{title}」を開きました' },
 } as const satisfies Record<string, Record<string, string>>;
 
 export type I18NKey = keyof typeof I18N;
 
-export function t(key: I18NKey, lang: string): string {
+export function t(key: I18NKey, lang: string, params?: Record<string, string | number>): string {
   const entry = I18N[key] as Record<string, string> | undefined;
-  return entry?.[lang] || entry?.en || key;
+  let s = entry?.[lang] || entry?.en || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      s = s.replaceAll('{' + k + '}', String(v));
+    }
+  }
+  return s;
 }
 
 /**
