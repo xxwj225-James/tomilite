@@ -2,39 +2,39 @@
 
 ## Overview
 
-会议语音输入 → AI 整理成结构化 Note / Report。
+Meeting voice input → AI organizes it into structured Notes / Reports.
 
 ## Implementation Tiers
 
 | Tier | Complexity | Description |
 |------|-----------|-------------|
-| **Record → Transcribe** | Medium | 录音 → Whisper/DeepSeek STT → 文本 → LLM 整理 → Note/Report |
-| **Real-time** | High | WebSocket 流式音频 → 实时 STT → 逐句整理 |
-| **Meeting Tool Integration** | Low-Med | 读 Zoom/Teams/GMeet 字幕/转录文本 → AI 整理 |
+| **Record → Transcribe** | Medium | Record → Whisper/DeepSeek STT → text → LLM organizes → Note/Report |
+| **Real-time** | High | WebSocket streaming audio → real-time STT → per-sentence organization |
+| **Meeting Tool Integration** | Low-Med | Read Zoom/Teams/GMeet subtitles/transcripts → AI organizes |
 
 ## Record → Transcribe (Recommended MVP)
 
-**Effort**: 3-5 天
+**Effort**: 3-5 days
 
 **Flow**:
-1. Electron 麦克风录音 → 保存音频文件 (mp3/wav)
-2. 调用 STT API（Whisper / DeepSeek Audio）转文字
-3. 已有 LLM pipeline 整理成结构化 Note/Report
-   - 会议主题
-   - 参会人员
-   - 讨论要点
-   - 决策事项
+1. Electron microphone recording → saves audio file (mp3/wav)
+2. Call the STT API (Whisper / DeepSeek Audio) to transcribe to text
+3. Existing LLM pipeline organizes into structured Note/Report
+   - Meeting topic
+   - Attendees
+   - Discussion points
+   - Decisions
    - Action Items
 
 **UI**:
-- 录音按钮（开始/暂停/停止）
-- 录音时长显示
-- 转录中 loading
-- 结果预览 → 保存为 Note 或 Report
+- Record button (start/pause/stop)
+- Recording-duration display
+- Transcription loading state
+- Result preview → save as Note or Report
 
 ## Real-time (Later)
 
-**Effort**: 1-2 周
+**Effort**: 1-2 weeks
 
 Additional requirements:
 - WebSocket audio streaming

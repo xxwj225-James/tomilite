@@ -35,7 +35,7 @@ Create `packages/email/src/classifier.ts`:
 Modify `apps/api/src/server.ts` email handler:
 - On incoming message: run classifier → get AI result
 - Store only to `SmartEmail` (not old InboundMessage)
-- If cat 1 or 2: auto-create `Issue` record (project: 'proj-default', title: "[邮件待办] subject", description with AI summary, priority mapped, status 'todo')
+- If cat 1 or 2: auto-create `Issue` record (project: 'proj-default', title: "[Email To-Do] subject", description with AI summary, priority mapped, status 'todo')
 - If cat 3: just store SmartEmail — shown as notification
 - If cat 4: skip entirely (don't store)
 - After classification, emit notification to frontend (via taskRefresh)
@@ -58,9 +58,9 @@ Modify `apps/web/src/components/ContentPanel.tsx`:
   - Email-source Issues shown normally in list — add `📥` icon prefix to title
   - Detail view for email tasks: show AI summary + reply draft (read-only) + action buttons
 - **Action buttons for email tasks**:
-  - [阅读原文] — fetch full email via API, show in detail panel
-  - [已阅知晓] (cat 3) — mark processed, dismiss
-  - [✍️ 回复] (cat 1/2) — open reply draft editor, send via SMTP
+  - [Read Original] — fetch full email via API, show in detail panel
+  - [Mark Read] (cat 3) — mark processed, dismiss
+  - [✍️ Reply] (cat 1/2) — open reply draft editor, send via SMTP
 - **Remove**: Email tab from panel menu (mail icon in sidebar)
 
 ### 7. Settings — Simplify EmailTab
@@ -92,6 +92,6 @@ Keep EmailTab in Settings for IMAP/SMTP config only. Remove email Inbox referenc
 
 1. Save IMAP config → Connect → wait for poll → check SmartEmails created in DB
 2. Check TasksPanel: cat 1/2 emails appear as Issues with 📥 prefix
-3. Click [阅读原文] → fetches full email from IMAP and displays
-4. Click [已阅] → marks processed, 12h countdown starts
+3. Click [Read Original] → fetches full email from IMAP and displays
+4. Click [Mark Read] → marks processed, 12h countdown starts
 5. Wait 12h (or trigger cleanup manually) → verify SmartEmail deleted, Issue persists

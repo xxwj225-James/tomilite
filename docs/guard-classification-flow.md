@@ -1,102 +1,102 @@
 # Guard Classification Flow
 
-Agent 意图分类的三级流水线，负责决定用户消息应该触发创建操作还是直接回答问题。
+A three-stage pipeline for Agent intent classification that decides whether a user message should trigger a creation action or be answered directly.
 
-> **注意**: 2026-07-23 调整顺序——关键词预判（Step 1）移到编辑器绕过（Step 2）之前，确保"为什么X"类提问不会被编辑器面板状态影响而误创建 task。
+> **Note**: Order changed on 2026-07-23 — the keyword pre-check (Step 1) moved before the editor bypass (Step 2) so "why X"-type questions aren't misclassified as task creation due to editor-panel state.
 
-## 架构概览
+## Architecture Overview
 
 ```
-用户消息
+User message
   │
-  ├─ Step 1: 关键词预判 ─────────── 不含创建关键词 → general_chat（结束）
-  │                                   含创建关键词 → 继续
+  ├─ Step 1: Keyword pre-check ── no creation keyword → general_chat (end)
+  │                                creation keyword found → continue
   │
-  ├─ Step 2: Note Editor 按钮绕过 ── 笔记编辑器 + [Note editor action:] → suggest_note_edit
+  ├─ Step 2: Note Editor button bypass ── note editor + [Note editor action:] → suggest_note_edit
   │
-  └─ Step 3: Guard LLM 分类 ──────── flashModel 细分类 5 种 intent
-     │                                 返回 JSON → 注入主模型 system prompt
-     ├─ 成功 → intentHint = Guard 返回的 instruction
-     └─ 失败 → 兜底 instruction
+  └─ Step 3: Guard LLM classification ── flashModel fine-classifies 5 intents
+     │                                  returns JSON → injected into the main-model system prompt
+     ├─ Success → intentHint = instruction from Guard
+     └─ Failure → fallback instruction
 ```
 
-## Step 1: 关键词预判
+## Step 1: Keyword Pre-Check
 
-**位置**: `apps/api/src/routers/agent.ts` 第 88-95 行
+**Location**: lines 88-95 of `apps/api/src/routers/agent.ts`
 
-**逻辑**: 移除消息中的上下文前缀，检查是否包含显式创建意图。
+**Logic**: strip the context prefix from the message and check for an explicit creation intent.
 
-**匹配"创建意图"的正则**:
-- 开头: `创建`、`新建`、`create`、`new task/bug/issue/feature/story/note`
-- 前 30 字符含: `创建`、`新建`、`create_`
+**Regexes matching "creation intent"**:
+- At the start: `create`, `new`, `new task/bug/issue/feature/story/note`
+- Within the first 30 chars: `create`, `new`, `create_`
 
-**如果不匹配** → 直接设 `intentHint = "answer directly, do not create anything"`，跳过所有后续步骤。
+**If no match** → set `intentHint = "answer directly, do not create anything"` directly and skip all subsequent steps.
 
-**如果匹配** → 继续 Step 2/3。
+**If matched** → continue to Steps 2/3.
 
-## Step 2: Note Editor 按钮绕过
+## Step 2: Note Editor Button Bypass
 
-**位置**: 第 97-100 行
+**Location**: lines 97-100
 
-**触发条件**: Step 1 未设 intentHint **且** `noteEditorOpen` **且** 消息含 `[Note editor action:]`
+**Trigger**: Step 1 didn't set intentHint **and** `noteEditorOpen` **and** the message contains `[Note editor action:]`
 
-**场景**: 用户在笔记编辑器中点击了润色/翻译/总结/扩写按钮。
+**Scenario**: the user clicked a polish/translate/summarize/expand button in the note editor.
 
-**效果**: 直接设 intentHint 为 `suggest_note_edit`，告诉主模型先输出修改说明再调工具。
+**Effect**: set intentHint to `suggest_note_edit` directly, telling the main model to output the change description first, then call the tool.
 
-## Step 3: Guard LLM 分类
+## Step 3: Guard LLM Classification
 
-**位置**: 第 102-142 行
+**Location**: lines 102-142
 
-**触发条件**: Step 1 和 Step 2 都未设 intentHint（消息被判定为"含创建意图"）
+**Trigger**: neither Step 1 nor Step 2 set intentHint (the message is judged to "contain creation intent")
 
-**流程**:
-1. 构造 prompt，要求 flashModel 输出 JSON:
+**Flow**:
+1. Build the prompt, requiring flashModel to output JSON:
    - `intent`: `create_task | create_note | edit_note | task_action | general_chat`
-   - `instruction`: 具体工具调用指令
-2. 调用 `flashModel` API（`temperature: 0`, `response_format: json_object`, 6s timeout）
-3. 解析 JSON → `intentHint = instruction`
-4. 失败兜底: 通用 instruction
+   - `instruction`: specific tool-call instruction
+2. Call the `flashModel` API (`temperature: 0`, `response_format: json_object`, 6s timeout)
+3. Parse the JSON → `intentHint = instruction`
+4. Fallback on failure: a generic instruction
 
-**合法的 create_issue type**: `task`, `bug`, `story`（不含 `feature`/`epic`）
-**映射规则**: 用户说"Feature/功能" → type `story`；不确定 → type `task`
+**Valid create_issue types**: `task`, `bug`, `story` (no `feature`/`epic`)
+**Mapping rule**: user says "Feature" → type `story`; uncertain → type `task`
 
-## 主模型注入
+## Main-Model Injection
 
-**位置**: 第 223 行
+**Location**: line 223
 
-`intentHint` 拼接到主模型的 system prompt 末尾:
+`intentHint` is appended to the end of the main model's system prompt:
 ```
 Pick one that fits the conversation context.${intentHint}
 ```
 
-主模型根据 system prompt + intentHint + tools 决定实际调用的工具。
+The main model decides which tool to call based on the system prompt + intentHint + tools.
 
-## Hallucination 检测
+## Hallucination Detection
 
-**位置**: 第 470-510 行
+**Location**: lines 470-510
 
-主模型回复后，校验是否真的调了工具:
+After the main model replies, verify that it actually called the tool:
 
-| Guard intent | 必须调用的工具 |
+| Guard intent | Required Tool Call |
 |-------------|---------------|
-| `create_task` | `create_issue` 或 `force_create_issue` |
-| `create_note` | `create_note` 或 `force_create_note` |
+| `create_task` | `create_issue` or `force_create_issue` |
+| `create_note` | `create_note` or `force_create_note` |
 | `edit_note` | `suggest_note_edit` |
 
-如果 Guard 说了要创建但主模型没调工具 → `[Hallucination]` 告警 → force re-run。
+If Guard said to create but the main model didn't call a tool → `[Hallucination]` warning → force re-run.
 
-## 已知问题
+## Known Issues
 
-1. **Qwen flashModel 分类不准**: 比 DeepSeek 更容易误判，把提问分类成 `create_task`
-2. **关键词覆盖有限**: "帮我写个..." 不被 Step 1 的正则匹配，走到 Step 3 可能误判
-3. **Guard 超时不触发 Hallucination**: 超时时 intentHint 为空，主模型自由发挥
+1. **Qwen flashModel classification is inaccurate**: misjudges more easily than DeepSeek, classifying questions as `create_task`
+2. **Limited keyword coverage**: phrases like "help me write a..." aren't matched by Step 1's regexes and may be misjudged in Step 3
+3. **Guard timeout doesn't trigger Hallucination check**: on timeout intentHint is empty and the main model improvises
 
-## 相关文件
+## Related Files
 
-| 文件 | 内容 |
+| File | Content |
 |------|------|
-| `apps/api/src/routers/agent.ts:84-142` | Guard 分类主逻辑 |
-| `apps/api/src/routers/agent.ts:470-510` | Hallucination 检测 |
-| `apps/api/src/routers/agent.ts:223` | intentHint 注入主模型 |
-| `apps/web/src/App.tsx:1467` | reasoningContent 持久化 |
+| `apps/api/src/routers/agent.ts:84-142` | Guard classification core logic |
+| `apps/api/src/routers/agent.ts:470-510` | Hallucination detection |
+| `apps/api/src/routers/agent.ts:223` | intentHint injection into the main model |
+| `apps/web/src/App.tsx:1467` | reasoningContent persistence |

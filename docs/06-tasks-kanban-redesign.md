@@ -31,9 +31,9 @@ Replace the current flat table (column headers + sorted rows) with three Kanban 
 When user clicks a card, right-side detail panel opens:
 - **Regular Issue**: Existing edit form with title/description/status/priority/etc.
 - **Email Task**: Shows AI summary, reply draft editor, action buttons:
-  - [✍️ 修改并发送] — edit draft + send via SMTP
-  - [🌐 阅读邮件原文] — fetch full email from IMAP by UID
-  - [✅ 标记完成] — mark processed, move to DONE
+  - [✍️ Edit & Send] — edit draft + send via SMTP
+  - [🌐 Read Original Email] — fetch full email from IMAP by UID
+  - [✅ Mark Done] — mark processed, move to DONE
 
 ### 4. Keyboard Shortcuts
 

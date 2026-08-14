@@ -6,7 +6,7 @@
 
 ## 1. CSS Custom Properties & Theme System
 
-所有 CSS 变量定义在 `apps/web/src/styles/index.css`。四个主题：**pipeline**（默认）、**hub**、**canvas**、**quantum**。
+All CSS variables are defined in `apps/web/src/styles/index.css`. Four themes: **pipeline** (default), **hub**, **canvas**, **quantum**.
 
 | Property | pipeline (default) | hub | canvas | quantum |
 |---|---|---|---|---|
@@ -27,21 +27,21 @@
 | `--blue` | `#6366f1` | `#1877F2` | `#1A73E8` | `#3498db` |
 | `--radius` | `8px` | *(inherits)* | *(inherits)* | *(inherits)* |
 
-- 全部**浅色模式**，无暗色主题
-- 主题通过 `<html data-theme="...">` 切换（`App.tsx` `applyTheme()`）
+- All **light mode**; no dark theme
+- Themes switch via `<html data-theme="...">` (`applyTheme()` in `App.tsx`)
 
 ---
 
 ## 2. Color Palette
 
-### Surface（浅色）
-- `--bg`: `#f8f9fb` — 页面背景
-- `--surface`: `#ffffff` — 卡片/面板
-- `--surface2`: `#f1f3f6` — 次级表面
+### Surface (light)
+- `--bg`: `#f8f9fb` — page background
+- `--surface`: `#ffffff` — cards/panels
+- `--surface2`: `#f1f3f6` — secondary surface
 
 ### Text
-- `--ink`: `#1a1a1e` — 主文字
-- `--muted`: `#8e8e96` — 次级文字
+- `--ink`: `#1a1a1e` — primary text
+- `--muted`: `#8e8e96` — secondary text
 - `--ink-sidebar`: `#5a5a62`
 
 ### Border
@@ -58,8 +58,8 @@
 
 Font: `system-ui, -apple-system, 'Segoe UI', sans-serif`
 
-字号分布（全部 px，无 rem）:
-`8, 9, 10, 11, 12, 13, 14, 16, 18, 24` — 无统一 type scale
+Font-size distribution (all px, no rem):
+`8, 9, 10, 11, 12, 13, 14, 16, 18, 24` — no unified type scale
 
 Line heights: `1.5`, `1.55`, `1.6`, `1.7`, `1.8`
 
@@ -67,12 +67,12 @@ Line heights: `1.5`, `1.55`, `1.6`, `1.7`, `1.8`
 
 ## 4. Spacing / Radius / Shadows
 
-**Radius**: 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 50% — 无 token 体系
+**Radius**: 2, 3, 4, 6, 8, 10, 12, 14, 16, 18, 50% — no token system
 
-**Shadows**（极少）:
+**Shadows** (rarely used):
 - `0 4px 16px rgba(0,0,0,0.3)` — welcome robot
 - `0 8px 32px rgba(0,0,0,0.2)` — modals
-- 卡片/按钮/面板无阴影 — 纯扁平设计
+- No shadows on cards/buttons/panels — pure flat design
 
 ---
 
@@ -81,7 +81,7 @@ Line heights: `1.5`, `1.55`, `1.6`, `1.7`, `1.8`
 ### Buttons
 - `.btn`: `border:none; border-radius:6px; padding:6px 14px; font-size:12px; font-weight:600`
 - `.btn-brand`: `background:var(--brand); color:#fff`
-- ⚠️ `danger` variant 无 CSS 类
+- ⚠️ `danger` variant has no CSS class
 
 ### Cards
 - `.card`: `background:var(--surface); border:1px solid var(--edge); border-radius:var(--radius)`
@@ -116,11 +116,11 @@ Line heights: `1.5`, `1.55`, `1.6`, `1.7`, `1.8`
 
 ## 7. Design Weaknesses
 
-1. **No dark mode** — 四个主题均为浅色
-2. **No typographic scale** — 字号 ad-hoc（8-24px，10 个级别）
-3. **Hardcoded colors** — JSX 中大量 `#ef4444`, `#fef3c7` 等
-4. **CSS inconsistencies** — `btn-danger` 无定义; `--color-edge` 不存在
-5. **Flat, no depth** — 无 elevation hierarchy
-6. **Borders everywhere** — 视觉噪音大
-7. **Missing transitions** — 部分元素 hover 无过渡
-8. **No spacing tokens** — 所有间距硬编码
+1. **No dark mode** — all four themes are light
+2. **No typographic scale** — font sizes are ad-hoc (8-24px, 10 levels)
+3. **Hardcoded colors** — many `#ef4444`, `#fef3c7` etc. hardcoded in JSX
+4. **CSS inconsistencies** — `btn-danger` undefined; `--color-edge` doesn't exist
+5. **Flat, no depth** — no elevation hierarchy
+6. **Borders everywhere** — high visual noise
+7. **Missing transitions** — some elements have no hover transitions
+8. **No spacing tokens** — all spacing hardcoded

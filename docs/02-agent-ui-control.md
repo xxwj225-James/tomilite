@@ -1,26 +1,26 @@
-# Agent → UI Control 技术方案
+# Agent → UI Control Technical Design
 
-> 版本: v1.0 | 日期: 2026-06-29
+> Version: v1.0 | Date: 2026-06-29
 
-## 1. 目标
+## 1. Goal
 
-让 Agent 可以通过 function call 直接控制前端 UI，实现：
+Let the Agent directly control the frontend UI through function calls:
 
-- 用户在聊天中说"打开 task 一览" → Agent 打开 Tasks 面板
-- "打开 TL-3" → Agent 打开 TL-3 详情
-- "帮我创建新笔记" → Agent 打开 Notes 编辑器
+- User says "open the task list" in chat → Agent opens the Tasks panel
+- "Open TL-3" → Agent opens TL-3 details
+- "Create a new note for me" → Agent opens the Notes editor
 
-## 2. 核心架构
+## 2. Core Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      用户输入                            │
+│                        User Input                       │
 └────────────────────────┬────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Agent (agent.ts)                                       │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │ UI Tools (不写 DB，只返回 UI 指令)                │   │
+│  │ UI Tools (no DB writes, only UI instructions)   │   │
 │  │  navigate_to     → { panel: 'tasks' }            │   │
 │  │  open_task       → { id, title, status, ... }    │   │
 │  │  create_task_ui  → { }                           │   │
@@ -43,26 +43,26 @@
 │  │                  + setNewNoteMode(true)           │   │
 │  └──────────────────────────────────────────────────┘   │
 └────────────────────────┬────────────────────────────────┘
-                         ▼ React state 更新
+                         ▼ React state updates
 ┌─────────────────────────────────────────────────────────┐
 │  ContentPanel → TasksPanel / NotesPanel                 │
-│  响应 newTaskMode / selectedTaskId / newNoteMode 等     │
-│  → UI 自动切换面板、打开对应视图                          │
+│  Reacts to newTaskMode / selectedTaskId / newNoteMode   │
+│  → UI auto-switches panel, opens the matching view      │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 双向闭环
+### Two-Way Closed Loop
 
 ```
-Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
+Agent ──(UI tool)──▶ Frontend ──(setState)──▶ UI change
                         │
                         ▼
-                   Monitor (🔔) ──▶ 通知 Agent
+                   Monitor (🔔) ──▶ notifies Agent
 ```
 
-## 3. 新增 Agent Tools
+## 3. New Agent Tools
 
-### 3.1 `navigate_to` — 切换面板
+### 3.1 `navigate_to` — Switch Panel
 
 ```typescript
 {
@@ -78,9 +78,9 @@ Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
 }
 ```
 
-执行：直接返回 `{ panel }`，不操作 DB。
+Execution: returns `{ panel }` directly; no DB operations.
 
-### 3.2 `open_task` — 打开 Task 详情
+### 3.2 `open_task` — Open Task Details
 
 ```typescript
 {
@@ -96,9 +96,9 @@ Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
 }
 ```
 
-执行：查询 DB → 返回 task 完整数据。
+Execution: queries DB → returns full task data.
 
-### 3.3 `create_task_ui` — 打开 Task 新建表单
+### 3.3 `create_task_ui` — Open New Task Form
 
 ```typescript
 {
@@ -108,9 +108,9 @@ Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
 }
 ```
 
-执行：直接返回 `{}`，不操作 DB。
+Execution: returns `{}` directly; no DB operations.
 
-### 3.4 `open_note` — 打开笔记
+### 3.4 `open_note` — Open a Note
 
 ```typescript
 {
@@ -126,9 +126,9 @@ Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
 }
 ```
 
-执行：搜索 DB → 返回匹配的 note 数据。
+Execution: searches DB → returns matching note data.
 
-### 3.5 `create_note_ui` — 打开笔记编辑器
+### 3.5 `create_note_ui` — Open Note Editor
 
 ```typescript
 {
@@ -138,20 +138,20 @@ Agent ──(UI tool)──▶ 前端 ──(setState)──▶ UI 变化
 }
 ```
 
-执行：直接返回 `{}`，不操作 DB。
+Execution: returns `{}` directly; no DB operations.
 
-## 4. 前端实现
+## 4. Frontend Implementation
 
-### 4.1 UI 指令队列（Zustand Store）⚠️ 防竞态
+### 4.1 UI Command Queue (Zustand Store) ⚠️ Race-condition protection
 
-使用 Zustand 维护指令队列，避免多个 Agent 指令连续到达时状态互相覆盖：
+A Zustand command queue avoids state overwrites when multiple Agent commands arrive in rapid succession:
 
 ```typescript
 // stores/uiCommandStore.ts
 import { create } from 'zustand';
 
 interface UICommand {
-  id: string;                    // uuid，去重用
+  id: string;                    // uuid, for deduplication
   type: 'navigate' | 'open_task' | 'create_task' | 'open_note' | 'create_note';
   payload: any;
   timestamp: number;
@@ -178,7 +178,7 @@ export const useUICommandStore = create<UICommandState>((set, get) => ({
 }));
 ```
 
-### 4.2 Command Dispatcher（App.tsx SSE handler 内）
+### 4.2 Command Dispatcher (inside App.tsx SSE handler)
 
 ```typescript
 function dispatchUICommand(tool: string, result: any) {
@@ -203,9 +203,9 @@ function dispatchUICommand(tool: string, result: any) {
 }
 ```
 
-### 4.3 面板消费指令（TasksPanel / NotesPanel）
+### 4.3 Panels Consume Commands (TasksPanel / NotesPanel)
 
-每个面板在自己的 `useEffect` 中从队列拉取属于自己的指令：
+Each panel pulls its own commands from the queue in its own `useEffect`:
 
 ```typescript
 // TasksPanel
@@ -213,7 +213,7 @@ const { queue, dequeue } = useUICommandStore();
 useEffect(() => {
   const cmd = queue.find(c => c.type === 'open_task' || c.type === 'create_task');
   if (!cmd) return;
-  dequeue(); // 消费掉
+  dequeue(); // consume it
   if (cmd.type === 'open_task') {
     setPanel('tasks');
     setSelected({ id: cmd.payload.id, ...cmd.payload.data });
@@ -225,61 +225,61 @@ useEffect(() => {
 }, [queue]);
 ```
 
-### 4.4 为什么用队列而不是 `useState + useEffect`？
+### 4.4 Why a Queue Instead of `useState + useEffect`?
 
-| | useState + useEffect | Zustand 队列 |
+| | useState + useEffect | Zustand queue |
 |---|---|---|
-| 连续 3 个指令 | 后一个覆盖前一个（竞态） | 按序消费，不丢失 |
-| 跨组件通信 | 需要层层 props | 直接 subscribe |
-| 调试 | 难追踪 | DevTools 可查看队列 |
-| 去重 | 无 | 可按 id 去重 |
+| 3 commands in a row | Each overwrites the previous (race) | Consumed in order, none lost |
+| Cross-component communication | Requires props drilling | Direct subscribe |
+| Debugging | Hard to trace | DevTools can inspect the queue |
+| Deduplication | None | Can dedupe by id |
 
-## 5. 使用场景
+## 5. Use Cases
 
-### 场景 A：打开面板
+### Scenario A: Open a Panel
 ```
-用户: "打开 task 一览"
+User: "open the task list"
 Agent: navigate_to({ panel: 'tasks' })
-UI: 右侧 Tasks 面板打开
+UI: Tasks panel opens on the right
 ```
 
-### 场景 B：查看特定 Task
+### Scenario B: View a Specific Task
 ```
-用户: "打开 TL-3 看看"
+User: "open TL-3"
 Agent: open_task({ issueNumber: 3 })
-后端: 查 DB → 返回 { id, title, status, ... }
-UI: Tasks 面板打开，TL-3 详情自动显示
+Backend: queries DB → returns { id, title, status, ... }
+UI: Tasks panel opens, TL-3 details shown automatically
 ```
 
-### 场景 C：帮用户准备新笔记
+### Scenario C: Prepare a New Note for the User
 ```
-用户: "帮我创建一个笔记，我来填内容"
+User: "create a note for me, I'll fill in the content"
 Agent: create_note_ui()
-UI: Notes 面板打开，空编辑器就位
-Agent: "编辑器已打开，你可以开始写了 📝"
+UI: Notes panel opens, blank editor ready
+Agent: "The editor is open — you can start writing 📝"
 ```
 
-## 6. 安全性
+## 6. Security
 
-- UI Tools 只能导航和打开已有数据
-- 不能绕过用户直接 Save / Delete
-- 不能修改 DB 数据
-- 所有写操作仍需用户手动确认
+- UI tools can only navigate and open existing data
+- Cannot Save/Delete directly, bypassing the user
+- Cannot modify DB data
+- All write operations still require manual user confirmation
 
-## 7. 改动清单
+## 7. Change List
 
-| 文件 | 改动 | 影响范围 |
+| File | Change | Impact |
 |------|------|----------|
-| `agent.ts` | +5 个 UI tool，+5 个 executeAgentTool case | 工具数量 8→13 |
-| `App.tsx` | +4 个状态，+1 个 dispatchUICommand，SSE handler 调用 | 中等 |
-| `ContentPanel.tsx` | TasksPanel +4 props，NotesPanel +2 props，useEffect 响应 | 中等 |
+| `agent.ts` | +5 UI tools, +5 executeAgentTool cases | Tool count 8→13 |
+| `App.tsx` | +4 states, +1 dispatchUICommand, called from SSE handler | Medium |
+| `ContentPanel.tsx` | TasksPanel +4 props, NotesPanel +2 props, useEffect response | Medium |
 
-## 8. 与 Claude Code MCP 的对比
+## 8. Comparison with Claude Code MCP
 
 | | Claude Code | TomiLite Agent |
 |---|---|---|
-| 控制目标 | IDE（打开文件、跳转行号） | 右侧面板（切换、打开、新建） |
-| 通信协议 | MCP (Model Context Protocol) | Function Call → SSE → React State |
-| 安全性 | 需用户授权 MCP tool | UI tool 不操作 DB，无需授权 |
+| Control target | IDE (open files, jump to line numbers) | Right-side panel (switch, open, create) |
+| Communication protocol | MCP (Model Context Protocol) | Function Call → SSE → React State |
+| Security | Requires user authorization for MCP tools | UI tools don't touch DB, no authorization needed |
 
-核心思路一致：**把 UI 操作抽象为 Agent tool，通过标准 function call 机制控制前端**。
+The core idea is the same: **abstract UI operations into Agent tools and control the frontend through the standard function-call mechanism**.

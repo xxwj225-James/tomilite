@@ -1,71 +1,71 @@
-# TomiLite 功能完善方案
+# TomiLite Feature Enhancement Plan
 
-## 任务管理
+## Task Management
 
-### 🧩 AI 一键拆解
-- **描述**: 选中大任务 → AI 拆为 3-5 个子任务，自动生成子卡片在看板展示
-- **价值**: 降低心理门槛，终结拖延症。模糊大任务变为可执行子项
-- **实现**: `create_issue` 工具加拆解模式，前端右键菜单触发
-- **难度**: 中
+### 🧩 AI One-Click Decomposition
+- **Description**: Select a large task → AI splits it into 3-5 subtasks, auto-generating child cards on the kanban
+- **Value**: Lowers the psychological barrier, ends procrastination. Vague large tasks become executable subtasks
+- **Implementation**: Add a decomposition mode to the `create_issue` tool, triggered from a frontend context menu
+- **Difficulty**: Medium
 
-### 📊 任务统计面板 ✅
-- **描述**: 完成率趋势图、优先级分布、每周热力图
-- **价值**: 可视化进度，一眼看到哪些方面积压
-- **实现**: 复用 Existing Health 数据采集逻辑 + CSS 条形图
-- **难度**: 低
-- **状态**: ✅ 已完成 — Home 页知识地图下方，总计/完成率/7天完成 + 优先级条形图 + 类型标签
+### 📊 Task Statistics Panel ✅
+- **Description**: Completion-rate trend chart, priority distribution, weekly heatmap
+- **Value**: Visualizes progress; spot backlogs at a glance
+- **Implementation**: Reuse existing Health data-collection logic + CSS bar charts
+- **Difficulty**: Low
+- **Status**: ✅ Done — below the Knowledge Map on the Home page: total/completion rate/7-day done + priority bar chart + type labels
 
-### ⌨️ 快捷键快速建任务
-- **描述**: `Ctrl+N` 弹出浮动输入框，输标题+回车即建任务
-- **价值**: 零中断心流，不用切换面板
-- **实现**: 全局快捷键监听 + 浮动 Modal
-- **难度**: 低
+### ⌨️ Keyboard Shortcut for Quick Task Creation
+- **Description**: `Ctrl+N` pops up a floating input; type a title + Enter to create the task
+- **Value**: Uninterrupted flow, no panel switching
+- **Implementation**: Global hotkey listener + floating Modal
+- **Difficulty**: Low
 
-### 🏷️ AI 自动标签
-- **描述**: Agent 根据标题自动打 tag（前端/bug/文档/紧急）→ 看板按标签筛选
-- **价值**: 自动归类，搜索更快
-- **实现**: Agent 返回标签建议，Issue 模型加 labels 字段
-- **难度**: 低
-
----
-
-## 笔记
-
-### 🔗 双向链接
-- **描述**: `[[笔记标题]]` 语法自动生成链接，底部显示哪些笔记引用了当前笔记
-- **价值**: 构建个人知识网络，像 Obsidian 一样的体验
-- **实现**: 渲染层解析 `[[...]]` 语法 + 反向索引表
-- **难度**: 中
-
-### 📑 自动目录 ✅
-- **描述**: 笔记标题下方可折叠 TOC
-- **价值**: 长文档秒定位
-- **实现**: 解析 `#` 标题 + `<details>` 折叠 + 点击跳转
-- **状态**: ✅ 已完成
-
-### 🎨 代码块语法高亮 ✅
-- **描述**: ```js ```python 等代码块自动着色
-- **价值**: 技术笔记必备
-- **实现**: highlight.js，9 种语言，GitHub Dark 主题
-- **状态**: ✅ 已完成
-
-### 🤖 AI 续写/改写 ✅
-- **描述**: 笔记编辑器 header 按钮 → Agent 润色/翻译/总结/扩写
-- **价值**: 写作加速器
-- **实现**: ✨润色 🌐翻译 📝总结 📖扩写 4 按钮，sendMessage 发给 Agent
-- **状态**: ✅ 已完成
+### 🏷️ AI Auto-Tagging
+- **Description**: Agent auto-tags based on the title (frontend/bug/docs/urgent) → kanban filters by tag
+- **Value**: Automatic categorization, faster search
+- **Implementation**: Agent returns tag suggestions; add a labels field to the Issue model
+- **Difficulty**: Low
 
 ---
 
-## 优先级建议
+## Notes
 
-| 优先级 | 功能 | 理由 |
+### 🔗 Bidirectional Links
+- **Description**: `[[note title]]` syntax auto-generates links; the bottom shows which notes reference the current note
+- **Value**: Builds a personal knowledge network, an Obsidian-like experience
+- **Implementation**: Render layer parses `[[...]]` syntax + a reverse-index table
+- **Difficulty**: Medium
+
+### 📑 Auto Table of Contents ✅
+- **Description**: Collapsible TOC under the note title
+- **Value**: Instant navigation in long documents
+- **Implementation**: Parse `#` headings + `<details>` collapse + click-to-jump
+- **Status**: ✅ Done
+
+### 🎨 Code-Block Syntax Highlighting ✅
+- **Description**: ```js ```python etc. auto-colored
+- **Value**: Essential for technical notes
+- **Implementation**: highlight.js, 9 languages, GitHub Dark theme
+- **Status**: ✅ Done
+
+### 🤖 AI Polish/Rewrite ✅
+- **Description**: Header buttons in the note editor → Agent polishes/translates/summarizes/expands
+- **Value**: Writing accelerator
+- **Implementation**: 4 buttons — ✨Polish 🌐Translate 📝Summarize 📖Expand — sent to the Agent via sendMessage
+- **Status**: ✅ Done
+
+---
+
+## Priority Suggestions
+
+| Priority | Feature | Rationale |
 |--------|------|------|
-| P0 | AI 一键拆解 | 最大痛点 |
-| P0 | ~~代码块语法高亮~~ ✅ | 已完成 |
-| P0 | ~~AI 续写/改写~~ ✅ | 已完成 |
-| P0 | ~~自动目录~~ ✅ | 已完成 |
-| P0 | ~~任务统计面板~~ ✅ | 已完成 |
-| P1 | 快捷键快速建任务 | 低投入，高频使用 |
-| P2 | 双向链接 | 知识管理核心能力 |
-| P3 | AI 自动标签 | 依赖标签体系重构 |
+| P0 | AI one-click decomposition | Biggest pain point |
+| P0 | ~~Code-block syntax highlighting~~ ✅ | Done |
+| P0 | ~~AI polish/rewrite~~ ✅ | Done |
+| P0 | ~~Auto TOC~~ ✅ | Done |
+| P0 | ~~Task statistics panel~~ ✅ | Done |
+| P1 | Keyboard shortcut for quick task creation | Low effort, high frequency |
+| P2 | Bidirectional links | Core knowledge-management capability |
+| P3 | AI auto-tagging | Depends on tag-system rework |

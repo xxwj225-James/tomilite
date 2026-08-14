@@ -1,99 +1,99 @@
-# C 方案：聊天内嵌可操作卡片
+# Plan C: Actionable Cards Embedded in Chat
 
-## 设计目标
+## Design Goals
 
-Agent 创建的内容（任务/笔记/报告）在聊天中呈现为可操作卡片，用户无需切换到面板即可查看、编辑、删除。面板作为"高级视图"使用。
+Content created by the Agent (tasks/notes/reports) appears in chat as actionable cards, so users can view, edit, and delete without switching panels. Panels act as the "advanced view".
 
-## 核心原则
+## Core Principles
 
 ```
-面板开着 → Agent 填表单，用户精调后 Save
-面板没开 → Agent 直接写 DB，聊天出卡片
+Panel open → Agent fills the form, user fine-tunes then Saves
+Panel closed → Agent writes to DB directly, card appears in chat
 ```
 
-**一个工具只做一件事**：
-- `create_issue` / `create_note` / `create_report` → 直接写 DB
-- `suggest_issue_edit` / `suggest_note_edit` / `suggest_report_edit` → 只填表单（编辑器开着时）
+**One tool, one job**:
+- `create_issue` / `create_note` / `create_report` → writes to DB directly
+- `suggest_issue_edit` / `suggest_note_edit` / `suggest_report_edit` → only fills the form (when the editor is open)
 
-## 卡片交互
+## Card Interactions
 
 ```
 ┌──────────────────────────────────────┐
 │ 🎫 TL-50   todo   high               │
-│ Debug UI与Agent会话交互的C方案         │
-│ 通过事件总线+状态机解耦...             │  ← 描述片段 (120字)
+│ Plan C for Debug UI-agent interaction│
+│ Decoupled via event bus + state machine... │  ← description excerpt (120 chars)
 │                                      │
-│ [👁 查看] [✏️ 编辑] [▶ Start] [🗑 删除] │
+│ [👁 View] [✏️ Edit] [▶ Start] [🗑 Delete] │
 └──────────────────────────────────────┘
 
-[查看] → 面板打开，选中该项（只读）
-[编辑] → 面板打开，选中该项 + 进入编辑模式
-[Start] → 任务直接移至 in_progress
-[删除] → 确认后删除 DB 记录
+[View] → panel opens, item selected (read-only)
+[Edit] → panel opens, item selected + edit mode
+[Start] → task moves to in_progress directly
+[Delete] → deletes the DB record after confirmation
 ```
 
-## 技术实现
+## Technical Implementation
 
-### 前端 (App.tsx)
+### Frontend (App.tsx)
 
-1. **ChatCard 接口** — 定义卡片数据结构 (type, id, title, key, status, ...)
-2. **Msg 组件** — 渲染卡片 JSX，含状态 badge + 操作按钮
-3. **SSE 处理** — `create_*` 事件构建卡片，缓存到 `cardRef`，随消息持久化
-4. **卡片事件** — `tl-open-card`, `tl-edit-card`, `tl-delete-card`, `tl-move-card` CustomEvent
+1. **ChatCard interface** — defines the card data structure (type, id, title, key, status, ...)
+2. **Msg component** — renders the card JSX with status badge + action buttons
+3. **SSE handling** — builds cards from `create_*` events, caches to `cardRef`, persists with the message
+4. **Card events** — `tl-open-card`, `tl-edit-card`, `tl-delete-card`, `tl-move-card` CustomEvents
 
-### 前端 (ContentPanel.tsx)
+### Frontend (ContentPanel.tsx)
 
-5. **面板联动** — `tl-select-task/note/report` 事件监听，选中对应条目
+5. **Panel linkage** — listens for `tl-select-task/note/report` events and selects the corresponding item
 
-### 后端 (agent.ts)
+### Backend (agent.ts)
 
-6. **最小改动** — `create_issue` 返回值加 `id: issue.id`（UUID），供卡片删除使用
+6. **Minimal change** — `create_issue` return value gains `id: issue.id` (UUID) for card deletion
 
-### 前端 (其它)
+### Frontend (Other)
 
-7. **preFlight** — 移除创建类正则，不再自动导航到面板
-8. **create_* SSE** — 移除 `setPanel()`，纯聊天不跳面
+7. **preFlight** — removed creation-type regexes; no longer auto-navigates to panels
+8. **create_* SSE** — removed `setPanel()`; pure chat never jumps panels
 
-## 当前状态
+## Current Status
 
-### ✅ 已完成
+### ✅ Done
 
-| 功能 | 状态 | 备注 |
+| Feature | Status | Notes |
 |------|------|------|
-| ChatCard 接口 | ✅ | |
-| Msg 卡片渲染 | ✅ | 含状态 badge + 4 个操作按钮 |
-| 卡片事件监听 | ✅ | open / edit / delete / move |
-| 面板联动 (task) | ✅ | tl-select-task → TasksPanel |
-| 面板联动 (note) | ✅ | tl-select-note → NotesPanel |
-| 面板联动 (report) | ✅ | tl-select-report → ReportsPanel |
-| lastToolArgsRef 缓存 | ✅ | 解决 tool_result 无 args 问题 |
-| finalMsg 保存 card | ✅ | 通过 cardRef 持久化到最终消息 |
-| agent.ts 最小改动 | ✅ | create_issue 返回 id + priority，完整 args |
-| 卡片 DB 持久化 | ✅ | ChatMessage.card 列 + saveMsg/load |
-| DB 迁移 | ✅ | 原始 SQL ALTER TABLE + prisma db push 兜底 |
-| DeepSeek JSON 清洗 | ✅ | Non-greedy 正则对齐后端 |
+| ChatCard interface | ✅ | |
+| Msg card rendering | ✅ | Status badge + 4 action buttons |
+| Card event listeners | ✅ | open / edit / delete / move |
+| Panel linkage (task) | ✅ | tl-select-task → TasksPanel |
+| Panel linkage (note) | ✅ | tl-select-note → NotesPanel |
+| Panel linkage (report) | ✅ | tl-select-report → ReportsPanel |
+| lastToolArgsRef cache | ✅ | Fixes tool_result missing args |
+| finalMsg saves card | ✅ | Persisted to the final message via cardRef |
+| agent.ts minimal change | ✅ | create_issue returns id + priority, full args |
+| Card DB persistence | ✅ | ChatMessage.card column + saveMsg/load |
+| DB migration | ✅ | Raw SQL ALTER TABLE + prisma db push fallback |
+| DeepSeek JSON cleanup | ✅ | Non-greedy regex aligned with backend |
 
-### 🔧 已修复
+### 🔧 Fixed
 
-1. **cardRef 被覆盖** → `if (msgCard) cardRef.current = msgCard`
-2. **args 截断 200 字符** → 改为完整传递，JSON.parse 不再失败
-3. **create_issue 缺 priority** → 返回值加 `priority: issue.priority`
-4. **卡片不持久化** → Prisma schema + chat router + saveMsg
-5. **DB 迁移竞态** → 原始 SQL 先执行，server.listen 在迁移完成后
-6. **DeepSeek 原始 JSON 泄露** → Non-greedy 正则清洗
+1. **cardRef being overwritten** → `if (msgCard) cardRef.current = msgCard`
+2. **args truncated at 200 chars** → now passed in full; JSON.parse no longer fails
+3. **create_issue missing priority** → return value gains `priority: issue.priority`
+4. **Cards not persisted** → Prisma schema + chat router + saveMsg
+5. **DB migration race** → raw SQL runs first; server.listen after migration completes
+6. **DeepSeek raw JSON leaking** → cleaned with a non-greedy regex
 
-### 🔄 待回加（agent.ts）
+### 🔄 To Restore (agent.ts)
 
-- `streamLLMWithRetry` — 指数退避重试
-- `suggest_*` guard 移到 agent loop
-- prompt 优化 — 多步执行/智能默认/查重/终止信号
-- 错误恢复 — tool 返回 error 时注入修正提示
-- tool result 截断 — LLM 只看到摘要
+- `streamLLMWithRetry` — exponential-backoff retry
+- `suggest_*` guard moved into the agent loop
+- Prompt optimization — multi-step execution / smart defaults / dedup / stop signals
+- Error recovery — inject fix hints when a tool returns an error
+- Tool-result truncation — LLM only sees a summary
 
-## 版本记录
+## Version History
 
-| 版本 | 日期 | 内容 |
+| Version | Date | Content |
 |------|------|------|
-| v0.1.0-beta | 2026-07-09 | C Plan 卡片完整可用 |
-| - | 2026-07-09 | 修复 cardRef 覆盖、args 截断、priority 缺失 |
-| - | 2026-07-09 | 加卡片 DB 持久化 + 原始 SQL 迁移 |
+| v0.1.0-beta | 2026-07-09 | Plan C cards fully functional |
+| - | 2026-07-09 | Fixed cardRef overwrite, args truncation, missing priority |
+| - | 2026-07-09 | Added card DB persistence + raw SQL migration |

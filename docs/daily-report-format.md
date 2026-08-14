@@ -1,6 +1,6 @@
 # Daily Report Format Design
 
-## Evening Report (晚报 / イブニングレポート)
+## Evening Report
 
 ### Structure
 
@@ -53,7 +53,7 @@ See `apps/web/src/styles/index.css` — `.md-preview` section.
 
 ---
 
-## Morning Brief (早会 / 朝チェックイン)
+## Morning Brief
 
 ### Structure
 

@@ -143,7 +143,7 @@ Replace the passive welcome text with an **interactive setup checklist**. Each i
 - `useTaskState.ts`: remove all email state/handlers/dirty-tracking; remove `fetchNotifications` and its call sites
 - `TasksPanel.tsx`: remove `_email` branches in ConfirmDialogs
 
-### Step 2.4 — Agent Context Bridge (跨面板联动)
+### Step 2.4 — Agent Context Bridge (cross-panel coordination)
 
 **Risk**: After extracting email from Tasks, AI agent loses visibility into email state.
 

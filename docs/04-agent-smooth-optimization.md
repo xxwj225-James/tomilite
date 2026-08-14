@@ -1,58 +1,58 @@
-# Agent 丝滑优化方案 — 对标 Claude Code
+# Agent Smoothness Optimization — Benchmarking Claude Code
 
-> 版本: v1.0 | 日期: 2026-06-29
-> 基于 Claude Code 架构分析，针对 TomiLite Agent 的 4 维优化
+> Version: v1.0 | Date: 2026-06-29
+> Based on Claude Code architecture analysis — 4 dimensions of optimization for the TomiLite Agent
 
-## 现状评估
+## Current State Assessment
 
-| 维度 | 当前状态 | 差距 |
+| Dimension | Current State | Gap |
 |------|----------|------|
-| 意图路由 | Guard Flash 模型（一阶段） | 🟡 部分实现，需加强 |
-| 上下文管理 | System prompt + noteContext | 🔴 无沙箱约束、无 JIT 注入 |
-| 交互体验 | SSE → token → setState | 🟡 标准流程，无"抢跑" |
-| 错误处理 | try-catch + 返回错误 | 🔴 无自愈机制 |
+| Intent routing | Guard Flash model (single stage) | 🟡 Partially implemented, needs strengthening |
+| Context management | System prompt + noteContext | 🔴 No sandbox constraints, no JIT injection |
+| Interaction experience | SSE → token → setState | 🟡 Standard flow, no "pre-flight" |
+| Error handling | try-catch + returns error | 🔴 No self-healing |
 
 ---
 
-## 一、两阶段双模型架构
+## 1. Two-Stage Dual-Model Architecture
 
-### 现状问题
-当前 Guard 模型和 Pro 模型是串行的——Guard 输出指令后 Pro 才开始。用户需要等待 Guard 的 HTTP 往返 + Pro 的流式输出。如果 Guard 耗时 1s，Pro 耗时 3s，用户感知延迟是 4s。
+### Current Problem
+The Guard and Pro models currently run serially — Pro only starts after Guard outputs its instruction. Users wait for the Guard HTTP round-trip plus Pro's streaming output. If Guard takes 1s and Pro takes 3s, the perceived latency is 4s.
 
-### 优化方案
+### Optimization
 
 ```
-用户消息
+User message
   ↓
-┌─ Phase 0：前端抢跑（< 50ms）──────────────┐
-│ 前端关键字检测（纯 JS，无网络请求）          │
-│ "打开task" → 立刻 dispatch open_task 骨架屏  │
-│ "创建笔记" → 立刻打开 Notes 编辑器骨架屏     │
-└────────────────────────────────────────────┘
+┌─ Phase 0: Frontend pre-flight (< 50ms) ─────────┐
+│ Frontend keyword detection (pure JS, no network)  │
+│ "open task" → immediately dispatch open_task skeleton │
+│ "create note" → immediately open Notes editor skeleton │
+└──────────────────────────────────────────────────┘
   ↓
-┌─ Phase 1：Guard 路由（< 500ms）───────────┐
-│ Flash 模型 → 输出 JSON intent + parameters │
-│ 如果前端已抢跑 → 只需校验/修正，无需重复 UI │
-│ 如果前端未抢跑 → 触发对应的 UI 操作         │
-└────────────────────────────────────────────┘
+┌─ Phase 1: Guard routing (< 500ms) ──────────────┐
+│ Flash model → outputs JSON intent + parameters    │
+│ If frontend already pre-flighted → just validate/fix, no repeated UI │
+│ If not pre-flighted → trigger the matching UI action │
+└──────────────────────────────────────────────────┘
   ↓
-┌─ Phase 2：Pro 执行（1-5s）───────────────┐
-│ 完整上下文 + 工具调用 + Agentic Loop       │
-│ 前端骨架屏被真实数据填充                    │
-└────────────────────────────────────────────┘
+┌─ Phase 2: Pro execution (1-5s) ─────────────────┐
+│ Full context + tool calls + Agentic Loop          │
+│ Frontend skeleton filled with real data           │
+└──────────────────────────────────────────────────┘
 ```
 
-### 实现重点
+### Key Implementation Points
 
-**前端抢跑规则（零网络延迟）：**
+**Frontend pre-flight rules (zero network latency):**
 
 ```typescript
 const PRE_FLIGHT_RULES = [
-  { pattern: /打开(task|任务).*一[览栏]/, action: () => navigateTo('tasks') },
-  { pattern: /打开(note|笔记).*一[览栏]/, action: () => navigateTo('notes') },
-  { pattern: /打开\s*TL-(\d+)/, action: (m) => openTask(parseInt(m[1])) },
-  { pattern: /创建.*(task|任务|bug)/, action: () => openNewTaskForm() },
-  { pattern: /创建.*(note|笔记)/, action: () => openNewNoteForm() },
+  { pattern: /open\s+(task|issue).*(list|board)/, action: () => navigateTo('tasks') },
+  { pattern: /open\s+(note|document).*(list|board)/, action: () => navigateTo('notes') },
+  { pattern: /open\s*TL-(\d+)/, action: (m) => openTask(parseInt(m[1])) },
+  { pattern: /create.*(task|issue|bug)/, action: () => openNewTaskForm() },
+  { pattern: /create.*(note|document)/, action: () => openNewNoteForm() },
 ];
 
 function preFlightCheck(message: string): UICommand | null {
@@ -64,26 +64,26 @@ function preFlightCheck(message: string): UICommand | null {
 }
 ```
 
-**效果对比：**
+**Before/after comparison:**
 
-| 场景 | 优化前 | 优化后 |
+| Scenario | Before | After |
 |------|--------|--------|
-| "打开 task 一览" | 4s（Guard+Pro） | <50ms（前端抢跑） |
-| "创建新笔记" | 4s | <50ms（前端抢跑） |
-| "给笔记加内容" | 4s | 1-2s（Guard routing + Pro execution）|
+| "open the task list" | 4s (Guard+Pro) | <50ms (frontend pre-flight) |
+| "create a new note" | 4s | <50ms (frontend pre-flight) |
+| "add content to a note" | 4s | 1-2s (Guard routing + Pro execution) |
 
 ---
 
-## 二、上下文沙箱与 JIT 注入
+## 2. Context Sandbox & JIT Injection
 
-### 现状问题
-- `shell_exec` 没有显式声明工作空间限制
-- System prompt 包含了全部 10 个 tool 的定义（~2000 tokens），即使当前场景只需要 3 个
-- 没有根据场景动态注入最小化上下文
+### Current Problem
+- `shell_exec` doesn't explicitly declare workspace restrictions
+- The system prompt includes all 10 tool definitions (~2000 tokens) even when the current scenario needs only 3
+- No scenario-based dynamic injection of minimal context
 
-### 优化方案
+### Optimization
 
-**1. 沙箱声明（System Prompt 级别）**
+**1. Sandbox declaration (system-prompt level)**
 
 ```
 SANDBOX: Your workspace is ${WORKSPACE}. 
@@ -93,24 +93,24 @@ SANDBOX: Your workspace is ${WORKSPACE}.
 - Any attempt to escape the sandbox will be blocked.
 ```
 
-**2. JIT 上下文注入（Tool 执行时才注入）**
+**2. JIT context injection (injected only at tool execution time)**
 
 ```typescript
 async function executeAgentTool(tool: string, args: any) {
-  // JIT: 在执行前注入最小化上下文
+  // JIT: inject minimal context before execution
   switch (tool) {
     case 'shell_exec':
-      // 注入当前 git 状态（仅 50 tokens）
+      // inject current git state (only 50 tokens)
       const gitCtx = await getGitContext(args.cwd);
       args._context = gitCtx; // { branch: 'main', recentCommits: [...], dirty: false }
       break;
     case 'create_issue':
-      // 注入当前 project 统计（仅 30 tokens）
+      // inject current project stats (only 30 tokens)
       const stats = await getProjectStats();
       args._context = stats; // { total: 12, todo: 5, inProgress: 4 }
       break;
     case 'create_note':
-      // 注入已有 note 分类列表（仅 20 tokens）
+      // inject existing note category list (only 20 tokens)
       const cats = await getExistingCategories();
       args._context = cats; // ['general', 'architecture', 'api_docs']
       break;
@@ -119,27 +119,27 @@ async function executeAgentTool(tool: string, args: any) {
 }
 ```
 
-**3. Tool 列表按场景裁剪（当前已有，需加强）**
+**3. Tool-list trimming by scenario (exists today, needs strengthening)**
 
-| 场景 | 可用 Tools | Token 节省 |
+| Scenario | Available Tools | Token Savings |
 |------|-----------|-----------|
-| Note 编辑器打开 | suggest_note_edit | ~1500 |
-| Tasks 面板 | create_issue, suggest_issue_edit, list_issues, get_stats | ~800 |
-| 纯聊天 | 全 10 个 | 0 |
-| shell 执行中 | 仅 shell_exec + mcp_call | ~1200 |
+| Note editor open | suggest_note_edit | ~1500 |
+| Tasks panel | create_issue, suggest_issue_edit, list_issues, get_stats | ~800 |
+| Pure chat | All 10 | 0 |
+| During shell execution | shell_exec + mcp_call only | ~1200 |
 
-**效果：** 无效 tool 定义不再占用上下文，模型注意力更集中。
+**Effect:** unused tool definitions no longer consume context; the model's attention stays focused.
 
 ---
 
-## 三、乐观更新（Optimistic UI）
+## 3. Optimistic UI Updates
 
-### 现状问题
-用户说"打开 TL-3"，Agent 开始流式输出 tool_call JSON → 前端等待完整的 `tool_result` 才更新 UI。用户看到的是打字机效果，延迟 2-4 秒。
+### Current Problem
+When the user says "open TL-3", the Agent streams tool_call JSON → the frontend waits for the full `tool_result` before updating the UI. Users see a typewriter effect with 2-4s latency.
 
-### 优化方案
+### Optimization
 
-**SSE 流中检测 tool_call 前缀 → 立刻触发骨架屏**
+**Detect the tool_call prefix in the SSE stream → trigger the skeleton screen immediately**
 
 ```typescript
 // App.tsx SSE handler
@@ -147,7 +147,7 @@ if (delta?.tool_calls) {
   const tc = delta.tool_calls[0];
   if (tc.function?.name && !toolCallStarted) {
     toolCallStarted = true;
-    // 抢跑：不等待完整参数，立刻触发 UI 动作
+    // pre-flight: don't wait for full arguments, trigger UI action immediately
     optimisticUI(tc.function.name, tc.function.arguments || '{}');
   }
 }
@@ -163,7 +163,7 @@ function optimisticUI(toolName: string, partialArgs: string) {
       showSkeleton('note-editor');
       break;
     case 'navigate_to':
-      // 尝试从 partial args 中提取 panel
+      // try to extract the panel from the partial args
       const m = partialArgs.match(/"panel"\s*:\s*"(\w+)"/);
       if (m) setPanel(m[1]);
       break;
@@ -171,16 +171,16 @@ function optimisticUI(toolName: string, partialArgs: string) {
 }
 ```
 
-**效果：** 用户看到面板**立刻**滑出（带骨架屏），0.5s 后数据填充完成。
+**Effect:** the panel slides out **immediately** (with skeleton screen); data fills in after 0.5s.
 
 ---
 
-## 四、自愈机制（Auto-Healing Loop）
+## 4. Self-Healing Loop
 
-### 现状问题
-`shell_exec` 返回 `code !== 0` 时，直接告诉用户"命令失败"。用户需要自己分析错误、手动修正、重新发送。
+### Current Problem
+When `shell_exec` returns `code !== 0`, the user is simply told "command failed" — they must analyze the error, fix it manually, and resend.
 
-### 优化方案
+### Optimization
 
 ```typescript
 async function shellExec(command: string, cwd?: string): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -189,7 +189,7 @@ async function shellExec(command: string, cwd?: string): Promise<{ code: number;
 
   let result = await nativeExec(command, cwd);
   
-  // Auto-heal: 常见错误自动修复
+  // Auto-heal: auto-fix common errors
   if (result.code !== 0 && isRecoverable(result.stderr)) {
     const fixedCmd = await aiFixCommand(command, cwd, result.stderr);
     if (fixedCmd && fixedCmd !== command) {
@@ -204,12 +204,12 @@ async function shellExec(command: string, cwd?: string): Promise<{ code: number;
   return result;
 }
 
-// 可恢复错误模式
+// recoverable error patterns
 const RECOVERABLE_PATTERNS = [
-  /No such file or directory/,  // 路径错误
-  /command not found/,          // 命令拼写
-  /Permission denied/,          // 权限问题
-  /fatal: not a git repository/,// 目录不对
+  /No such file or directory/,  // wrong path
+  /command not found/,          // misspelled command
+  /Permission denied/,          // permission issue
+  /fatal: not a git repository/,// wrong directory
 ];
 
 function isRecoverable(stderr: string): boolean {
@@ -217,7 +217,7 @@ function isRecoverable(stderr: string): boolean {
 }
 
 async function aiFixCommand(cmd: string, cwd: string, error: string): Promise<string | null> {
-  // 用 Flash 模型快速修复
+  // quickly fix with the Flash model
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
@@ -238,41 +238,41 @@ async function aiFixCommand(cmd: string, cwd: string, error: string): Promise<st
 }
 ```
 
-**效果：** 用户说 `git lig`（打错了），Agent 自动修正为 `git log` 并执行，用户看到正确结果，完全感知不到中间的修复过程。
+**Effect:** when the user types `git lig` (typo), the Agent auto-corrects it to `git log` and runs it — the user sees the correct result and never notices the fix in between.
 
 ---
 
-## 实施优先级
+## Implementation Priorities
 
-| 优先级 | 优化项 | 难度 | 用户感知提升 |
+| Priority | Optimization | Difficulty | Perceived Improvement |
 |--------|--------|------|-------------|
-| P0 | 前端抢跑（Pre-flight Rules） | 低 | 🔥🔥🔥🔥🔥 |
-| P0 | Tool 列表按场景极致裁剪 | 低 | 🔥🔥🔥 |
-| P1 | JIT 上下文注入（git context）| 中 | 🔥🔥🔥🔥 |
-| P1 | 沙箱声明强化 | 低 | 🔥🔥 |
-| P2 | 乐观更新（SSE 骨架屏） | 中 | 🔥🔥🔥🔥 |
-| P2 | 自愈机制 | 中 | 🔥🔥🔥🔥 |
+| P0 | Frontend pre-flight (Pre-flight Rules) | Low | 🔥🔥🔥🔥🔥 |
+| P0 | Aggressive tool-list trimming per scenario | Low | 🔥🔥🔥 |
+| P1 | JIT context injection (git context) | Medium | 🔥🔥🔥🔥 |
+| P1 | Stronger sandbox declaration | Low | 🔥🔥 |
+| P2 | Optimistic UI (SSE skeleton screens) | Medium | 🔥🔥🔥🔥 |
+| P2 | Self-healing loop | Medium | 🔥🔥🔥🔥 |
 
 ---
 
-## 改动清单（P0 实现）
+## Change List (P0 implementation)
 
-| 文件 | 改动 |
+| File | Change |
 |------|------|
-| `App.tsx` | `preFlightCheck()` — 消息发送前检测关键字，<50ms 触发 UI |
-| `agent.ts` | 沙箱声明注入 system prompt |
-| `agent.ts` | JIT 上下文注入（shell_exec 前注入 git 状态） |
-| `agent.ts` | Tool 裁剪强化——编辑 note 时只保留 1 个 tool |
+| `App.tsx` | `preFlightCheck()` — detects keywords before sending a message, triggers UI in <50ms |
+| `agent.ts` | Inject sandbox declaration into system prompt |
+| `agent.ts` | JIT context injection (inject git state before shell_exec) |
+| `agent.ts` | Stronger tool trimming — only 1 tool kept while editing a note |
 
 ---
 
-## 附录：Review 修正（v1.1）
+## Appendix: Review Corrections (v1.1)
 
-### 修正 1：乐观更新 JSON 截断 ➔ 累积匹配
+### Fix 1: Optimistic-UI JSON truncation ➔ accumulated matching
 
-**问题**：SSE delta chunk 可能在 JSON 中间截断，正则 `partialArgs.match()` 失效。
+**Problem**: SSE delta chunks can cut off mid-JSON, so the `partialArgs.match()` regex fails.
 
-**修正**：维护 `accumulatedArgs` 字符串，每收到一个 chunk 累加后匹配：
+**Fix**: maintain an `accumulatedArgs` string and match against it after accumulating each chunk:
 
 ```typescript
 let accumulatedArgs = '';
@@ -285,11 +285,11 @@ if (delta?.tool_calls) {
 }
 ```
 
-### 修正 2：自愈机制 ➔ 最多重试 1 次
+### Fix 2: Self-healing ➔ at most 1 retry
 
-**问题**：修复后的命令再次报错可能陷入死循环。
+**Problem**: if the fixed command errors again, it could loop forever.
 
-**修正**：硬编码 `maxRetries = 1`，一次修复后仍失败则返回原始错误：
+**Fix**: hard-code `maxRetries = 1`; if it still fails after one fix, return the original error:
 
 ```typescript
 let retries = 0;
@@ -302,8 +302,8 @@ while (result.code !== 0 && isRecoverable(result.stderr) && retries < MAX_RETRIE
 }
 ```
 
-### 修正 3：Tool 裁剪 ➔ 保留核心工具，避免缓存失效
+### Fix 3: Tool trimming ➔ keep core tools to avoid cache invalidation
 
-**问题**：频繁切换 tool 列表导致 LLM Context Cache 失效。用户编辑笔记时突然问"看板状态"，模型因缺少工具而呆滞。
+**Problem**: frequently switching the tool list invalidates the LLM context cache. If the user suddenly asks about "board status" while editing a note, the model stalls for lack of tools.
 
-**修正**：定义 `CORE_TOOLS = ['get_stats', 'list_issues', 'web_search', 'shell_exec', 'mcp_call']` 始终可用，仅裁剪场景专属工具。编辑 note 时 = Core + `suggest_note_edit`，查看 task 时 = Core + `suggest_issue_edit`。
+**Fix**: define `CORE_TOOLS = ['get_stats', 'list_issues', 'web_search', 'shell_exec', 'mcp_call']` always available; only trim scenario-specific tools. Editing a note = Core + `suggest_note_edit`; viewing a task = Core + `suggest_issue_edit`.

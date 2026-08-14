@@ -1,53 +1,53 @@
-# Agent 调用外部能力 技术方案
+# Agent External Capabilities — Technical Design
 
-> 版本: v2.0 | 日期: 2026-06-29
-> v2.0 变更: 安全模型重构 / 防死锁 / Token 脱敏 / MCP Client 优先
+> Version: v2.0 | Date: 2026-06-29
+> v2.0 changes: security model redesign / deadlock prevention / token masking / MCP Client first
 
-## 1. 背景
+## 1. Background
 
-TomiLite 目前已实现 MCP Server（被外部 Agent 调用），但缺少反向能力——TomiLite Agent 无法调用外部 Agent 或服务。
+TomiLite already implements an MCP Server (called by external Agents), but lacks the reverse capability — the TomiLite Agent cannot call external Agents or services.
 
-**目标：让 Tomi 能操作外部工具，同时保证安全。**
+**Goal: let Tomi operate external tools while remaining secure.**
 
-## 2. 核心决策：不走自定义 http_call，直接走 MCP Client
+## 2. Core Decision: Skip a Custom http_call, Go Straight to MCP Client
 
-### 为什么不自己造轮子
+### Why Not Reinvent the Wheel
 
-| | 自定义 http_call | MCP Client |
+| | Custom http_call | MCP Client |
 |---|---|---|
-| Jira 创建 Issue | Agent 手动拼 JSON → 幻觉风险高 | 调 `jira_create_issue` → tool 定义已验证 |
-| GitHub PR | Agent 记住 API 格式 | `github_create_pr` — 社区维护 |
-| 安全性 | Agent 接触明文 Token | Token 只在服务端，Agent 不可见 |
-| 生态 | 每个服务都要手写 | 直接继承开源 MCP Server |
+| Create Issue in Jira | Agent hand-crafts JSON → high hallucination risk | Calls `jira_create_issue` → tool definition already validated |
+| GitHub PR | Agent must memorize API formats | `github_create_pr` — community-maintained |
+| Security | Agent touches plaintext tokens | Tokens live server-side only, invisible to Agent |
+| Ecosystem | Hand-write every service | Inherits open-source MCP Servers directly |
 
-**决策：Phase 1 就直接集成 MCP Client 协议。** 市面上已有成熟 MCP Server（github、jira、filesystem、postgres 等），TomiLite 只需做好 MCP Client 连接层。
+**Decision: integrate the MCP Client protocol from Phase 1.** Mature MCP Servers already exist (github, jira, filesystem, postgres, etc.); TomiLite only needs a solid MCP Client connection layer.
 
-## 3. 架构
+## 3. Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
 │                Tomi Agent                         │
 │                                                   │
 │  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │
-│  │ shell_exec   │  │  mcp_call   │  │ 现有 DB    │ │
-│  │ (受限白名单) │  │ (任意 MCP)  │  │ tool       │ │
+│  │ shell_exec   │  │  mcp_call   │  │ existing  │ │
+│  │ (read-only) │  │  (any MCP)  │  │ DB tools  │ │
 │  └──────┬──────┘  └──────┬──────┘  └───────────┘ │
 └─────────┼────────────────┼───────────────────────┘
           ▼                ▼
     ┌──────────┐    ┌──────────────────┐
-    │ spawn()  │    │ MCP Client 连接池 │
-    │ stdin 关 │    │ ┌──────────────┐ │
-    │ cwd 受限 │    │ │ github MCP   │ │
-    │ 进程组杀 │    │ │ jira MCP     │ │
+    │ spawn()  │    │ MCP Client pool  │
+    │ stdin off│    │ ┌──────────────┐ │
+    │ cwd bound│    │ │ github MCP   │ │
+    │ kill pg  │    │ │ jira MCP     │ │
     └────┬─────┘    │ │ filesystem   │ │
          ▼          │ │ postgres     │ │
     Claude Code CLI │ └──────────────┘ │
     git / npm       └──────────────────┘
 ```
 
-## 4. Tool 设计
+## 4. Tool Design
 
-### 4.1 `shell_exec` — 受限命令行（只读白名单）
+### 4.1 `shell_exec` — Restricted Shell (Read-Only Whitelist)
 
 ```typescript
 {
@@ -64,10 +64,10 @@ TomiLite 目前已实现 MCP Server（被外部 Agent 调用），但缺少反�
 }
 ```
 
-**安全约束（Phase 1）：**
+**Security constraints (Phase 1):**
 
 ```typescript
-// 只读白名单——除此之外一律拒绝
+// read-only whitelist — everything else is rejected
 const READ_ONLY_WHITELIST = [
   /^git\s+(log|status|diff|show|branch|tag|rev-parse|config\s+--get)/,
   /^ls(\s|$)/, /^cat\s/, /^head\s/, /^tail\s/, /^wc\s/,
@@ -75,29 +75,29 @@ const READ_ONLY_WHITELIST = [
   /^node\s+-e\s/, /^npx\s+claude\s/,
 ];
 
-// 多层 shell 嵌套禁止
+// no nested shells
 const BLOCKED_PATTERNS = [
-  /\|/, /`/, /\$\(/, /&&/, /\|\|/, /;/,        // 管道、命令替换、链式
-  /bash/, /sh\s/, /zsh/, /exec/, /eval/,       // 子 shell
-  /sudo/, /su\s/, /chmod/, /chown/,            // 权限提升
-  /rm\s/, /mv\s/, /cp\s/, /mkdir/, /touch/,    // 文件修改
-  />/, />>/, /<\s*\//,                          // 重定向
-  /base64/, /xxd/, /openssl\s+enc/,            // 编码绕过
-  /curl/, /wget/,                               // 网络请求（走 mcp_call）
+  /\|/, /`/, /\$\(/, /&&/, /\|\|/, /;/,        // pipes, command substitution, chaining
+  /bash/, /sh\s/, /zsh/, /exec/, /eval/,       // subshells
+  /sudo/, /su\s/, /chmod/, /chown/,            // privilege escalation
+  /rm\s/, /mv\s/, /cp\s/, /mkdir/, /touch/,    // file modification
+  />/, />>/, /<\s*\//,                          // redirection
+  /base64/, /xxd/, /openssl\s+enc/,            // encoding bypass
+  /curl/, /wget/,                               // network requests (go through mcp_call)
 ];
 
 function validateCommand(cmd: string, workspace: string, requestedCwd?: string): boolean {
-  // 1. 白名单检查
+  // 1. whitelist check
   if (!READ_ONLY_WHITELIST.some(r => r.test(cmd))) return false;
-  // 2. 黑名单检查
+  // 2. blacklist check
   if (BLOCKED_PATTERNS.some(r => r.test(cmd))) return false;
-  // 3. cwd 必须在 workspace 内
+  // 3. cwd must be inside workspace
   if (requestedCwd && !requestedCwd.startsWith(workspace)) return false;
   return true;
 }
 ```
 
-**防死锁执行：**
+**Deadlock-proof execution:**
 
 ```typescript
 import { spawn } from 'child_process';
@@ -112,7 +112,7 @@ async function shellExec(command: string, cwd: string, timeout = 30000) {
       cwd: cwd || WORKSPACE_ROOT,
       shell: true,
       timeout,
-      stdio: ['ignore', 'pipe', 'pipe'],  // stdin 关闭 → 需要交互的命令立即失败
+      stdio: ['ignore', 'pipe', 'pipe'],  // stdin closed → interactive commands fail immediately
     });
 
     let stdout = '', stderr = '';
@@ -120,7 +120,7 @@ async function shellExec(command: string, cwd: string, timeout = 30000) {
     proc.stderr?.on('data', d => stderr += d);
 
     const timer = setTimeout(() => {
-      // 杀整个进程组，不留僵尸
+      // kill the entire process group, no zombies
       try { process.kill(-proc.pid!, 'SIGKILL'); } catch {}
       resolve({ code: -1, stdout: stdout.slice(0, 8000), stderr: '⏱ Timeout' });
     }, timeout);
@@ -138,7 +138,7 @@ async function shellExec(command: string, cwd: string, timeout = 30000) {
 }
 ```
 
-### 4.2 `mcp_call` — MCP 协议调用（替代 http_call）
+### 4.2 `mcp_call` — MCP Protocol Call (replaces http_call)
 
 ```typescript
 {
@@ -156,107 +156,107 @@ async function shellExec(command: string, cwd: string, timeout = 30000) {
 }
 ```
 
-**Token 脱敏执行：**
+**Token-masked execution:**
 
 ```typescript
 async function mcpCall(server: string, tool: string, args: string) {
-  // Agent 只传 server 名称，不知道 Token
+  // Agent only passes the server name; it never sees the token
   const integration = await prisma.integration.findFirst({
     where: { type: server, enabled: true }
   });
   if (!integration) return { error: `No integration configured for "${server}". Set it up in Settings.` };
 
   const config = JSON.parse(integration.config);
-  const client = getMCPClient(server, config); // 从连接池获取
+  const client = getMCPClient(server, config); // get from the connection pool
 
-  // 后端注入 Token，Agent 全程不可见
+  // backend injects the token; invisible to the Agent throughout
   const result = await client.callTool(tool, JSON.parse(args));
   return { server, tool, result };
 }
 ```
 
-Agent 的 system prompt 只看到：
+The Agent's system prompt only sees:
 ```
 Connected services: github, jira
 Use mcp_call(server, tool, args) to interact with them.
 ```
 
-Agent 看不到任何 Token、API Key、Authorization header。所有凭据由后端从加密 DB 读取并注入。
+The Agent never sees any Token, API Key, or Authorization header. All credentials are read from the encrypted DB and injected by the backend.
 
-## 5. 安全模型
+## 5. Security Model
 
-### 5.1 三层防护
+### 5.1 Three Layers of Defense
 
 ```
-Layer 1: 白名单 + 黑名单（Phase 1）
-  ├─ 只读命令 → 直接执行
-  ├─ shell_exec 写命令 → 直接拒绝（Phase 2 才开放 + HITL）
-  └─ mcp_call → 始终需要 HITL（外部操作不可逆）
+Layer 1: Whitelist + Blacklist (Phase 1)
+  ├─ Read-only commands → executed directly
+  ├─ shell_exec write commands → rejected (opened in Phase 2 + HITL)
+  └─ mcp_call → always requires HITL (external operations are irreversible)
 
-Layer 2: 执行沙箱（Phase 1）
-  ├─ stdin 关闭 → 交互命令立即失败
-  ├─ cwd 限制在 workspace
-  ├─ 进程组超时 kill(-SIGKILL)
-  └─ 输出截断 8000 字符
+Layer 2: Execution Sandbox (Phase 1)
+  ├─ stdin closed → interactive commands fail immediately
+  ├─ cwd restricted to workspace
+  ├─ process-group timeout kill(-SIGKILL)
+  └─ output truncated to 8000 chars
 
-Layer 3: Token 隔离（Phase 1）
-  ├─ Agent 只传 server 名称
-  ├─ 后端从加密 DB 读凭据
-  └─ Agent 全程不接触明文 Token
+Layer 3: Token Isolation (Phase 1)
+  ├─ Agent only passes the server name
+  ├─ backend reads credentials from encrypted DB
+  └─ Agent never touches plaintext tokens
 ```
 
-### 5.2 Phase 演进
+### 5.2 Phase Evolution
 
 | Phase | shell_exec | mcp_call |
 |-------|-----------|----------|
-| Phase 1（本次）| 只读白名单，无 HITL | 读操作直接执行，写操作需 HITL |
-| Phase 2（后续）| 写命令开放，带 HITL 弹窗 | 全部带 HITL 弹窗 |
+| Phase 1 (this round) | Read-only whitelist, no HITL | Reads execute directly; writes require HITL |
+| Phase 2 (later) | Write commands open with HITL dialog | Everything with HITL dialog |
 
-## 6. HITL 确认流程
+## 6. HITL Confirmation Flow
 
-写入操作（Phase 2）调用链：
+Write operations (Phase 2) call chain:
 
 ```
-Agent 调 mcp_call({ server:'jira', tool:'create_issue', args:... })
+Agent calls mcp_call({ server:'jira', tool:'create_issue', args:... })
   ↓
-后端解析 → 评估风险 → medium/high
+Backend parses → assesses risk → medium/high
   ↓
-生成 HITL Task → 推送到前端
+Generates HITL Task → pushed to frontend
   ↓
-前端弹窗: "Agent 要通过 Jira 创建 Issue「Login crash」— 允许？"
+Frontend dialog: "Agent wants to create Issue「Login crash」in Jira — allow?"
   [Approve] [Deny]
   ↓
-Approve → 执行 → 返回结果
-Deny → 返回拒绝
+Approve → execute → return result
+Deny → return rejection
 ```
 
-复用现有 MCP HITL 机制（`apps/api/src/routers/mcp.ts`），不需要新建。
+Reuses the existing MCP HITL mechanism (`apps/api/src/routers/mcp.ts`); no new implementation needed.
 
-## 7. MCP Client 连接管理
+## 7. MCP Client Connection Management
 
 ```
-服务启动时:
-  1. 读取 Integration 表中所有 enabled 的服务
-  2. 对每个服务建立 MCP Client 连接
-  3. 调用 tools/list 发现可用工具
-  4. 将工具列表注入 Agent system prompt
+On service startup:
+  1. Read all enabled services from the Integration table
+  2. Establish an MCP Client connection for each service
+  3. Call tools/list to discover available tools
+  4. Inject the tool list into the Agent system prompt
 
-运行时:
-  Agent 调 mcp_call → 从连接池取 client → 调 tool → 返回结果
+At runtime:
+  Agent calls mcp_call → get client from pool → call tool → return result
   
-连接池:
-  - 每个 MCP Server 保持一个长连接
-  - 断线自动重连（指数退避）
-  - 30s 超时无响应 → 连接标记为降级
+Connection pool:
+  - One persistent connection per MCP Server
+  - Auto-reconnect on disconnect (exponential backoff)
+  - No response within 30s → connection marked as degraded
 ```
 
-## 8. 改动清单（Phase 1）
+## 8. Change List (Phase 1)
 
-| 文件 | 改动 |
+| File | Change |
 |------|------|
-| `agent.ts` | +1 tool（shell_exec 只读白名单）+1 tool（mcp_call） |
-| `agent.ts` | executeAgentTool 新增 shellExec + mcpCall |
-| `agent.ts` | 安全校验：白名单/黑名单/cwd 限制/stdin 关闭/进程组杀 |
-| `mcp-client.ts`（新）| MCP Client 连接池 + 工具发现 + Token 注入 |
-| Settings UI（新）| Integration 配置页面（MCP Server URL + Token） |
-| 无前端 HITL | Phase 1 只读操作直接显示结果，Phase 2 加弹窗 |
+| `agent.ts` | +1 tool (shell_exec read-only whitelist) +1 tool (mcp_call) |
+| `agent.ts` | executeAgentTool adds shellExec + mcpCall |
+| `agent.ts` | Security checks: whitelist/blacklist/cwd restriction/stdin closed/process-group kill |
+| `mcp-client.ts` (new) | MCP Client connection pool + tool discovery + token injection |
+| Settings UI (new) | Integration config page (MCP Server URL + Token) |
+| No frontend HITL | Phase 1 read-only ops show results directly; Phase 2 adds dialogs |

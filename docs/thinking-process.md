@@ -1,47 +1,47 @@
-# Thinking Process 显示 — 经验总结
+# Thinking Process Display — Lessons Learned
 
-## 架构概述
+## Architecture Overview
 
-Agent 的思考过程通过 SSE (Server-Sent Events) 实时推送到前端，显示为可折叠的 "💭 Thinking..." 区域。
+The Agent's thinking process is pushed to the frontend in real time over SSE (Server-Sent Events), displayed in a collapsible "💭 Thinking..." area.
 
 ```
-后端                                        前端
+Backend                                      Frontend
 ───────────────────────────────────────────────
-streamLLM  →  SSE reasoning 事件  →  reasoningContent 累积
-            →  SSE thinking 事件   →  轮次标题 "💭 Thinking... (round N)"
-            →  SSE token 事件      →  正文内容逐字流式
-            →  SSE tool_call 事件  →  🔧 工具名 + 参数
-            →  SSE tool_result 事件→  ✅/❌ 结果
+streamLLM  →  SSE reasoning event  →  reasoningContent accumulated
+            →  SSE thinking event   →  round title "💭 Thinking... (round N)"
+            →  SSE token event      →  body content streamed char by char
+            →  SSE tool_call event  →  🔧 tool name + args
+            →  SSE tool_result event→  ✅/❌ result
 ```
 
-### 关键事件类型
+### Key Event Types
 
-| SSE 事件 | 用途 | 数据 |
+| SSE Event | Purpose | Data |
 |---------|------|------|
-| `reasoning` | 思考内容（实时流式） | `{ text: "..." }` |
-| `thinking` | 轮次标题 | `{ text: "...", iteration: N }` |
-| `token` | 正文回复（逐字流式） | `{ text: "..." }` |
-| `tool_call` | 工具调用 | `{ tool: "create_issue", args: "..." }` |
-| `tool_result` | 工具结果 | `{ tool: "create_issue", result: {...} }` |
+| `reasoning` | Thinking content (real-time streaming) | `{ text: "..." }` |
+| `thinking` | Round title | `{ text: "...", iteration: N }` |
+| `token` | Body reply (streamed char by char) | `{ text: "..." }` |
+| `tool_call` | Tool invocation | `{ tool: "create_issue", args: "..." }` |
+| `tool_result` | Tool result | `{ tool: "create_issue", result: {...} }` |
 
 ---
 
-## 前端实现要点
+## Frontend Implementation Notes
 
-### 1. 实时流式更新 React State
+### 1. Real-Time Streaming Updates to React State
 
-**错误做法**：累积到局部变量，流结束后一次性 setMessages
+**Wrong approach**: accumulate in a local variable and call setMessages once after the stream ends
 ```ts
-// ❌ 用户在整个流过程中看不到 thinking
+// ❌ user can't see thinking during the whole stream
 let reasoningContent = '';
-// ... 累积 ...
-// 只在最后设置一次
+// ... accumulate ...
+// only set once at the end
 setMessages(prev => { ... copy[assistantIdx] = { ...finalMsg }; });
 ```
 
-**正确做法**：每次收到 reasoning/tool_call/tool_result 事件立即 setMessages
+**Correct approach**: call setMessages immediately on every reasoning/tool_call/tool_result event
 ```ts
-// ✅ 每收到一个事件就更新 UI
+// ✅ update the UI on every received event
 if (currentEvent === 'reasoning') {
   reasoningContent += data.text;
   setMessages(prev => {
@@ -52,22 +52,22 @@ if (currentEvent === 'reasoning') {
 }
 ```
 
-### 2. 思考区自动展开
+### 2. Auto-Expand the Thinking Area
 
 ```tsx
-// Msg 组件中
+// in the Msg component
 const [thinkingOpen, setThinkingOpen] = useState(!!thinking);
-// thinking=true 表示 Agent 正在处理 → 自动展开
-// thinking=false → 默认折叠，用户可手动展开
+// thinking=true means the Agent is processing → auto-expand
+// thinking=false → collapsed by default, user can expand manually
 ```
 
-### 3. 正文 token 也要流式
+### 3. Body Tokens Must Stream Too
 
 ```ts
 if (data.text) {
   fullText += String(data.text || '');
   setAgentStatus('');
-  // 也要推送 text 到 UI！
+  // push the text to the UI too!
   setMessages(prev => {
     const copy = [...prev];
     copy[assistantIdx] = { ...copy[assistantIdx], text: fullText };
@@ -78,18 +78,18 @@ if (data.text) {
 
 ---
 
-## 后端实现要点
+## Backend Implementation Notes
 
-### 1. Provider 差异处理
+### 1. Handling Provider Differences
 
-| Provider | 思考来源 | 处理方式 |
+| Provider | Thinking Source | Handling |
 |----------|---------|---------|
-| DeepSeek | `delta.reasoning_content`（原生字段） | 直接流式发送 |
-| Qwen (DashScope) | `delta.content` 中的 `<thinking>` 标签 | 解析标签 → reasoning 事件 |
-| OpenAI/Anthropic | 无 | 系统 prompt 注入 `<thinking>` 要求 |
+| DeepSeek | `delta.reasoning_content` (native field) | Stream directly |
+| Qwen (DashScope) | `<thinking>` tags in `delta.content` | Parse tags → reasoning events |
+| OpenAI/Anthropic | None | Inject `<thinking>` requirement into the system prompt |
 
 ```ts
-// 检测函数
+// detection functions
 export function isQwenProvider(baseUrl: string): boolean {
   return baseUrl?.includes('dashscope');
 }
@@ -98,39 +98,39 @@ export function supportsThinking(baseUrl: string): boolean {
 }
 ```
 
-### 2. `<thinking>` 标签处理 — 避免正文闪烁
+### 2. `<thinking>` Tag Handling — Avoiding Body Flicker
 
-**问题**：Qwen 的 `<thinking>` 内容是 `delta.content` 的一部分。如果直接当 token 发送，用户会在正文区看到思考文字一闪而过，然后在结束后被剥离。
+**Problem**: Qwen's `<thinking>` content is part of `delta.content`. If sent as tokens directly, users see the thinking text flash in the body area, then get stripped out at the end.
 
-**解决方案**：流式过程中实时检测 `<thinking>` 标签并分流
+**Solution**: detect `<thinking>` tags in real time during streaming and route them separately
 
 ```ts
-let inThinkingTag = false; // 状态机
+let inThinkingTag = false; // state machine
 
-// delta.content 到达时：
+// when delta.content arrives:
 let chunk: string = delta.content;
 
 while (chunk.length > 0) {
   if (!inThinkingTag) {
     const openIdx = chunk.toLowerCase().indexOf('<thinking>');
     if (openIdx < 0) {
-      // 不在 thinking 内 → 正常发 token
+      // not inside thinking → send as normal tokens
       if (streamTokens) sendToken(send, chunk);
       break;
     }
-    // 标签前的文字 → token
+    // text before the tag → token
     if (openIdx > 0 && streamTokens) sendToken(send, chunk.substring(0, openIdx));
     inThinkingTag = true;
     chunk = chunk.substring(openIdx + '<thinking>'.length);
   } else {
     const closeIdx = chunk.toLowerCase().indexOf('</thinking>');
     if (closeIdx < 0) {
-      // 仍在 thinking 内 → 路由到 reasoning
+      // still inside thinking → route to reasoning
       reasoningBuf += chunk;
       // throttle flush...
       break;
     }
-    // 标签前的文字 → reasoning
+    // text before the tag → reasoning
     if (closeIdx > 0) reasoningBuf += chunk.substring(0, closeIdx);
     inThinkingTag = false;
     chunk = chunk.substring(closeIdx + '</thinking>'.length);
@@ -138,11 +138,11 @@ while (chunk.length > 0) {
 }
 ```
 
-### 3. Reasoning 流式节流
+### 3. Reasoning Streaming Throttle
 
-**问题**：SSE delta 通常只有 1-3 个字符。逐个发送 reasoning 事件导致前端每个字显示为一行。
+**Problem**: SSE deltas are usually only 1-3 characters. Sending a reasoning event for each one makes the frontend show every character on its own line.
 
-**解决方案**：攒到 40 字符或 150ms 再 flush
+**Solution**: buffer until 40 chars or 150ms, then flush
 
 ```ts
 let reasoningBuf = '';
@@ -153,7 +153,7 @@ const flushReasoning = () => {
   if (reasoningTimer) { clearTimeout(reasoningTimer); reasoningTimer = null; }
 };
 
-// 每个 delta：
+// on every delta:
 reasoningBuf += chunk;
 if (reasoningBuf.length >= 40) {
   flushReasoning();
@@ -161,16 +161,16 @@ if (reasoningBuf.length >= 40) {
   reasoningTimer = setTimeout(flushReasoning, 150);
 }
 
-// 流结束时：
+// at stream end:
 flushReasoning();
 ```
 
-### 4. Qwen Pre-Thinking 阶段
+### 4. Qwen Pre-Thinking Phase
 
-Qwen 需要先思考再行动，否则会跳过工具调用。
+Qwen needs to think before acting, otherwise it skips tool calls.
 
 ```ts
-// 仅前 2 轮执行（后期质量下降）
+// only run for the first 2 rounds (quality degrades later)
 if (iterations <= 2 && isQwenProvider(config.baseUrl) && activeTools.length > 0) {
   const tBody = {
     model, stream: true,
@@ -185,28 +185,28 @@ if (iterations <= 2 && isQwenProvider(config.baseUrl) && activeTools.length > 0)
 }
 ```
 
-Pre-thinking prompt 要点：
-- 用自然语言，不要编号 1) 2) 3)
-- 强调 "like thinking to yourself" 而非 "analyze and plan"
-- 过滤低质量输出（< 20 字符、echo 指令本身）
+Pre-thinking prompt key points:
+- Use natural language; no numbered 1) 2) 3) lists
+- Emphasize "like thinking to yourself" rather than "analyze and plan"
+- Filter low-quality output (< 20 chars, echoing the instruction itself)
 
 ```ts
 const thinking = tC.replace(/<thinking>/gi, '').replace(/<\/thinking>/gi, '').trim();
-// 过滤无效输出
+// filter invalid output
 if (thinking && thinking.length > 20
     && !thinking.includes('Analyze in <thinking>')
     && !thinking.includes('Stop at </thinking>')) {
-  // 有效 — 推入 messages
+  // valid — push into messages
 }
 ```
 
-### 5. 跨 chunk 标签碎片清理
+### 5. Cross-Chunk Tag-Fragment Cleanup
 
-SSE chunk 可能在 `<thinking>` 标签中间断开，flush 时需要清理残留：
+SSE chunks can break mid-`<thinking>` tag; clean up residue when flushing:
 
 ```ts
 const flushR = () => {
-  // 去掉跨 chunk 的 <thinking> 标签碎片：<th, </thi, inking> 等
+  // strip cross-chunk <thinking> tag fragments like <th, </thi, inking>
   const clean = rBuf.replace(/<\/?t(h(i(n(k(i(ng?)?)?)?)?)?)?>?/gi, '')
                      .replace(/^[a-z]*>/, '').trim();
   if (clean) send('reasoning', { text: clean });
@@ -214,44 +214,44 @@ const flushR = () => {
 };
 ```
 
-### 6. 尽早发送第一个事件
+### 6. Send the First Event ASAP
 
-用户点击发送后，如果 Guard 分类 + Self-learning DB 查询需要 1-3 秒，期间前端无任何反馈。
+After the user hits send, if Guard classification + self-learning DB queries take 1-3 seconds, the frontend shows no feedback during that time.
 
 ```ts
-// 在 Guard 之前就发送第一个 thinking 指示
+// send the first thinking indicator before Guard
 sendToken(send, 'Thinking...');
 
-// 然后才是耗时的操作
+// then the time-consuming operations
 const guardResult = await classifyGuard(config, message, context, send);
 const [learnHint, preferenceHint] = await Promise.all([getLearnHint(), getPreferenceHint()]);
 ```
 
 ---
 
-## 常见问题与排查
+## Common Problems & Troubleshooting
 
-| 现象 | 原因 | 解决 |
+| Symptom | Cause | Fix |
 |------|------|------|
-| 思考内容在正文区一闪而过 | `<thinking>` 标签被当 token 发送 | 用状态机实时分流 |
-| 思考内容逐字断行 | 每个 delta 都单独发 reasoning 事件 | 加 throttle (40char/150ms) |
-| 流结束后思考才一次性出现 | reasoning 只累积局部变量不更新 React state | 每次收到事件立即 setMessages |
-| 思考区不展开 | `thinkingOpen` 默认 false | `useState(!!thinking)` |
-| 看到 `<th` `inking>` 碎片 | SSE chunk 在标签中间断开 | flush 时正则清理 |
-| "Thinking..." 出现太晚 | Guard 跑完才发第一个事件 | 提前到 Guard 之前发 |
-| Qwen thinking 输出 1) 2) 3) | prompt 用了 "step by step: 1)..." | 改用 "think naturally, like talking to yourself" |
-| Qwen thinking 无内容 | 模型 echo 了指令/输出过短 | 过滤 <20 字符 + 检测 echo |
-| 回复文本不流式 | token 事件只累积 fullText 不更新 state | 同 reasoning，每次 setMessages |
-| 最终回复不流式 | intent-done confirm 用了 streamTokens=false | 改为 true |
+| Thinking text flashes in the body area | `<thinking>` tags sent as tokens | Route in real time with a state machine |
+| Thinking text broken into one char per line | A reasoning event sent for every delta | Add throttling (40 chars / 150ms) |
+| Thinking appears only after the stream ends | reasoning only accumulates in a local variable, never updates React state | Call setMessages on every received event |
+| Thinking area doesn't expand | `thinkingOpen` defaults to false | `useState(!!thinking)` |
+| Seeing `<th` `inking>` fragments | SSE chunk broke mid-tag | Regex cleanup on flush |
+| "Thinking..." appears too late | First event only sent after Guard finishes | Send it before Guard |
+| Qwen thinking outputs 1) 2) 3) | Prompt used "step by step: 1)..." | Switch to "think naturally, like talking to yourself" |
+| Qwen thinking is empty | Model echoed the instruction / output too short | Filter <20 chars + detect echo |
+| Reply text doesn't stream | token events only accumulate fullText, never update state | Same as reasoning — setMessages on every event |
+| Final reply doesn't stream | intent-done confirmation used streamTokens=false | Change to true |
 
 ---
 
-## 文件索引
+## File Index
 
-| 文件 | 职责 |
+| File | Responsibility |
 |------|------|
-| `apps/api/src/agent/llm/client.ts` | `streamLLM` — SSE 解析、thinking 标签分流、reasoning 节流 |
-| `apps/api/src/agent/core/agentEngine.ts` | Qwen pre-thinking、`sendThinking` 轮次标题 |
-| `apps/api/src/agent/agentStream.ts` | 提前发 "Thinking..." 指示 |
-| `apps/api/src/agent/utils/sse.ts` | `sendToken`, `sendReasoning`, `sendThinking` 等 helpers |
-| `apps/web/src/App.tsx` | SSE 事件处理、reasoningContent 实时 setMessages、thinkingOpen 自动展开 |
+| `apps/api/src/agent/llm/client.ts` | `streamLLM` — SSE parsing, thinking-tag routing, reasoning throttling |
+| `apps/api/src/agent/core/agentEngine.ts` | Qwen pre-thinking, `sendThinking` round titles |
+| `apps/api/src/agent/agentStream.ts` | Sends the "Thinking..." indicator early |
+| `apps/api/src/agent/utils/sse.ts` | Helpers: `sendToken`, `sendReasoning`, `sendThinking`, etc. |
+| `apps/web/src/App.tsx` | SSE event handling, real-time setMessages for reasoningContent, auto-expanding thinkingOpen |

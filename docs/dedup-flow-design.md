@@ -1,63 +1,63 @@
-# 任务创建去重流程 v2 — 交互按钮方案
+# Task-Creation Dedup Flow v2 — Interactive Button Design
 
-## 1. 当前状态
+## 1. Current State
 
-### 1.1 已正确实现的部分
+### 1.1 Correctly Implemented
 
-| 模块 | 文件 | 状态 |
+| Module | File | Status |
 |------|------|------|
-| `executeAgentTool` — create_issue/force_create_issue 纯创建 | `agent.ts` | ✅ 正确 |
-| Agent Loop — 拦截 create_issue 做 DB 查重 | `agent.ts` | ✅ 正确 |
-| 服务端 SSE 事件发送 (tool_call/tool_result) | `agent.ts` | ✅ 正确 |
-| `scripts/test-sse-debug.js` — 独立测试前端处理逻辑 | 测试脚本 | ✅ 通过 |
+| `executeAgentTool` — create_issue/force_create_issue pure creation | `agent.ts` | ✅ Correct |
+| Agent Loop — intercepts create_issue for DB dedup | `agent.ts` | ✅ Correct |
+| Server SSE event sending (tool_call/tool_result) | `agent.ts` | ✅ Correct |
+| `scripts/test-sse-debug.js` — standalone test of frontend handling | Test script | ✅ Passing |
 
-### 1.2 存在的问题
+### 1.2 Known Issues
 
-| 问题 | 现象 | 可能原因 |
+| Issue | Symptom | Likely Cause |
 |------|------|----------|
-| `data.tool && data.args` 从未为 true | 前端从未执行 tool_call 处理代码 | SSE 事件解析层（粘包/半包/JSON.parse 静默失败） |
-| 用户确认"强制创建"后 LLM 行为不确定 | Agent 有时调 suggest_issue_edit，有时不调 | LLM 缺乏强状态约束 |
+| `data.tool && data.args` never true | Frontend never runs the tool_call handling code | SSE event parsing layer (coalesced/partial packets, silent JSON.parse failure) |
+| LLM behavior after user confirms "force create" is unpredictable | Agent sometimes calls suggest_issue_edit, sometimes not | LLM lacks strong state constraints |
 
-## 2. 目标流程
+## 2. Target Flow
 
 ```
-用户: "创建任务：Debug UI交互"
+User: "create task: Debug UI interaction"
 │
 ▼
-LLM 调 create_issue("Debug UI交互", desc, priority...)
+LLM calls create_issue("Debug UI interaction", desc, priority...)
 │
 ▼
-Agent Loop 拦截 → DB 查重 → 有重复 → 返回 blocked
+Agent Loop intercepts → DB dedup → duplicates found → returns blocked
 │
 ▼
-前端收到 { blocked: true, duplicates: [...], pendingArgs: {...} }
+Frontend receives { blocked: true, duplicates: [...], pendingArgs: {...} }
 │
 ▼
 ┌─────────────────────────────────────────────┐
-│  聊天中渲染交互卡片：                         │
+│  Interactive card rendered in chat:         │
 │                                             │
-│  ⚠️ 发现 9 个相似任务                        │
+│  ⚠️ 9 similar tasks found                   │
 │  TL-40 Debug UI...     todo                 │
 │  TL-41 debug UI...     todo                 │
 │  ...                                        │
 │                                             │
-│  [💥 强行创建]   [取消]                       │
+│  [💥 Force Create]   [Cancel]               │
 └─────────────────────────────────────────────┘
 │                    │
 ▼                    ▼
-用户点"强行创建"      用户点"取消"
+User clicks "Force Create"   User clicks "Cancel"
 │                    │
 ▼                    ▼
-前端直接调           追加 "已取消" 消息
-force_create_issue   不做任何创建
-(写DB → 出卡片)
+Frontend calls        Appends "Canceled" message
+force_create_issue    no creation happens
+(writes DB → card)
 ```
 
-## 3. 需要的改动
+## 3. Required Changes
 
-### 3.1 服务端：blocked 响应里加上 `pendingArgs`
+### 3.1 Server: add `pendingArgs` to the blocked response
 
-`apps/api/src/routers/agent.ts` — Agent Loop 拦截处：
+`apps/api/src/routers/agent.ts` — at the Agent Loop interception point:
 
 ```typescript
 if (dups.length > 0) {
@@ -66,114 +66,114 @@ if (dups.length > 0) {
         result: {
             blocked: true,
             duplicates: dups.map(i => ({...})),
-            pendingArgs: args,   // ← 新增：用户点"强行创建"时原样回传
+            pendingArgs: args,   // ← new: echoed back unchanged when the user clicks "Force Create"
         }
     });
     continue;
 }
 ```
 
-### 3.2 前端：收到 blocked 渲染交互按钮
+### 3.2 Frontend: render interactive buttons on blocked
 
-`apps/web/src/App.tsx` — `data.tool && data.result` 处理块：
+`apps/web/src/App.tsx` — the `data.tool && data.result` handling block:
 
 ```typescript
 if (data.tool === 'create_issue' && r.blocked) {
-    // 不构建普通卡片，构建带按钮的 blocked 卡片
+    // don't build a normal card — build a blocked card with buttons
     msgCard = {
         type: 'task',
         blocked: true,
         duplicates: r.duplicates,
-        pendingArgs: r.pendingArgs,  // 供按钮回调使用
+        pendingArgs: r.pendingArgs,  // for the button callbacks
     };
 }
 ```
 
-`Msg` 组件渲染 blocked 卡片时显示按钮：
+The `Msg` component shows buttons when rendering a blocked card:
 ```jsx
 {card.blocked && (
     <div>
         {card.duplicates.map(d => <div>{d.key} {d.title}</div>)}
         <button onClick={() => handleForceCreate(card.pendingArgs)}>
-            💥 强行创建
+            💥 Force Create
         </button>
         <button onClick={() => handleCancelDedup()}>
-            取消
+            Cancel
         </button>
     </div>
 )}
 ```
 
-### 3.3 前端：按钮回调直接调 API
+### 3.3 Frontend: button callbacks call the API directly
 
 ```typescript
 const handleForceCreate = (args) => {
-    // 方式 A：通过 agent 流接口发送 force 指令
+    // Approach A: send the force command through the agent stream interface
     sendMessage(`__FORCE_CREATE__ ${JSON.stringify(args)}`);
     
-    // 方式 B：直接调后端 force_create_issue（需要暴露为独立接口）
+    // Approach B: call backend force_create_issue directly (would need to be exposed as a standalone endpoint)
     // fetch('/api/issue.create', { body: JSON.stringify({...args, force: true}) })
 };
 
 const handleCancelDedup = () => {
-    // 追加一条系统消息表示取消
-    setMessages(prev => [...prev, { role: 'assistant', text: '已取消创建。' }]);
+    // append a system message to indicate cancellation
+    setMessages(prev => [...prev, { role: 'assistant', text: 'Creation canceled.' }]);
 };
 ```
 
-### 3.4 服务端：识别 `__FORCE_CREATE__` 前缀
+### 3.4 Server: recognize the `__FORCE_CREATE__` prefix
 
-`apps/api/src/routers/agent.ts` — 在 Agent Loop 开始处：
+`apps/api/src/routers/agent.ts` — at the start of the Agent Loop:
 
 ```typescript
-// 检测前端发来的强制创建指令（支持 task/note/report）
+// detect the force-create command from the frontend (supports task/note/report)
 if (message.startsWith('__FORCE_CREATE__')) {
     const args = JSON.parse(message.slice(18));
     const tool = args._tool || 'force_create_issue';
     delete args._tool;
     const r = await executeAgentTool(tool, args);
     send('tool_result', { tool, result: r });
-    send('done', { content: '✅ 强制创建成功' });
+    send('done', { content: '✅ Force create succeeded' });
     res.end();
     return;
 }
 ```
 
-### 3.5 工具分层：`create_*` vs `force_create_*`
+### 3.5 Tool layering: `create_*` vs `force_create_*`
 
-LLM 可直接调用两类工具：
+The LLM can call two kinds of tools directly:
 
-| 工具 | 去重 | 用途 |
+| Tool | Dedup | Purpose |
 |------|------|------|
-| `create_issue` / `create_note` / `create_report` | ✅ 走去重 | 正常创建。有重复 → blocked 卡片 |
-| `force_create_issue` / `force_create_note` / `force_create_report` | ❌ 跳过 | 用户确认强制创建时使用 |
+| `create_issue` / `create_note` / `create_report` | ✅ Dedup applied | Normal creation. Duplicates → blocked card |
+| `force_create_issue` / `force_create_note` / `force_create_report` | ❌ Skipped | Used when the user confirms force creation |
 
-**调用路径：**
+**Call paths:**
 
 ```
-create_* → Agent Loop 去重 → 无重复 → 创建成功卡片
-                           → 有重复 → blocked 卡片 → 用户确认 → force_create_* → 直接创建
+create_* → Agent Loop dedup → no duplicates → creation-success card
+                           → duplicates → blocked card → user confirms → force_create_* → creates directly
 ```
 
-LLM 判断逻辑：用户首次创建用 `create_*`，用户坚持/确认用 `force_create_*`。
+LLM decision rule: use `create_*` for first-time creation; use `force_create_*` when the user insists/confirms.
 
-## 4. 用户不点按钮、输入文字的处理
+## 4. Handling User Text Input Without Clicking Buttons
 
-### 4.1 场景
+### 4.1 Scenario
 
-blocked 卡片显示了 `[💥 强行创建] [取消]` 按钮，但用户**不点按钮**，自己打字：
+The blocked card shows `[💥 Force Create] [Cancel]` buttons, but the user **doesn't click them** and types instead:
 
-| 用户输入 | 期望行为 |
+| User Input | Expected Behavior |
 |----------|----------|
-| "继续" / "yes" / "强制创建" / "行吧那就建吧" / "不管了建" | LLM 分类为 confirm → 等同点击"强行创建" |
-| "算了" / "取消" / "别建了" / "还是不要了" / "no" | LLM 分类为 cancel → 等同点击"取消" |
-| "改成 Debug UI v2" / "帮我查下 TL-40" | LLM 分类为 other → 正常传给 Agent，卡片保留 |
+| "go ahead" / "yes" / "force create" / "fine, just create it" / "create it anyway" | LLM classifies as confirm → equivalent to clicking "Force Create" |
+| "forget it" / "cancel" / "don't create it" / "never mind" / "no" | LLM classifies as cancel → equivalent to clicking "Cancel" |
+| "change it to Debug UI v2" / "check TL-40 for me" | LLM classifies as other → passed to the Agent normally, card retained |
 
-### 4.2 实现
+### 4.2 Implementation
 
-使用 `agent.classifyIntent`（flash 模型，~1s）做语义分类，替代正则关键词匹配。
+Use `agent.classifyIntent` (flash model, ~1s) for semantic classification instead of regex keyword matching.
 
-**为什么用 LLM 而不是正则？** 正则太死板，"行吧那就建吧"/"还是算了我不要了" 等自然语言无法覆盖。LLM 能理解语义意图。
+**Why LLM instead of regex?** Regex is too rigid — natural language like "fine, just build it" / "actually, never mind, I don't want it" can't be covered by patterns. The LLM understands semantic intent.
 
 ```typescript
 const lastCard = messages[messages.length - 1]?.card;
@@ -181,78 +181,78 @@ if (lastCard?.blocked && lastCard?.pendingArgs) {
   // LLM semantic classification: confirm / cancel / other
   const { intent } = await api.agent.classifyIntent({ message: q, cardType: lastCard.type });
   if (intent === 'confirm') {
-    // 等同点击"强行创建"按钮 → 直接调 __FORCE_CREATE__，不经过 Agent LLM
+    // equivalent to clicking the "Force Create" button → call __FORCE_CREATE__ directly, bypassing the Agent LLM
     forceCreateRef.current = lastCard.pendingArgs;
     sendMessage('__FORCE_CREATE__ ' + JSON.stringify(lastCard.pendingArgs));
     return;
   }
   if (intent === 'cancel') {
-    // 等同点击"取消"按钮 → 标记卡片 resolved + 追加"已取消"消息
+    // equivalent to clicking "Cancel" → mark the card resolved + append a "Canceled" message
     ...
     return;
   }
-  // intent === 'other' → 正常发给 Agent，卡片保留作上下文
+  // intent === 'other' → send to the Agent normally; card retained as context
 }
 ```
 
-### 4.3 决策树
+### 4.3 Decision Tree
 
 ```
-用户输入文字
+User types text
 │
-├─ 最后一条消息有 blocked 卡片？
+├─ Does the last message have a blocked card?
 │   │
-│   ├─ YES → LLM 语义分类 intent
-│   │   ├─ "confirm" → 自动转 __FORCE_CREATE__（等同点按钮）
-│   │   ├─ "cancel"  → 标记卡片 resolved + "已取消"
-│   │   └─ "other"   → 正常发给 Agent，卡片保留作上下文
+│   ├─ YES → LLM semantic classification
+│   │   ├─ "confirm" → auto-route to __FORCE_CREATE__ (same as clicking the button)
+│   │   ├─ "cancel"  → mark card resolved + "Canceled"
+│   │   └─ "other"   → send to Agent normally; card retained as context
 │   │
-│   └─ NO  → 正常流程
+│   └─ NO  → normal flow
 ```
 
-### 4.4 对比总结
+### 4.4 Summary Comparison
 
-| 维度 | 实现 |
+| Aspect | Implementation |
 |------|------|
-| 状态标记 | 直接读 `card.blocked` + `card.pendingArgs`，无需额外字段 |
-| 意图判断 | LLM `classifyIntent` 语义分类（confirm/cancel/other），不依赖正则 |
-| confirm 路径 | 前端直接调 `__FORCE_CREATE__`，完全不经过 Agent LLM |
-| cancel 路径 | 前端标记卡片 `resolved` + 按钮置灰 + 追加"已取消" |
-| other 路径 | 正常发给 Agent LLM，blocked 卡片保留在聊天中作上下文 |
-| 按钮失效 | 卡片 `resolved` 后按钮自动置灰不可点击，无需手动清理 |
+| State marker | Reads `card.blocked` + `card.pendingArgs` directly; no extra fields |
+| Intent detection | LLM `classifyIntent` semantic classification (confirm/cancel/other), no regex dependency |
+| confirm path | Frontend calls `__FORCE_CREATE__` directly, never passes through the Agent LLM |
+| cancel path | Frontend marks the card `resolved` + grays out the buttons + appends "Canceled" |
+| other path | Sent to the Agent LLM normally; the blocked card stays in chat as context |
+| Button disabling | Once the card is `resolved`, buttons auto-gray and become unclickable; no manual cleanup |
 
-## 5. SSE 解析 Bug 排查（独立问题）
+## 5. SSE Parsing Bug Investigation (Separate Issue)
 
-`data.tool && data.args` 从未触发的问题需要在 **修改业务逻辑之前** 先排查。
+The issue where `data.tool && data.args` never triggers must be investigated **before changing business logic**.
 
-### 排查步骤
+### Investigation Steps
 
-1. 安装当前包（已含 `[KEYS:]` 调试），创建任务
-2. 看聊天内容里是否有 `[KEYS:tool_call tool,args t=true a=true]`
-3. 如果看到 → 解析正常，问题在后面的 `if` 判断逻辑
-4. 如果没看到 → `JSON.parse` 静默失败了
+1. Install the current package (already contains `[KEYS:]` debug output), create a task
+2. Check whether the chat content contains `[KEYS:tool_call tool,args t=true a=true]`
+3. If yes → parsing is fine; the problem is in the later `if` logic
+4. If no → `JSON.parse` failed silently
 
-### 如果是 JSON.parse 失败
+### If JSON.parse Fails
 
-当前代码用 `line.slice(6)` 硬切 `data: ` 前缀。如果 SSE 数据格式不是严格的 `data: {...}`（例如有空格、换行符嵌入、粘包），`JSON.parse` 抛异常，`catch {}` 吞掉。
+The current code hard-cuts the `data: ` prefix with `line.slice(6)`. If the SSE data format isn't a strict `data: {...}` (e.g. extra spaces, embedded newlines, or packet coalescing), `JSON.parse` throws and `catch {}` swallows it.
 
-**修复**：增强解析容错——
+**Fix**: make parsing more tolerant —
 
 ```typescript
-const raw = line.slice(line.indexOf(':') + 1).trim();  // 不硬编码 6
+const raw = line.slice(line.indexOf(':') + 1).trim();  // don't hard-code the 6
 if (raw.startsWith('{')) {
     try { data = JSON.parse(raw); } catch { continue; }
 }
 ```
 
-## 6. 实施顺序
+## 6. Implementation Order
 
-| 优先级 | 步骤 | 说明 |
+| Priority | Step | Description |
 |--------|------|------|
-| P0 | 排查 SSE 解析 bug | `[KEYS:]` 调试确认问题层级 |
-| P1 | 修复 SSE 解析（如需要） | 容错化 JSON.parse |
-| P2 | blocked 响应加 pendingArgs | 服务端一行改动 |
-| P3 | 前端渲染交互按钮 | blocked 卡片 + 两个按钮 |
-| P4 | 前端按钮回调 → force_create | `__FORCE_CREATE__` 前缀 |
-| P5 | 用户不点按钮、打字的处理 | 检查最后消息 card.blocked，确认词自动转 force |
-| P6 | 验证完整闭环 | 创建→拦截→按钮/打字→创建成功→卡片 |
+| P0 | Investigate the SSE parsing bug | `[KEYS:]` debug output to confirm the problem layer |
+| P1 | Fix SSE parsing (if needed) | Tolerant JSON.parse |
+| P2 | Add pendingArgs to blocked response | One-line server change |
+| P3 | Frontend renders interactive buttons | Blocked card + two buttons |
+| P4 | Frontend button callback → force_create | `__FORCE_CREATE__` prefix |
+| P5 | Handle text input without clicking buttons | Check last message's card.blocked; confirm words auto-route to force |
+| P6 | Verify the full loop | create → intercept → button/text → created → card |
