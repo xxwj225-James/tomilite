@@ -12,6 +12,9 @@ import { useChatSessions } from '@/hooks/useChatThreads';
 import { RobotFace } from '@/components/RobotFace';
 import { PanelResizeHandle } from '@/components/PanelResizeHandle';
 import { Msg } from '@/components/chat/Msg';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { ICONS } from '@/components/icons';
+import { MENU, MENU_LABEL, THEMES, THEME_COLORS, LANGS, LANGS_FULL, applyTheme, getTheme } from '@/lib/constants';
 import type { StagedEdit, ChatCard } from '@/types/chat';
 
 // ═══ i18n ═══
@@ -20,32 +23,6 @@ function _l(zh: string, ja: string, en: string) {
   const lang = useLanguageStore.getState().lang;
   return lang === 'zh' ? zh : lang === 'ja' ? ja : en;
 }
-const ICONS: Record<string, React.ReactNode> = {
-  home: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
-  board: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
-  tasks: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
-  notes: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
-  email: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
-  reports: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
-  settings: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
-  mcp: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
-  feedback: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
-  about: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>,
-  deep_flow: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
-  focused: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>,
-  available: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
-};
-const MENU = [
-  { key: 'tasks' }, { key: 'notes' },
-  { key: 'home' }, { key: 'email' }, { key: 'reports' }, { key: 'mcp' }, { key: 'feedback' }, { key: 'settings' }, { key: 'about' },
-] as const;
-const THEMES = ['pipeline', 'hub', 'canvas', 'quantum'] as const;
-const THEME_COLORS: Record<string, string> = { pipeline: '#4338CA', hub: '#1877F2', canvas: '#1A73E8', quantum: '#76B900' };
-const LANGS = ['en', 'zh', 'ja'] as const;
-const LANGS_FULL: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' };
-
-function applyTheme(key: string) { document.documentElement.setAttribute('data-theme', key); localStorage.setItem('tomilite-theme', key); }
-function getTheme() { return localStorage.getItem('tomilite-theme') || 'pipeline'; }
 
 // ═══ AI response simulation ═══
 // ═══ MAIN APP ═══
@@ -1413,19 +1390,7 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
 
   // Show loading while sessions load (avoids black flash on first launch)
   if (!sessionsLoaded) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)', flexDirection: 'column', fontFamily: 'sans-serif' }}>
-        <svg width="60" height="60" viewBox="0 0 20 20" style={{ fill: '#4338CA', animation: 'pulse 2s ease-in-out infinite' }}>
-          <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
-        </svg>
-        <style>{'@keyframes pulse{0%,100%{opacity:.4;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}'}</style>
-        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--muted)', marginTop: 16 }}>TomiLite</div>
-        <div style={{ width: 200, height: 3, background: 'var(--surface2)', borderRadius: 2, marginTop: 12, overflow: 'hidden' }}>
-          <div style={{ width: '30%', height: '100%', background: 'linear-gradient(90deg,#4338CA,#6366f1)', borderRadius: 2, animation: 'barSlide 1.5s ease-in-out infinite' }} />
-        </div>
-        <style>{'@keyframes barSlide{0%{transform:translateX(-30%)}100%{transform:translateX(330%)}}'}</style>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   return (
@@ -1706,7 +1671,7 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
                   if (m.key === 'email' && notifyCount > 0) { fetch('/api/system.clearNotifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(() => setNotifyCount(0)).catch(() => {}); }
                 }}>
                 <span className="menu-item-icon">{ICONS[m.key]}</span>
-                {_t(`app.menu${m.key.charAt(0).toUpperCase() + m.key.slice(1)}`, lang)}
+                {t(MENU_LABEL[m.key], lang)}
                 {m.key === 'email' && notifyCount > 0 && <span className="notif-badge">{notifyCount}</span>}
                 {m.key === 'mcp' && mcpPending > 0 && <span style={{ position: 'absolute', top: 2, right: 4, background: 'var(--amber)', color: '#fff', fontSize: 9, fontWeight: 700, minWidth: 15, height: 15, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{mcpPending}</span>}
                 {m.key === 'about' && updateAvailable && !updateSeen && <span className="notif-dot" />}
