@@ -56,15 +56,12 @@ npm run db:seed        # Seed default data (project, board, LLM config)
 
 # Production Build
 npm run build          # TypeScript compile all packages
-npm run build:prod     # Production build WITH obfuscation (javascript-obfuscator)
-npm run obfuscate      # Obfuscate API server (P0 security)
+npm run build:prod     # Production build
 
 # Single service
 cd apps/api && npx tsx src/server.ts       # Start API server on :3001
 cd apps/web && npx vite --port 3002        # Start web frontend on :3002
 
-# Pre-launch security
-npm run bytecode       # Compile .js → V8 bytecode (.jsc) via bytenode
 ```
 
 ---
@@ -77,12 +74,12 @@ Before modifying code, check whether the following modules are involved. If so, 
 
 | Change involves | Doc to keep in sync |
 |-----------------|---------------------|
-| Architecture / module split / tech choice | `docs/SECURITY.md` (Anti-decompile section) |
+| Architecture / module split / tech choice | `docs/SECURITY.md` |
 | Database schema / Prisma model | `packages/database/prisma/schema.prisma` (single source of truth) |
 | UI pages / routing / components | `mockup/index.html` (design mockup) |
 | API routes / tRPC procedures | `apps/api/src/routers/*.ts` + `apps/web/src/lib/api.ts` |
 | i18n | All `I18N` objects in `apps/web/src/*` |
-| Code obfuscation / security | `docs/SECURITY.md` |
+| Security | `docs/SECURITY.md` |
 
 ---
 
@@ -218,20 +215,9 @@ const I18N = {
 
 ---
 
-## Part 6 — Security & Obfuscation
+## Part 6 — Security
 
-### 6.1 P0: JavaScript Obfuscation
-- Production build REQUIRES `npm run build:prod` (includes obfuscation)
-- Configuration: `obfuscator.config.js`
-- API server: `scripts/obfuscate.js` — obfuscates all .js EXCEPT routers/trpc
-- Frontend: `apps/web/vite-plugin-obfuscator.js` — post-Terser double obfuscation
-
-### 6.2 P2: V8 Bytecode (Pre-launch)
-- `scripts/compile-bytecode.js` — compiles .js → .jsc
-- Entry point `server.js` stays as .js for Node.js bootstrap
-- Enabled only for release builds
-
-### 6.3 No Secrets in Code
+### 6.1 No Secrets in Code
 ```
 ❌ Hardcoded API keys or secrets
 ❌ Encryption keys in source files

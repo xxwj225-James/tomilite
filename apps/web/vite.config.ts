@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
-import { obfuscatorPlugin } from './vite-plugin-obfuscator';
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -32,7 +31,6 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     selectiveMinifyPlugin(),
-    obfuscatorPlugin(),
   ],
   resolve: {
     alias: {
