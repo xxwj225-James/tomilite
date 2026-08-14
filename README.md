@@ -66,6 +66,23 @@ Key design points:
 
 - [docs/](docs/) — architecture design, agent external tools, release notes
 
+## TomiHub for Teams
+
+TomiLite is for personal flow; **[TomiHub](https://tomatovector.com)** is for team synergy — *Local-first, AI-native, privacy by design.*
+
+TomiHub is not just a multi-user version of TomiLite. It is a hub designed for R&D organizations — bridging MCP protocol, RBAC permissions, LLM compute routing, and project management so the entire team collaborates on one board while maintaining the full privacy benefits of the local client.
+
+- **Full-Process Project Management** — Waterfall / Scrum / Kanban, Issue tracking, Kanban boards, Gantt charts, Sprint iterations, Wiki
+- **AI Compute Hub** — centralized model access with DeepSeek / Qwen / Kimi / OpenAI routing, plus Ollama / vLLM local LLM support
+- **Multi-User Real-Time Collaboration** — three-tier RBAC permissions, GitHub / GitLab webhooks
+- **100% Data Sovereignty** — Docker self-hosted deployment, global encrypted sync & backup, team deep RAG retrieval
+
+Visit [tomatovector.com](https://tomatovector.com) to learn more.
+
+## Trademark
+
+"TomiLite", "TomiHub", and "Tomatovector" are trademarks of Tomatovector. The MIT License permits reuse of the code, but the names and logos may not be used for derivative products or to imply endorsement without written permission.
+
 ## License
 
 [MIT](LICENSE) © 2026 Tomatovector
