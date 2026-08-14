@@ -25,7 +25,7 @@ npm run pack          # production (no debug logs)
 npm run pack:debug    # debug (agent.log + frontend.log enabled)
 ```
 
-The installer lands at `dist-electron/TomiLite-Setup-1.0.0.exe`.
+The installer lands at `dist-electron/TomiLite-Setup-<version>.exe`.
 The unpacked executable is at `dist-electron/win-unpacked/TomiLite.exe`.
 
 ## Run (agent path) — use the driver
@@ -52,7 +52,7 @@ node .claude/skills/run-tomilite/driver.mjs <command>
 node .claude/skills/run-tomilite/driver.mjs config
 
 # Chat via SSE
-node .claude/skills/run-tomilite/driver.mjs chat "创建任务：测试bug"
+node .claude/skills/run-tomilite/driver.mjs chat "Create a task: test the login bug"
 
 # Enable debug logs, then build debug version
 node .claude/skills/run-tomilite/driver.mjs debug
@@ -68,7 +68,7 @@ node .claude/skills/run-tomilite/driver.mjs api POST /api/issue.create '{"projec
 ## Run (human path)
 
 1. `npm run pack` (or `npm run pack:debug`)
-2. Install from `dist-electron/TomiLite-Setup-1.0.0.exe`
+2. Install from `dist-electron/TomiLite-Setup-<version>.exe`
 3. Launch from Start Menu or desktop shortcut
 4. Configure API key in Settings → LLM
 5. Chat, create tasks/notes/reports
@@ -119,6 +119,6 @@ The `npm run pack:debug` build automatically creates this flag.
 | Symptom | Fix |
 |---------|-----|
 | `API error 404: model not found` | Check `api/llm.getConfig` — model name may need updating in Settings |
-| `Port 3192 already in use` | Kill existing Tomatolite process |
+| `Port 3192 already in use` | Kill existing TomiLite process |
 | Build hangs at electron-builder | Check disk space; `electron-builder` downloads large binaries |
 | `Cannot find module @prisma/client` | Run `npx prisma generate --schema=packages/database/prisma/schema.prisma` |

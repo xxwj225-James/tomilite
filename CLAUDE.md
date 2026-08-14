@@ -1,6 +1,6 @@
 # TomiLite — Claude Code Instructions
 
-> **所有代码必须遵守以下规范。违反任何一条 = 代码不合格。**
+> **All code must follow these rules. Violating any of them = non-conforming code.**
 
 - **Tech stack**: Node.js 20+ / TypeScript 5.4+ / tRPC 11 / Prisma 5 / React 19 / Vite 6 / Tailwind 3
 - **Monorepo**: npm workspaces + Turborepo — `packages/` (shared) + `apps/` (api, web)
@@ -21,15 +21,15 @@
 After every code modification, output a brief summary:
 
 ```
-**原因**: <why this change was needed>
-**修改**: <what was changed, file:line>
-**影响**: <what features/behaviors are affected>
+**Reason**: <why this change was needed>
+**Changes**: <what was changed, file:line>
+**Impact**: <what features/behaviors are affected>
 ```
 
 ### Build & Pack — On Request Only
 
 - **NEVER run `npm run pack` or `npm run build` automatically after changes**
-- Only build/pack when user explicitly asks (`build` / `打包` / `pack`)
+- Only build/pack when user explicitly asks (`build` / `pack`)
 
 ---
 
@@ -69,26 +69,26 @@ npm run bytecode       # Compile .js → V8 bytecode (.jsc) via bytenode
 
 ---
 
-## Part 0 — 设计文档维护（最高优先级）
+## Part 0 — Design Docs Maintenance (Highest Priority)
 
-> `docs/` 是系统的设计真相来源 (source of truth)。**代码必须与文档一致。**
+> `docs/` is the design source of truth. **Code must stay consistent with the docs.**
 
-每次修改代码前，先检查是否涉及以下模块。如果是，**必须在同一 commit 中更新对应的设计文档**。
+Before modifying code, check whether the following modules are involved. If so, **the corresponding design doc must be updated in the same commit**.
 
-| 修改涉及 | 需同步更新的文档 |
-|---------|----------------|
-| 架构 / 模块划分 / 技术选型 | `docs/SECURITY.md` (Anti-decompile section) |
-| 数据库 Schema / Prisma model | `packages/database/prisma/schema.prisma` (single source of truth) |
-| UI 页面 / 路由 / 组件 | `mockup/index.html` (design mockup) |
-| API 路由 / tRPC procedure | `apps/api/src/routers/*.ts` + `apps/web/src/lib/api.ts` |
-| 多语言 / i18n | All `I18N` objects in `apps/web/src/*` |
-| 代码混淆 / 安全 | `docs/SECURITY.md` |
+| Change involves | Doc to keep in sync |
+|-----------------|---------------------|
+| Architecture / module split / tech choice | `docs/SECURITY.md` (Anti-decompile section) |
+| Database schema / Prisma model | `packages/database/prisma/schema.prisma` (single source of truth) |
+| UI pages / routing / components | `mockup/index.html` (design mockup) |
+| API routes / tRPC procedures | `apps/api/src/routers/*.ts` + `apps/web/src/lib/api.ts` |
+| i18n | All `I18N` objects in `apps/web/src/*` |
+| Code obfuscation / security | `docs/SECURITY.md` |
 
 ---
 
 ## Part 1 — Frontend UI (React + TypeScript)
 
-### 1.1 No Hardcoded Colors — 零硬编码颜色
+### 1.1 No Hardcoded Colors — Zero Hardcoded Colors
 
 - NEVER hex (`#xxx`), rgb/rgba, hsl, or Tailwind color names (`gray-900`, `blue-500`)
 - ONLY semantic CSS variables: `var(--brand)`, `var(--bg)`, `var(--ink)`, `var(--muted)`, `var(--edge)`, `var(--surface)`, `var(--surface2)`
@@ -113,8 +113,8 @@ New strings MUST be added to ALL 3 languages (`en`, `zh`, `ja`) in the I18N obje
 ### 1.4 AI Output Language = UI Language
 
 AI output language follows the UI language automatically.
-- User sets UI to 中文 → AI responds in Chinese
-- User sets UI to 日本語 → AI responds in Japanese
+- User sets UI to Chinese → AI responds in Chinese
+- User sets UI to Japanese → AI responds in Japanese
 - No separate "AI language" setting needed
 
 ### 1.5 Themes
