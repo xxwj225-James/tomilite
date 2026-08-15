@@ -1,4 +1,4 @@
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
+import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { useLang } from '@/stores/useLang';
 import { tr } from '@/lib/i18n';
 import { useTaskState } from './useTaskState';

@@ -3,10 +3,11 @@ import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import type { ChatCard } from '@/types/chat';
+import type { ChatHook } from './useChatThreads';
 
 // ═══ Chat card actions: card event listeners (open/edit/delete/move/force-create/cancel-dedup/save-result) + delete handler ═══
 export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPanel, sendMessageRef, forceCreateRef, editingNote, editingTask, editingReport, setEditingNote, setEditingTask, setEditingReport, bumpTask, bumpNote, bumpReport }: {
-  chatHook: any;
+  chatHook: ChatHook;
   saveMsg: (msg: any) => Promise<any>;
   currentSessionId: string;
   setPanel: (p: string | null) => void;
@@ -79,7 +80,7 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
         for (let i = copy.length - 1; i >= 0; i--) {
           if (copy[i]?.card?.blocked) {
             const msgId = copy[i].id;
-            const updatedCard = { ...copy[i].card!, resolved: true };
+            const updatedCard = { ...copy[i].card, resolved: true };
             copy[i] = { ...copy[i], card: updatedCard };
             const _ea = (window as any).electronAPI;
             if (_ea?.log) _ea.log('[cancelDedup] m.id=' + msgId + ' blocked=true');
@@ -98,7 +99,8 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
     const onSaveResult = (e: Event) => setSaveResult((e as CustomEvent).detail);
     window.addEventListener('tl-save-result', onSaveResult);
     return () => { window.removeEventListener('tl-open-card', onOpen); window.removeEventListener('tl-edit-card', onEdit); window.removeEventListener('tl-delete-card', onDelete); window.removeEventListener('tl-move-card', onMove); window.removeEventListener('tl-force-create', onForceCreate); window.removeEventListener('tl-cancel-dedup', onCancelDedup); window.removeEventListener('tl-save-result', onSaveResult); };
-  }, []); // listeners registered once, refs keep values fresh
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once, refs keep values fresh
+  }, []);
 
   // Delete card handler (component level, used by ConfirmDialog JSX)
   const executeDelete = () => {

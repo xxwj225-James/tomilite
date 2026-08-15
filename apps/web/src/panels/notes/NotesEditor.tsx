@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
+import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { t as tt2, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 
@@ -70,10 +70,10 @@ export function NotesEditor(p: Props) {
         {p.onNoteAction && (
           <>
             <span style={{ width: 1, height: 16, background: 'var(--edge)', margin: '0 2px' }} />
-            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction!('polish')}>✨ {_t('润色','推敲','Pol')}</button>
-            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction!('translate')}>🌐 {_t('翻译','翻訳','Tran')}</button>
-            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction!('summarize')}>📝 {_t('总结','要約','Sum')}</button>
-            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction!('expand')}>📖 {_t('扩写','拡張','Exp')}</button>
+            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction?.('polish')}>✨ {_t('润色','推敲','Pol')}</button>
+            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction?.('translate')}>🌐 {_t('翻译','翻訳','Tran')}</button>
+            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction?.('summarize')}>📝 {_t('总结','要約','Sum')}</button>
+            <button className="btn-ghost btn-xs" disabled={!p.content.trim()} style={{ fontSize: 9, color: p.content.trim() ? 'var(--brand)' : 'var(--muted)', opacity: p.content.trim() ? 1 : 0.4, cursor: p.content.trim() ? 'pointer' : 'default', padding: '2px 6px' }} onClick={() => p.onNoteAction?.('expand')}>📖 {_t('扩写','拡張','Exp')}</button>
           </>
         )}
 {/* Export dialog */}

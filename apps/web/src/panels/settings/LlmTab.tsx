@@ -1,4 +1,3 @@
-import { tr } from "@/lib/i18n";
 import { LlmForm } from "@/components/settings/LlmForm";
 
 export function LlmTab() {

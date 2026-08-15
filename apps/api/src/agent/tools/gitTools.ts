@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { getWorkspaceRoots, refreshWorkspaceRoots } from '../utils/shell.js';
 
 /** List recent git commits tracked by TomiLite */

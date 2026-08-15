@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { marked } from 'marked';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { t, tr } from '@/lib/i18n';
-import { cn } from '@/lib/cn';
 import { useLang } from '@/stores/useLang';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -147,12 +146,14 @@ export function HomePanel() {
     fetchHealth(true);
     fetchKnowledge(true);
     fetchTaskStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchers recreated per render; [lang] is the real trigger
   }, [lang]);
 
   // Auto-refresh health + knowledge map every 2 hours
   useEffect(() => {
     const timer = setInterval(() => { fetchHealth(); fetchKnowledge(); }, 2 * 3600000);
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchers recreated per render; timer registered once
   }, []);
 
   const dimLabels: Record<string, string> = { completion: t('home.completion', lang), velocity: t('home.velocity', lang), git_activity: t('home.git', lang), staleness: t('home.freshness', lang) };
@@ -284,74 +285,6 @@ export function HomePanel() {
         </div>
       </div>
 
-    </div>
-  );
-}
-
-function BoardBody() {
-  const [board, setBoard] = useState<any>(null);
-  const [issues, setIssues] = useState<any[]>([]);
-  const fetchBoard = () => {
-    fetch('/api/board.getBoard?input=%7B%22projectId%22%3A%22proj-default%22%7D')
-      .then(r => r.json()).then(d => setBoard(d.result?.data)).catch(() => {});
-  };
-  useEffect(() => { fetchBoard(); }, []);
-
-  // Map issue status → column
-  const statusMap: Record<string, string> = { todo: 'To Do', in_progress: 'In Progress', in_review: 'Review', done: 'Done' };
-  const grouped: Record<string, any[]> = {};
-  if (board?.columns) {
-    board.columns.forEach((col: any) => {
-      const cards = (col.cards || []).map((c: any) => c.issue).filter(Boolean);
-      grouped[col.name] = cards;
-    });
-  }
-
-  const handleMove = async (issueId: string, colId: string) => {
-    const col = board?.columns?.find((c: any) => c.id === colId);
-    if (!col) return;
-    const card = col.cards?.find((c: any) => c.issue?.id === issueId || c.issueId === issueId);
-    if (card) {
-      await fetch('/api/board.moveCard', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId: card.id, columnId: colId, position: col.cards.length }),
-      });
-    }
-    // Also update issue status
-    const newStatus = col.mappedStatuses?.split(',')[0] || col.name.toLowerCase().replace(' ', '_');
-    await fetch(`/api/issue.update`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: issueId, status: newStatus }),
-    });
-    fetchBoard();
-  };
-
-  if (!board) return <div className="text-ink-muted text-sm p-4">Loading board...</div>;
-
-  return (
-    <div className="kanban">
-      {board.columns?.map((col: any, i: number) => {
-        const cards = col.cards?.map((c: any) => c.issue).filter(Boolean) || [];
-        return (
-          <div key={col.id} className="kanban-col"
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('issueId'); if (id) handleMove(id, col.id); }}>
-            <div className="kanban-col-hd">
-              <span>{col.name}</span>
-              <span className={cn('badge', i === 0 ? 'badge--todo' : i === cards.length - 1 && col.name === 'Done' ? 'badge--done' : 'badge--progress')}>{cards.length}</span>
-            </div>
-            <div className="kanban-col-bd">
-              {cards.map((issue: any) => (
-                <div key={issue.id} className="kanban-card" draggable onDragStart={e => e.dataTransfer.setData('issueId', issue.id)}>
-                  <div className="kanban-card-key">TL-{issue.issueNumber}</div>
-                  <div>{issue.title}</div>
-                  <div className="text-ink-muted" style={{ fontSize: 9, marginTop: 2 }}>{issue.priority} · {issue.storyPoints || '-'}sp</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import crypto from 'crypto';
 
 // ═══ HITL (Human-in-the-Loop) ═══
-// Risk-gated execution, idempotency, confirm/deny
+// Same design as TomatoHub: risk-gated execution, idempotency, confirm/deny
 // Simplified for single-user local: in-memory task store, no Redis needed
 
 type RiskLevel = 'read_only' | 'low' | 'medium' | 'high';
@@ -30,7 +30,7 @@ const HITL_TIMEOUTS: Record<RiskLevel, number> = {
   read_only: 0, low: 300000, medium: 600000, high: 300000,
 }; // low/medium/high: 5/10/5 minutes — enough for human to notice and approve
 
-// Risk levels per tool
+// Risk levels per tool (same as TomatoHub)
 const TOOL_RISK: Record<string, RiskLevel> = {
   'tools/list': 'read_only',
   create_issue: 'low',
@@ -54,10 +54,6 @@ const TOOL_RISK: Record<string, RiskLevel> = {
 function genToken() { return Math.random().toString(36).substring(2, 10); }
 function genTaskId() { return `hitl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; }
 
-// Verify API key from header
-function hashKey(rawKey: string) {
-  return crypto.createHash('sha256').update(rawKey.trim()).digest('hex');
-}
 
 export const mcpRouter = router({
   // ─── List available tools ───
@@ -316,7 +312,7 @@ export const mcpRouter = router({
       } catch { /* notification server may not be running */ }
 
       // Clean expired tasks periodically
-      for (const [tid, t] of hitlTasks) {
+      for (const [, t] of hitlTasks) {
         if (Date.now() > t.expiresAt && t.status === 'pending') t.status = 'expired';
       }
 
@@ -372,7 +368,7 @@ export const mcpRouter = router({
   // ─── Confirm by task ID only (for TomiLite UI — human clicked Approve) ───
   confirmById: publicProcedure
     .input(z.object({ taskId: z.string() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const task = hitlTasks.get(input.taskId);
       if (!task) return { error: 'Task not found' };
       if (task.status !== 'pending') return { error: `Task already ${task.status}` };

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLang } from '@/stores/useLang';
 import { t } from '@/lib/i18n';
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/react';
-import { Editor, rootCtx, defaultValueCtx, rootAttrsCtx, editorViewCtx, editorViewOptionsCtx, schemaCtx } from '@milkdown/kit/core';
+import { Editor, rootCtx, defaultValueCtx, rootAttrsCtx, editorViewCtx, editorViewOptionsCtx } from '@milkdown/kit/core';
 import {
   commonmark, toggleStrongCommand, toggleEmphasisCommand, toggleInlineCodeCommand,
   wrapInHeadingCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
@@ -291,7 +291,7 @@ function serializeList(node: any): string {
 
 function serializeTable(node: any): string {
   const rows: string[] = [];
-  let headerAlignments: string[] = [];
+  const headerAlignments: string[] = [];
 
   node.forEach((row: any, _offset: number, rowIndex: number) => {
     const cells: string[] = [];
@@ -307,7 +307,7 @@ function serializeTable(node: any): string {
         } else { text += child.textContent || ''; }
       });
 
-      let formattedText = text.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+      const formattedText = text.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
       cells.push(formattedText);
 
       // Capture header cell alignment for column separator
@@ -372,7 +372,7 @@ function execBlockCmd(ed: any, cmd: any, arg?: any) {
 }
 
 /**
- * Core: elegantly solve Cell node alignment and rendering binding via NodeView
+ * 核心：通过 NodeView 优雅解决 Cell 节点的对齐与渲染绑定
  */
 class CellNodeView {
   dom: HTMLElement;
@@ -382,7 +382,7 @@ class CellNodeView {
   constructor(node: any, isHeader: boolean) {
     this.node = node;
     this.dom = document.createElement(isHeader ? 'th' : 'td');
-    this.contentDOM = this.dom; // mount content
+    this.contentDOM = this.dom; // 挂载内容
     this.updateStyle(node);
   }
 
@@ -396,7 +396,7 @@ class CellNodeView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     this.updateStyle(node);
-    return true; // tell ProseMirror the node can update in place on existing DOM, no destroy+redraw needed
+    return true; // 告诉 ProseMirror 节点可以在原有 DOM 上原地更新，无需销毁重绘！
   }
 }
 
@@ -412,6 +412,12 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         ctx.set(rootAttrsCtx, { spellcheck: 'false', translate: 'no', class: 'milkdown-editor' });
         ctx.set(editorViewOptionsCtx, {
           editable: () => !readOnly,
+          transformPastedHTML: (html: string) => {
+            // Strip inline style attrs from pasted HTML (web pages, rich editors, etc.)
+            // Prevents <span style="color:..."> from being captured by textColor/highlight
+            // marks and serialized back as raw HTML tags in markdown output.
+            return html.replace(/\sstyle\s*=\s*"[^"]*"/gi, '').replace(/\sstyle\s*=\s*'[^']*'/gi, '');
+          },
           handleDOMEvents: {
             keydown: (_view: any, event: KeyboardEvent) => {
               if (event.key === 'Enter' || event.key === 'Tab' || event.key === 'Backspace' || event.key === 'Delete') {
@@ -438,12 +444,6 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
               // Normal HTML paste: let ProseMirror handle it; transformPastedHTML strips styles
               return false;
             },
-            transformPastedHTML: (html: string) => {
-              // Strip inline style attrs from pasted HTML (web pages, rich editors, etc.)
-              // Prevents <span style="color:..."> from being captured by textColor/highlight
-              // marks and serialized back as raw HTML tags in markdown output.
-              return html.replace(/\sstyle\s*=\s*"[^"]*"/gi, '').replace(/\sstyle\s*=\s*'[^']*'/gi, '');
-            },
           },
         });
       })
@@ -457,7 +457,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       })))
       .use(gfm)
       .use(columnResizingPlugin)
-      // Use NodeView to fully own Cell view updates
+      // 使用 NodeView 完全接管 Cell 视图更新
       .use($prose(() => {
         return new Plugin({
           props: {
@@ -514,7 +514,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       .use($prose(() => new Plugin({
         key: new PluginKey('tableActiveTracker'),
         view() {
-          return { update(v: any) { setTableActive(isInTable(v.state)); } };
+          return { update(v: any) { const next = isInTable(v.state); setTableActive(prev => prev === next ? prev : next); } };
         },
       })))
       .use($prose(() => new Plugin({
@@ -688,7 +688,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
   };
 
   /**
-   * Single-cell alignment: change Node attrs via Transaction only, let NodeView handle rendering
+   * 单 Cell 对齐：仅通过 Transaction 更改 Node attrs，让 NodeView 处理渲染
    */
   function execTableCmd(ed: any, t: Tool) {
     ed.action((ctx: any) => {
@@ -725,7 +725,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
           callCommand(deleteSelectedCellsCommand.key)(ctx);
           return;
         }
-        const rowIdx = Array.from(trEl.parentElement!.children).indexOf(trEl);
+        const rowIdx = Array.from(trEl.parentElement?.children ?? []).indexOf(trEl);
         callCommand(selectRowCommand.key, { pos: tablePos, index: rowIdx })(ctx);
         callCommand(deleteSelectedCellsCommand.key)(ctx);
       }
@@ -734,11 +734,11 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         const dom = view.domAtPos($head.pos);
         const cell = (dom.node as HTMLElement).closest?.('th,td') as HTMLElement | null;
         if (!cell || tablePos < 0 || tableNode.child(0).childCount <= 1) return;
-        const colIdx = Array.from(cell.parentElement!.children).indexOf(cell);
+        const colIdx = Array.from(cell.parentElement?.children ?? []).indexOf(cell);
         callCommand(selectColCommand.key, { pos: tablePos, index: colIdx })(ctx);
         callCommand(deleteSelectedCellsCommand.key)(ctx);
       }
-      // ── Align: clean Node attrs update strategy ──
+      // ── Align: 标准纯净的 Node attrs 更新策略 ──
       else if (t.label === '⟵' || t.label === '⟺' || t.label === '⟶') {
         const align = t.label === '⟵' ? 'left' : t.label === '⟺' ? 'center' : 'right';
 
@@ -754,7 +754,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         if (cellDepth >= 0) {
           const cellPos = $head.before(cellDepth);
           const cellNode = $head.node(cellDepth);
-          let tr = state.tr;
+          const tr = state.tr;
 
           // Must update header + target in same tx (table_cell setNodeMarkup requires table_header present)
           const colIdx = $head.index(cellDepth - 1);
@@ -923,48 +923,10 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
 
 export function MarkdownEditor({ value, onChange, readOnly, height }: Props) {
   return (
-    <>
-      <style>{`
-        .md-tbar { display: flex; gap: 1px; padding: 3px 8px; border-bottom: 1px solid var(--edge); background: var(--surface); flex-shrink: 0; position: relative; z-index: 1; flex-wrap: wrap; overflow: visible; }
-        .md-tbar button { background: none; border: none; cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--muted); transition: all .1s; white-space: nowrap; }
-        .md-tbar button:hover { background: var(--surface2); color: var(--ink); }
-        .md-tbar .md-sep { width: 1px; background: var(--edge); margin: 2px 4px; align-self: stretch; }
-        .milkdown-editor { padding: 14px 16px; font-size: 13px; line-height: 1.8; }
-        .milkdown-editor h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; }
-        .milkdown-editor h2 { font-size: 15px; font-weight: 700; margin: 20px 0 10px; padding: 8px 12px; background: linear-gradient(135deg, var(--surface2), transparent); border-left: 4px solid var(--brand); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-        .milkdown-editor h3 { font-size: 15px; font-weight: 600; margin: 12px 0 4px; }
-        .milkdown-editor p { margin: 0 0 8px; }
-        .milkdown-editor ul,.milkdown-editor ol { padding-left: 20px; margin: 0 0 4px; }
-        .milkdown-editor ul { list-style-type: disc; }
-        .milkdown-editor ol { list-style-type: decimal; }
-        .milkdown-editor li { padding: 1px 0; }
-        .milkdown-editor code { background: var(--surface2); padding: 1px 5px; border-radius: 3px; font-size: 12px; font-family: monospace; }
-        .milkdown-editor pre { background: #0d1117; color: #c9d1d9; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.6; font-family: 'Consolas','Monaco','Courier New',monospace; }
-        .milkdown-editor pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
-        .milkdown-editor blockquote { margin: 12px 0; padding: 14px 18px; background: linear-gradient(135deg, var(--brand-soft), rgba(99,102,241,0.02)); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); color: var(--ink); }
-        .milkdown-editor blockquote p { margin: 0; }
-        .milkdown-editor table { border-collapse: collapse; width: 100% !important; min-width: 300px !important; margin: 10px 0; border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-xs); table-layout: fixed; }
-        .milkdown-editor .tableWrapper { overflow-x: auto; border-radius: var(--radius-md); }
-        .milkdown-editor th { background: linear-gradient(135deg, var(--brand), var(--brand-hover)); color: #fff; padding: 8px 12px; font-size: 12px; font-weight: 600; border: 1px solid var(--brand-hover); }
-        .milkdown-editor td { padding: 7px 12px; border: 1px solid var(--edge); font-size: 13px; }
-        .milkdown-editor hr { height: 2px; border: none; margin: 16px 0; background: linear-gradient(90deg, var(--brand), transparent); }
-        
-        .resize-cursor { cursor: col-resize !important; }
-        .column-resize-handle { position: absolute; top: 0; right: -3px; bottom: 0; width: 6px; z-index: 20; background: transparent; cursor: col-resize; }
-        .column-resize-handle:hover { background: var(--brand); opacity: 0.4; }
-        .milkdown-editor a { color: var(--brand); text-decoration: underline; }
-        [data-milkdown-root] { flex: 1; min-height: 0; overflow-y: auto; display: block !important; }
-        .ProseMirror { outline: none !important; min-height: 200px; }
-        .ProseMirror img { max-width: 100%; max-height: 400px; min-width: 40px; min-height: 20px; display: inline-block; vertical-align: middle; }
-        .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--brand); }
-        .ProseMirror-focused { outline: none !important; }
-        .milkdown-editor tr:hover td { background: var(--surface2); }
-      `}</style>
-      <div style={{ border: '1px solid var(--edge)', borderRadius: 8, height: height || '400px', minHeight: '250px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <MilkdownProvider>
-          <MilkdownInner value={value} onChange={onChange} readOnly={readOnly} />
-        </MilkdownProvider>
-      </div>
-    </>
+    <div style={{ border: '1px solid var(--edge)', borderRadius: 8, height: height || '400px', minHeight: '250px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <MilkdownProvider>
+        <MilkdownInner value={value} onChange={onChange} readOnly={readOnly} />
+      </MilkdownProvider>
+    </div>
   );
 }

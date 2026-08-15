@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../../trpc.js';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../../lib/crypto.js';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
@@ -172,7 +172,7 @@ JSON:`;
             if (intent.includes('stop') || intent.includes('cancel')) return { intent: 'cancel' };
           } catch { /* malformed JSON, fall through */ }
         }
-      } catch (_) { /* timeout or network error */ }
+      } catch { /* timeout or network error */ }
       return { intent: 'other' };
     }),
 });

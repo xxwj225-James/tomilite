@@ -82,11 +82,11 @@ export function App() {
 
   const { sendMessage, stopStream, sendMessageRef, forceCreateRef } = useSendMessage({ chatHook, saveMsg, currentSessionId, query, setQuery, maxTokens, currentTokens, llmConfigured, setLlmConfigured, editingNote, editingTask, editingReportRef, panel, setPanel, handleApplyEdit, bumpNote, bumpTask, bumpReport, bumpEmail, attachedFiles, setAttachedFiles, setAppliedEdit, setAppliedTaskEdit, setAppliedReport });
 
-  const { deleteTarget, setDeleteTarget, deleting, setDeleting, saveResult, setSaveResult, executeDelete } = useChatCardActions({ chatHook, saveMsg, currentSessionId, setPanel, sendMessageRef, forceCreateRef, editingNote, editingTask, editingReport, setEditingNote, setEditingTask, setEditingReport, bumpTask, bumpNote, bumpReport });
+  const { deleteTarget, setDeleteTarget, deleting, saveResult, setSaveResult, executeDelete } = useChatCardActions({ chatHook, saveMsg, currentSessionId, setPanel, sendMessageRef, forceCreateRef, editingNote, editingTask, editingReport, setEditingNote, setEditingTask, setEditingReport, bumpTask, bumpNote, bumpReport });
 
   const [leaveTarget, setLeaveTarget] = useState<{ type: 'close' | 'menu'; key?: string } | null>(null);
 
-  const { notifyCount, mcpPending, morningNotify, setMorningNotify, eveningNotify, setEveningNotify, notifyLoading, setNotifyLoading } = useNotifications({ sessionsLoaded });
+  const { notifyCount, setNotifyCount, mcpPending, morningNotify, setMorningNotify, eveningNotify, setEveningNotify, notifyLoading, setNotifyLoading } = useNotifications({ sessionsLoaded });
 
   const [pinnedText, setPinnedText] = useState<string | null>(() => localStorage.getItem('tl-pinned-text'));
   useEffect(() => { if (pinnedText) localStorage.setItem('tl-pinned-text', pinnedText); else localStorage.removeItem('tl-pinned-text'); }, [pinnedText]);
@@ -129,7 +129,7 @@ export function App() {
   };
   // Morning check-in bubble click (used by MenuNav)
   const handleMorningNotify = () => {
-    if (thinking) return;
+    if (thinking || !morningNotify) return;
     const text = morningNotify;
     setMessages(prev => [...prev, { role: 'assistant' as const, text, tool: 'greeting', pinnable: true }]);
     saveMsg({ role: 'assistant', text, tool: 'greeting', pinnable: true });
@@ -273,7 +273,7 @@ export function App() {
           setLeaveTarget(null);
           (window as any).__tl_unsaved = null;
           if (target?.type === 'close') setPanel(null);
-          else if (target?.type === 'menu') setPanel(target.key!);
+          else if (target?.type === 'menu') setPanel(target.key ?? null);
           setTimeout(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }, 50);
         }}
         onLeaveCancel={() => { setLeaveTarget(null); setTimeout(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }, 50); }}

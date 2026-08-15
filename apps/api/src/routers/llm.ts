@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { encrypt, decrypt } from '../lib/crypto';
 import { getProxyUrl } from '../agent/utils/proxy.js';
 
@@ -76,7 +76,8 @@ export const llmRouter = router({
       const fetchOpts: any = {};
       const proxy = getProxyUrl();
       if (proxy && (input.baseUrl?.includes('openai') || input.baseUrl?.includes('anthropic'))) {
-        try { const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch { /* undici not available */ }
+        try { // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
+          const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch { /* undici not available */ }
       }
       try {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };

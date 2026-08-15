@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
 /** Get project statistics — todo/in-progress/done counts */

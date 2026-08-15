@@ -1,7 +1,7 @@
 /**
- * ⚠️ VENDOR-SPECIFIC — serves only the 5 legacy vendor/pages (Board, Backlog, IssueDetail, WikiList, WikiEditor)
- * Main app UI translations use the I18N dictionary in @/lib/i18n
- * Do NOT add new translations here — use @/lib/i18n instead
+ * ⚠️ VENDOR-SPECIFIC — 仅服务于 vendor/pages/* 的 5 个页面 (Board, Backlog, IssueDetail, WikiList, WikiEditor)
+ * 主应用 UI 翻译统一使用 @/lib/i18n 的 I18N 字典
+ * 新功能请勿在此添加翻译 — 改用 @/lib/i18n
  */
 export const translations = {
   en: {
@@ -334,7 +334,7 @@ export const translations = {
 
 // Compile-time check: en and zh must have all the same keys
 type AssertKeysEqual<T, U> = keyof T extends keyof U ? (keyof U extends keyof T ? true : never) : never;
-type _CheckZH = AssertKeysEqual<typeof translations.en, typeof translations.zh>;
+export type _CheckZH = AssertKeysEqual<typeof translations.en, typeof translations.zh>;
 
 // Simple i18n helper — add new languages here only
 type SupportedLang = 'en' | 'zh' | 'ja';

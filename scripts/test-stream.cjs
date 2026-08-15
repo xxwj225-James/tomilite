@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // Simulate agent stream with the user's conversation to reproduce DeepSeek 400
 const https = require('https');
 const http = require('http');

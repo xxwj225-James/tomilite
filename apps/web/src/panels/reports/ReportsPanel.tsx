@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
+import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { useLang } from '@/stores/useLang';
-import { tr } from '@/lib/i18n';
 import { useReportsState } from './useReportsState';
 import { ReportsList } from './ReportsList';
 import { ReportsEditor } from './ReportsEditor';

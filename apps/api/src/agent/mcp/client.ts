@@ -93,7 +93,7 @@ async function parseSSEResponse(response: Response): Promise<any> {
   if (!reader) return response.json();
 
   const decoder = new TextDecoder();
-  let buffer = '', currentEvent = '';
+  let buffer = '';
   let accumulated: any = null;
 
   while (true) {
@@ -104,7 +104,7 @@ async function parseSSEResponse(response: Response): Promise<any> {
     buffer = lines.pop() || '';
 
     for (const line of lines) {
-      if (line.startsWith('event:')) { currentEvent = line.slice(6).trim(); continue; }
+      if (line.startsWith('event:')) { continue; }
       if (!line.startsWith('data:')) continue;
       const raw = line.slice(5).trim();
       if (!raw) continue;
@@ -131,7 +131,7 @@ const protocolCache = new Map<string, TransportMode>();
 
 async function negotiateTransport(baseUrl: string, headers: Record<string, string>): Promise<TransportMode> {
   const key = baseUrl;
-  if (protocolCache.has(key)) return protocolCache.get(key)!;
+  if (protocolCache.has(key)) return protocolCache.get(key) as TransportMode;
 
   // If URL already ends with /tools/call → legacy mode
   if (baseUrl.endsWith('/tools/call')) {

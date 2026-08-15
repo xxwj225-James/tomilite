@@ -162,7 +162,6 @@ export function renderMarkdown(md: string): string {
           }
         }
         let t = '<table>';
-        let dataRi = 0;
         tableRows.forEach((row, ri) => {
           if (ri === sepIdx) return; // skip separator row
           t += '<tr>';

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // tomat init — Install git post-commit hook to auto-link commits to TomiLite
 // Usage: node scripts/tomat-init.js [--repo /path/to/repo]
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const API_URL = process.env.TOMAT_API || 'http://localhost:3091';
 const repoPath = process.argv.includes('--repo')
@@ -42,7 +42,7 @@ REPO_PATH=$(pwd)
 
 curl -s -X POST ${API_URL}/api/git.handleHook \\
   -H "Content-Type: application/json" \\
-  -d "{\\"path\\":\\"${REPO_PATH}\\",\\"hash\\":\\"${COMMIT_HASH}\\",\\"message\\":\\"${COMMIT_MSG//\\"/\\\\\\"}\\"}" \\
+  -d "{\\"path\\":\\"\${REPO_PATH}\\",\\"hash\\":\\"\${COMMIT_HASH}\\",\\"message\\":\\"\${COMMIT_MSG//\\"/\\\\\\"}\\"}" \\
   > /dev/null 2>&1 &
 `;
 

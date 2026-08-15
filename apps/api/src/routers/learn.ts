@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 
 // ═══ Agent Self-Learning — lightweight, no MQ/Celery ═══
 // Captures implicit feedback (reopen, reassign), reflects on startup,

@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 
 export const emailToolDefs = [
   {
@@ -101,7 +101,7 @@ export async function executeEmailTool(tool: string, args: Record<string, any>) 
       });
     }
     case 'edit_email_reply': {
-      const updated = await prisma.smartEmail.update({
+      await prisma.smartEmail.update({
         where: { id: args.emailId },
         data: { replyDraft: args.replyText },
       });

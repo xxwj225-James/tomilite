@@ -66,7 +66,7 @@ export function TasksList(p: Record<string, unknown>) {
 
   // ─── Custom mouse drag-to-status (avoids HTML5 drag + obfuscator issues) ───
   const [dragActive, setDragActive] = useState(false);
-  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [, setDragItemId] = useState<string | null>(null);
   const [dragTitle, setDragTitle] = useState('');
   const [dragX, setDragX] = useState(0);
   const [dragY, setDragY] = useState(0);
@@ -97,7 +97,7 @@ export function TasksList(p: Record<string, unknown>) {
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
       const zone = el?.closest('[data-drop-zone]');
       if (zone) {
-        const newStatus = zone.getAttribute('data-drop-zone')!;
+        const newStatus = zone.getAttribute('data-drop-zone') ?? '';
         if (newStatus !== activeTab) {
           api.issue.update({ id: issueId, status: newStatus }).then(() => {
             (get('fetchIssues') as () => void)();

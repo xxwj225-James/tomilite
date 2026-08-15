@@ -224,6 +224,7 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     } else {
       setEmailFullBody(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startDraftGenerationInner declared below (TDZ); called later via click
   }, []);
 
   // ─── Batch select ───
@@ -285,11 +286,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     setEmailLoading(true);
     setEmailFullBody(null);
     try {
-      console.log('[Email] getBody: fetching', selected.id);
       const r = await fetch('/api/email.getBody?input=' + encodeURIComponent(JSON.stringify({ id: selected.id })));
       const d = await r.json();
       const body = d.result?.data;
-      console.log('[Email] getBody: got', { ok: !!body, len: body?.length });
       // Store raw body — sanitize at render time only (double sanitize strips too much)
       setEmailFullBody(body || `<p style="color:var(--muted)">${t('loadFail')}</p>`);
     } catch (e: any) {
@@ -413,7 +412,7 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
       setSendError(translateSendError(errMsg, lang));
     }
     setSending(false);
-  }, [selected, replyText, sendTo, sendCC, sendSubject, fetchEmails]);
+  }, [selected, replyText, sendTo, sendCC, sendSubject, fetchEmails, lang]);
 
   // ─── Link Task (AI generates title + description) ───
   const [linkingTask, setLinkingTask] = useState(false);
@@ -507,6 +506,7 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     const dirty = replyText !== lastSavedDraftRef.current;
     (window as any).__tl_unsaved = dirty ? 'email' : null;
     return () => { if ((window as any).__tl_unsaved === 'email') (window as any).__tl_unsaved = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected changes identity on list refresh; id is the real trigger
   }, [replyText, selected?.id]);
 
   // ─── Filtered emails ───

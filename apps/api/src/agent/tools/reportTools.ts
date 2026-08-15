@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { generateReportVector } from '../utils/vector.js';
 import { semanticRank } from '../utils/search.js';
@@ -8,7 +8,7 @@ export async function listReports(args: Record<string, any>): Promise<Array<{ id
   const where: any = { archived: false };
   if (args.query) {
     // Split query into terms. For CJK text without spaces, generate character bigrams
-    // so a 6-char Chinese phrase becomes char bigrams for fuzzy matching.
+    // so "12个验证清单" → ["12","2个","个验","验证","证清","清单"] for fuzzy matching.
     const wsTerms = args.query.split(/[\s,，、]+/).filter((t: string) => t.length > 0);
     const hasCJK = /[一-鿿㐀-䶿]/.test(args.query);
     let terms = wsTerms;
@@ -43,7 +43,7 @@ export async function listReports(args: Record<string, any>): Promise<Array<{ id
           select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true },
         });
       }
-    } catch (_) { /* FTS may not be available or query syntax invalid */ }
+    } catch { /* FTS may not be available or query syntax invalid */ }
   }
 
   if (args.query && reports.length > 0) {
@@ -308,7 +308,7 @@ export async function exportToDoc(args: Record<string, any>): Promise<any> {
       }
 
       // Regular paragraph — strip inline markdown
-      let text = t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+      const text = t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
       children.push(new Paragraph({ text, spacing: { after: 40 } }));
       i++;
     }

@@ -1,5 +1,4 @@
 // Simulate the SSE event processing from App.tsx to debug JSON stripping
-const fs = require('fs');
 
 // Read App.tsx and extract the relevant logic
 // Simulate: the SSE events that arrive during a create_issue call
@@ -16,7 +15,6 @@ const testEvents = [
 // Simulate the exact App.tsx SSE processing logic
 let fullText = '';
 let currentEvent = '';
-let lastToolArgsRef = '';
 let cardBuilt = false;
 
 for (const evt of testEvents) {
@@ -52,7 +50,6 @@ for (const evt of testEvents) {
 
   // data.tool && data.args
   if (data.tool && data.args) {
-    lastToolArgsRef = data.args;
     const beforeLen = fullText.length;
     console.log(`\n=== TOOL_CALL: ${data.tool} ===`);
     console.log(`  fullText before cut: ${beforeLen}B`);

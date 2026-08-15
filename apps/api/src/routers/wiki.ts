@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { exportToExcel, exportToDoc, exportToHtml } from '../agent/tools/reportTools.js';
 
 // ─── Reusable schemas ───

@@ -1,11 +1,9 @@
-import { prisma } from '@tomatolite/database';
-import type { SSESender } from '../utils/sse.js';
-import { sendToken, sendToolCall, sendToolResult, sendThinking, sendReasoning } from '../utils/sse.js';
-import { agentLog } from '../utils/logger.js';
+import { prisma } from '@tomilite/database';
+import { sendToken, sendToolCall, sendToolResult, sendThinking, sendReasoning, type SSESender } from '../utils/sse.js';
 import { DEFAULT_PROJECT_ID, MAX_ITERATIONS } from '../utils/constants.js';
 
-import type { LLMConfig } from '../llm/client.js';
-import { streamLLMWithRetry, isQwenProvider } from '../llm/client.js';
+import { agentLog } from '../utils/logger.js';
+import { streamLLMWithRetry, isQwenProvider, type LLMConfig } from '../llm/client.js';
 import { toolLabels } from '../tools/registry.js';
 import { executeAgentTool } from '../tools/dispatcher.js';
 import type { GuardResult } from './guard.js';
@@ -92,7 +90,7 @@ export async function runAgentLoop(
   let fullContent = '';
   let iterations = 0;
   const calledTools = new Set<string>();
-  let createdKeys: string[] = [];
+  const createdKeys: string[] = [];
   let hadError = false;
   let exportSucceeded = false; // set when export_to_* returns ok:true — reliable hallucination guard
   let llmResponded = false; // set after first LLM response — suppress SYSTEM CHECKs after that
@@ -137,14 +135,14 @@ export async function runAgentLoop(
                       else if (!rTimer) { rTimer = setTimeout(flushR, 150); }
                     }
                   }
-                } catch (_) { /* skip */ }
+                } catch { /* skip */ }
               }
             }
             const thinking = tC.replace(/<thinking>/gi, '').replace(/<\/thinking>/gi, '').trim();
             if (thinking && thinking.length > 20 && !thinking.includes('Analyze in <thinking>') && !thinking.includes('Stop at </thinking>')) { messages.push({ role: 'assistant', content: '<thinking>' + thinking + '</thinking>' }); messages.push({ role: 'user', content: 'Now act. Call the right tool or write your answer.' }); }
           }
         }
-      } catch (_) { /* falls through to normal flow */ }
+      } catch { /* falls through to normal flow */ }
     }
 
     const result = await streamLLMWithRetry(config, messages, activeTools, send);
@@ -238,7 +236,7 @@ export async function runAgentLoop(
           messages.push({ role: 'user', content: `SYSTEM CHECK: Guard classified as "${parsedIntent}" but NO tool called. Call ${toolMap[parsedIntent]}. Do NOT fake a result.` });
           continue;
         }
-        // Fallback: text claims success (✅ + TL-/created/created) but no tool called
+        // Fallback: text claims success (✅ + TL-/created) but no tool called
         if (/✅|📄|📋|📊/.test(result.content) && /TL-|创建|created|作成/.test(result.content)) {
           llmResponded = true;
           agentLog('[Hallucination] Text claims success but no tool called');

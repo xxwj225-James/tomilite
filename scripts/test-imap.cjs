@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // Test IMAP connectivity and new message detection
 const { execSync } = require('child_process');
 const path = require('path');

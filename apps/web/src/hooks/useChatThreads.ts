@@ -9,6 +9,8 @@ export interface SessionData {
   messages: any[];
 }
 
+export type ChatHook = ReturnType<typeof useChatSessions>;
+
 function makeTitle(text: string): string {
   return (text || '').replace(/\n/g, ' ').substring(0, 30).trim() || 'Chat';
 }

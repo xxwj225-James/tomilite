@@ -73,5 +73,5 @@ export function useNotifications({ sessionsLoaded }: { sessionsLoaded: boolean }
     }
   }, [sessionsLoaded]);
 
-  return { notifyCount, mcpPending, morningNotify, setMorningNotify, eveningNotify, setEveningNotify, notifyLoading, setNotifyLoading };
+  return { notifyCount, setNotifyCount, mcpPending, morningNotify, setMorningNotify, eveningNotify, setEveningNotify, notifyLoading, setNotifyLoading };
 }

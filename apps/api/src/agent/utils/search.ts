@@ -1,6 +1,5 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../../lib/crypto.js';
-import { agentLog } from './logger.js';
 
 // ─── Search term extraction (Chinese-friendly) ───
 

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { t } from "@/lib/i18n";
-import { api } from "@/lib/api";
 import { useLang } from "@/stores/useLang";
 
 export function GitTab() {
@@ -24,6 +23,7 @@ export function GitTab() {
     fetch('/api/git.listRepos').then(r => r.json()).then(d => setRepos(d.result?.data || [])).catch(() => {});
     fetch(`/api/git.recentCommits?input=${encodeURIComponent(JSON.stringify({ limit: PAGE_SIZE, offset: commitPage * PAGE_SIZE }))}`).then(r => r.json()).then(d => { const r = d.result?.data; setCommits(r?.commits || []); setCommitTotal(r?.total || 0); }).catch(() => {});
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData recreated per render; [commitPage] is the real trigger
   useEffect(() => { fetchData(); }, [commitPage]);
 
   const addDir = async () => {

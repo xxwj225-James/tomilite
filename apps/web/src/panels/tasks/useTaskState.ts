@@ -67,7 +67,7 @@ export function useTaskState(onEditingTask?: ((t: any) => void), appliedTaskEdit
   const [deletedNotify, setDeletedNotify] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
-  const showDragHint = false;
+  // const showDragHint = false;
 
   // ─── Dirty tracking ───
   const [taskReady, setTaskReady] = useState(false);
@@ -99,6 +99,7 @@ export function useTaskState(onEditingTask?: ((t: any) => void), appliedTaskEdit
   // Re-sync editingTask when panel becomes active — it was cleared on panel exit
   useEffect(() => {
     if (active && selected) onEditingTask?.({ issueNumber: selected.issueNumber, id: selected.id, title: selected.title, description: selected.description || '', status: selected.status || 'todo', priority: selected.priority || 'medium' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- [active] only; sync effect at line 157 covers field changes
   }, [active]);
 
   // ─── Event listeners ───
@@ -136,6 +137,7 @@ export function useTaskState(onEditingTask?: ((t: any) => void), appliedTaskEdit
     };
     consumePending();
     return () => { window.removeEventListener('tl-select-task', h); window.removeEventListener('tl-close-task-editor', onCloseEditor); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once; lang/fetchIssues/onEditingTask recreated per render
   }, []);
   // Re-check pending selection when panel becomes active (panel stays mounted via lazy-mount)
   useEffect(() => {
@@ -150,16 +152,18 @@ export function useTaskState(onEditingTask?: ((t: any) => void), appliedTaskEdit
   // ─── Agent edits ───
   useEffect(() => { if (appliedTaskEdit) { const a = appliedTaskEdit as any; if (a.title) { setEditTitle(a.title); if (titleRef.current) titleRef.current.value = a.title; } if (a.description !== undefined) { setEditDesc(a.description); if (descRef.current) descRef.current.value = a.description; } if (a.status) setEditStatus(a.status); if (a.priority) setEditPriority(a.priority); if (a.storyPoints != null) setEditSP(a.storyPoints); if (a.dueDate !== undefined) setEditDueDate(a.dueDate || ''); } }, [appliedTaskEdit]);
   // Sync editDueDate from selected task (when viewing from kanban card)
-  useEffect(() => { setEditDueDate(selected?.dueDate || ''); }, [selected?.id]);
+  useEffect(() => { setEditDueDate(selected?.dueDate || ''); }, [selected?.id, selected?.dueDate]);
 
   // ─── Dirty tracking ───
   // Sync editing flag back to App.tsx when user toggles View→Edit or Edit→View
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingTask recreated per render; [editing] is the real trigger
   useEffect(() => { if (selected?.issueNumber) onEditingTask?.({ ...selected, editing }); }, [editing]);
   // Clear App.tsx editingTask when editor closes (returns to task list)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingTask recreated per render; [selected] is the real trigger
   useEffect(() => { if (!selected) (onEditingTask as any)?.(null); }, [selected]);
   useEffect(() => { if (!editing) { setTaskReady(false); return; } const timer = setTimeout(() => setTaskReady(true), 800); return () => clearTimeout(timer); }, [editing]);
   useEffect(() => { if (!editing) taskEditedRef.current = false; }, [editing]);
-  useEffect(() => { const dirty = editing && taskReady && taskEditedRef.current; if (!pendingBack) (window as any).__tl_unsaved = dirty ? 'tasks' : null; return () => { if ((window as any).__tl_unsaved === 'tasks') (window as any).__tl_unsaved = null; }; }, [editTitle, editDesc, editStatus, editPriority, editSP, taskReady, selected?.id, editing]);
+  useEffect(() => { const dirty = editing && taskReady && taskEditedRef.current; if (!pendingBack) (window as any).__tl_unsaved = dirty ? 'tasks' : null; return () => { if ((window as any).__tl_unsaved === 'tasks') (window as any).__tl_unsaved = null; }; }, [editTitle, editDesc, editStatus, editPriority, editSP, taskReady, selected?.id, editing, pendingBack]);
 
   // ─── Drag & drop ───
   const handleDragStart = (e: React.DragEvent, issueId: string, currentStatus: string) => { e.dataTransfer.setData('text/plain', JSON.stringify({ id: issueId, fromStatus: currentStatus })); e.dataTransfer.effectAllowed = 'move'; };

@@ -58,6 +58,9 @@ export function EmailList(p: Record<string, unknown>) {
   const [lineData, setLineData] = useState<Array<{ x1: number; y1: number; x2: number; y2: number; color: string }>>([]);
 
   // Recalculate mindmap connecting lines on expand/collapse
+  const expandedGroup = get('expandedGroup');
+  const expandedCategory = get('expandedCategory');
+  const emailsCount = get('emails')?.length;
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -115,7 +118,7 @@ export function EmailList(p: Record<string, unknown>) {
       }
     });
     setLineData(lines);
-  }, [stats, get('expandedGroup'), get('expandedCategory'), get('emails')?.length]);
+  }, [stats, expandedGroup, expandedCategory, emailsCount]);
 
   // Build lookup: cat -> CatStats
   const statMap: Record<number, CatStats> = {};
@@ -321,8 +324,8 @@ function EmailTable({ emails, color: _color, get, lang }: { emails: EmailItem[];
   const sortArrow = get('emailSortArrow') as (key: string) => string;
 
   const sorted = [...emails].sort((a, b) => {
-    const av = (a[sortKey] || '').toString().toLowerCase();
-    const bv = (b[sortKey] || '').toString().toLowerCase();
+    const av = String((a as Record<string, unknown>)[sortKey] ?? '');
+    const bv = String((b as Record<string, unknown>)[sortKey] ?? '');
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return sortDir === 'asc' ? cmp : -cmp;
   });

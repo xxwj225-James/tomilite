@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { t, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import type { StagedEdit } from '@/types/chat';
+import type { ChatHook } from './useChatThreads';
 
 // ═══ Editor monitors: agent-applied edits, refresh counters, panel lifecycle + user-action context signals ═══
-export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatHook: any; currentSessionId: string; panel: string | null }) {
+export function useEditorMonitors({ chatHook, currentSessionId: _currentSessionId, panel }: { chatHook: ChatHook; currentSessionId: string; panel: string | null }) {
   const lang = useLang();
   const setMessages = chatHook.setMessages;
   const [editingNote, setEditingNote] = useState<{ id?: string; title: string; content: string; category: string } | null>(null);
@@ -59,6 +60,7 @@ export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatH
     if (prev === 'email' && panel !== 'email') {
       notifyI18n('exitedEmail');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- notifyI18n recreated per render; [panel] is the real trigger
   }, [panel]);
 
   // User action monitor — tells agent what the user is doing
@@ -68,7 +70,7 @@ export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatH
     setMessages(prev => [...prev, sysMsg]);
   };
   const notifyI18n = (key: string, params?: Record<string, string>) => {
-    let msg = t(('agent.' + key) as any, lang, params);
+    const msg = t(('agent.' + key) as any, lang, params);
     notifyAgent(msg);
   };
 
@@ -88,6 +90,7 @@ export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatH
       setMessages(prevMsgs => [...prevMsgs, newMsg]);
       // Not persisted — context signal for AI, not permanent chat history
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang/notifyI18n recreated per render; [editingNote] is the real trigger
   }, [editingNote]);
 
   // Task monitor — like note monitor, tells agent when user interacts with tasks
@@ -111,6 +114,7 @@ export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatH
         setMessages(prevMsgs => [...prevMsgs, msg]);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang/notifyI18n recreated per render; [editingTask] is the real trigger
   }, [editingTask]);
 
   // Report monitor — fire once when panel opens
@@ -123,6 +127,7 @@ export function useEditorMonitors({ chatHook, currentSessionId, panel }: { chatH
     const msg = { role: 'assistant' as const, text: t('editor.reportHint', lang) };
     setMessages(prevMsgs => [...prevMsgs, msg]);
     // Not persisted — context signal for AI, not permanent chat history
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang/notifyI18n recreated per render; [editingReport] is the real trigger
   }, [editingReport]);
 
   return {

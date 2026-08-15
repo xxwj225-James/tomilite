@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // Remove non-Windows Prisma engine binaries to shrink installer (~120MB savings)
 const fs = require('fs');
 const path = require('path');
@@ -29,7 +30,7 @@ for (const dir of dirs) {
         fs.unlinkSync(filePath);
         removed++;
         console.log('  ✂ Removed:', file);
-      } catch (e) {
+      } catch {
         console.warn('  ⚠ Failed to remove:', file);
       }
     }

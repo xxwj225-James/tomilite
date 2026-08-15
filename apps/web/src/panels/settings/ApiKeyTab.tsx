@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/stores/useLang";
-import { ConfirmDialog } from "@tomatolite/shared-ui/components/ConfirmDialog";
+import { ConfirmDialog } from "@tomilite/shared-ui/components/ConfirmDialog";
 
 export function ApiKeyTab() {
   const lang = useLang();

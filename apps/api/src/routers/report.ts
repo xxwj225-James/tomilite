@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { exportToExcel, exportToDoc, exportToHtml } from '../agent/tools/reportTools.js';
 
 // Archive sent reports older than 90 days (hide from UI, never delete)
@@ -11,7 +11,7 @@ export function startReportArchiver() {
         where: { status: 'sent', generatedAt: { lt: cutoff }, archived: false },
         data: { archived: true },
       });
-      if (archived.count > 0) console.log(`[Report Archive] Archived ${archived.count} old sent reports`);
+      if (archived.count > 0) console.warn(`[Report Archive] Archived ${archived.count} old sent reports`);
     } catch {}
   }, 60 * 60 * 1000);
 }

@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { mcpRegistry } from '../agent/mcp/registry.js';
 

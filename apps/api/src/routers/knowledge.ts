@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { t } from '../lib/i18n.js';
 import { decrypt } from '../lib/crypto.js';
 
@@ -46,7 +46,6 @@ export const knowledgeRouter = router({
         const cfg = await prisma.llmConfig.findFirst();
         if (!cfg?.flashModel && !cfg?.proModel) { genError = t('knowledge.noModel', input.lang); }
         else {
-          const model = cfg?.flashModel || cfg?.proModel;
           const langLabel = input.lang === 'zh' ? 'Chinese' : input.lang === 'ja' ? 'Japanese' : 'English';
           const prompt = `You are a knowledge analyst. Analyze the data below and output ONLY a knowledge map in Markdown. Write in ${langLabel}. Follow the format EXACTLY — replace ALL <placeholders> with real content, do NOT keep placeholder text like "Domain Name" verbatim. Do NOT add any introduction, preamble, greeting, or closing remarks — start directly with "# Knowledge Map".
 

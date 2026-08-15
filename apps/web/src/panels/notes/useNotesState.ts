@@ -25,7 +25,6 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
   const [overwriteMsg, setOverwriteMsg] = useState<string | null>(null);
   const [deletedNotify, setDeletedNotify] = useState<string | null>(null);
   const overwriteResolveRef = useRef<((ok: boolean) => void) | null>(null);
-  const requestOverwrite = (msg: string): Promise<boolean> => new Promise(resolve => { overwriteResolveRef.current = resolve; setOverwriteMsg(msg); });
   const resolveOverwrite = (ok: boolean) => { overwriteResolveRef.current?.(ok); overwriteResolveRef.current = null; setOverwriteMsg(null); };
   const [pendingBack, setPendingBack] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -71,6 +70,7 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
     };
     consumePending();
     return () => { window.removeEventListener('tl-select-note', h); window.removeEventListener('tl-close-note-editor', onCloseEditor); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once; lang/onEditingNote recreated per render
   }, []);
   // Clear App.tsx editingNote when editor closes (returns to note list)
   const skipFetchRef = useRef(false);
@@ -81,6 +81,7 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
     if (wasEditing && !selected && !skipFetchRef.current) fetchNotes();
     skipFetchRef.current = false;
     if (!selected) (onEditingNote as any)?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchNotes/onEditingNote recreated per render; [selected] is the real trigger
   }, [selected]);
   // Re-check pending selection when panel becomes active (panel stays mounted via lazy-mount)
   useEffect(() => {
@@ -91,12 +92,14 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
       window.dispatchEvent(new CustomEvent('tl-select-note', { detail: pending }));
     }
   }, [active]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchNotes recreated per render; [noteRefresh] is the real trigger
   useEffect(() => { if (noteRefresh && noteRefresh > 0) { fetchNotes(); if (selected?.id) { api.wiki.byId(selected.id).then((u:any) => { if (u) { setTitle(u.title||''); setContent(u.content||''); setCategory(u.category||'general'); } }).catch(()=>{}); } } }, [noteRefresh]);
   useEffect(() => { if (appliedEdit) { if (appliedEdit.title) setTitle(appliedEdit.title); if (appliedEdit.content !== undefined) setContent(appliedEdit.content); if (appliedEdit.category) setCategory(appliedEdit.category); } }, [appliedEdit]);
 
   // Re-sync editingNote when panel becomes active — it was cleared on panel exit
   useEffect(() => {
     if (active && selected?.id) onEditingNote?.({ id: selected.id, title, content, category });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- [active] only; throttled sync effect below covers field changes
   }, [active]);
   // Keep App.tsx editingNote in sync (throttled — fire at most every 800ms to avoid per-keystroke re-renders)
   const noteSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,6 +109,7 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
     noteSyncTimerRef.current = setTimeout(() => {
       onEditingNote?.({ id: selected.id, title, content, category });
     }, 800);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingNote recreated per render; debounce keyed on [title, content]
   }, [title, content]);
 
   // ─── Dirty tracking ───
@@ -113,7 +117,7 @@ export function useNotesState(onEditingNote?: (n: any) => void, onNoteAction?: (
   const onNoteContent = (val: string) => { setContent(val); if (noteReady) noteEditedRef.current = true; };
   const onNoteTitle = (e: any) => { setTitle(e.target.value); if (noteReady) noteEditedRef.current = true; };
   const onNoteCategory = (e: any) => { setCategory(e.target.value); if (noteReady) noteEditedRef.current = true; };
-  useEffect(() => { const dirty = editing && noteReady && noteEditedRef.current; (window as any).__tl_unsaved = dirty ? 'notes' : null; return () => { if ((window as any).__tl_unsaved === 'notes') (window as any).__tl_unsaved = null; }; }, [title, content, category, noteReady, selected?.id]);
+  useEffect(() => { const dirty = editing && noteReady && noteEditedRef.current; (window as any).__tl_unsaved = dirty ? 'notes' : null; return () => { if ((window as any).__tl_unsaved === 'notes') (window as any).__tl_unsaved = null; }; }, [editing, title, content, category, noteReady, selected?.id]);
 
   // ─── Sort ───
   const toggleSort = (key: 'title' | 'category' | 'updatedAt') => { if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc'); } };

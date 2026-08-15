@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { t } from "@/lib/i18n";
-import { api } from "@/lib/api";
 import { useLang } from "@/stores/useLang";
 
 const PRESETS: Record<string, { imap: { host: string; port: string }; smtp: { host: string; port: string }; guide: { en: string[]; zh: string[]; ja: string[] } }> = {
@@ -51,7 +50,6 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const ProviderLogo = ({ name, size = 24 }: { name: string; size?: number }) => {
-  const bg = PROVIDER_COLORS[name] || 'var(--muted)';
   const s = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: '#fff', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const env = <><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,8 12,14 22,8"/></>;
   switch (name) {

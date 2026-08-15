@@ -1,6 +1,6 @@
 // ═══ MCP Tool Registry — in-memory cache with lazy discovery ═══
 
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../../lib/crypto.js';
 import { createMCPClient } from './client.js';
 import { agentLog } from '../utils/logger.js';

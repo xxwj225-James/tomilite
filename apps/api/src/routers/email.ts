@@ -1,7 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { encrypt, decrypt } from '../lib/crypto';
-import { emailManager, sendSMTP } from '@tomatolite/email';
+import { emailManager, sendSMTP } from '@tomilite/email';
 export const emailRouter = router({
   // ─── Smart Email list (for notification badge + Task panel) ───
   listSmartEmails: publicProcedure
@@ -315,7 +315,8 @@ export const emailRouter = router({
     }))
     .mutation(async ({ input }) => {
       try {
-        const { createIMAPConnector } = require('@tomatolite/email');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- avoids circular import at load time
+        const { createIMAPConnector } = require('@tomilite/email');
         const connector = createIMAPConnector({
           host: input.host, port: input.port, user: input.user, password: input.password,
           tls: input.tls, mailbox: input.mailbox, pollIntervalSeconds: 60,
@@ -356,7 +357,7 @@ export const emailRouter = router({
           const cfg = await prisma.llmConfig.findFirst();
           const apiKey = await decrypt(provider.apiKey);
           const langLabel = input.lang === 'zh' ? 'Chinese' : 'English';
-          const base = master!.apiBaseUrl || '';
+          const base = master?.apiBaseUrl || '';
           const body: any = {
             model: cfg?.flashModel || 'deepseek-chat',
             messages: [{
@@ -530,7 +531,7 @@ Emails:\n${emailList}`,
       ).join('\n');
 
       try {
-        const base = master!.apiBaseUrl || '';
+        const base = master?.apiBaseUrl || '';
         const reqBody: any = {
           model: cfg?.flashModel || 'deepseek-chat',
           messages: [{

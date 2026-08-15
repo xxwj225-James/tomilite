@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -7,7 +7,6 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
 
 // Key stored in filesystem (TL_USER_DATA/.encryption_key), not in DB.
 // Prevents trivial decryption: attacker needs both DB + filesystem access.

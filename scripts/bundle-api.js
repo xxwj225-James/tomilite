@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // Bundle API server with esbuild for production packaging
 const esbuild = require('esbuild');
 const path = require('path');

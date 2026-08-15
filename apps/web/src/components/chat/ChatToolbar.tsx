@@ -1,11 +1,12 @@
 import { cn } from '@/lib/cn';
 import { t } from '@/lib/i18n';
 import { LANGS, LANGS_FULL, THEMES, THEME_COLORS } from '@/lib/constants';
+import type { Lang } from '@/stores/languageStore';
 
 // ═══ Chat toolbar — language dropdown + theme dots + compress/clear ═══
 export function ChatToolbar({ lang, setLang, langMenuOpen, setLangMenuOpen, theme, setTheme, messagesCount, compressing, onCompress, onClear }: {
   lang: string;
-  setLang: (l: string) => void;
+  setLang: (l: Lang) => void;
   langMenuOpen: boolean;
   setLangMenuOpen: (v: boolean) => void;
   theme: string;

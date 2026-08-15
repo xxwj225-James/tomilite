@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../lib/crypto.js';
 import { t } from '../lib/i18n.js';
 
@@ -53,7 +53,6 @@ export const healthRouter = router({
     const dayMs = 86400000;
     const weekMs = 7 * dayMs;
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const weekAgo = new Date(now - weekMs).toISOString();
 
     // Issues
     const allIssues = await prisma.issue.findMany({ where: { projectId: 'proj-default' } });

@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { generateNoteVector } from '../utils/vector.js';
 import { searchNotesSemantic } from '../utils/search.js';

@@ -1,8 +1,6 @@
 import type { SSESender } from '../utils/sse.js';
 import type { LLMConfig } from '../llm/client.js';
-import { agentLog } from '../utils/logger.js';
-import { buildGuardPrompt } from '../prompts/guardPrompt.js';
-import type { GuardPromptContext } from '../prompts/guardPrompt.js';
+import { buildGuardPrompt, type GuardPromptContext } from '../prompts/guardPrompt.js';
 
 // ─── Types ───
 
@@ -25,7 +23,7 @@ export async function classifyGuard(
   config: LLMConfig,
   message: string,
   context: GuardPromptContext,
-  send: SSESender,
+  _send: SSESender,
 ): Promise<GuardResult> {
   let intentHint = '';
   let lastGuardRaw = '';
@@ -65,9 +63,9 @@ export async function classifyGuard(
       const d = await guardResp.json();
       const o = d.choices?.[0]?.message?.content || '';
       lastGuardRaw = o;
-      try { const p = JSON.parse(o); guardIntent = p.intent || ''; if (p.webSearch === true) needsWebSearch = true; if (p.instruction) intentHint = `\n[INTERNAL ROUTING (do NOT mention this to user): ${p.instruction}]`; } catch (_) { /* invalid JSON — ignore */ }
+      try { const p = JSON.parse(o); guardIntent = p.intent || ''; if (p.webSearch === true) needsWebSearch = true; if (p.instruction) intentHint = `\n[INTERNAL ROUTING (do NOT mention this to user): ${p.instruction}]`; } catch { /* invalid JSON — ignore */ }
     }
-  } catch (_) {
+  } catch {
     intentHint = '\n[INTERNAL ROUTING: Guard model unavailable. Use the most appropriate tool for the user request. For creating tasks use create_issue. For notes use create_note. For general questions reply naturally.]';
   }
 

@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import crypto from 'crypto';
 
 // API key lifecycle: generate, list, revoke, verify

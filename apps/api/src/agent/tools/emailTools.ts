@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { executeEmailTool } from '../../routers/emailTools.js';
 
 /** List unprocessed emails (smart inbox) */
@@ -32,7 +32,7 @@ export async function readEmailOriginal(args: Record<string, any>): Promise<any>
   try {
     const integration = await prisma.integration.findFirst({ where: { type: 'imap', enabled: true } });
     if (integration) {
-      const { emailManager } = await import('@tomatolite/email');
+      const { emailManager } = await import('@tomilite/email');
       const connector = emailManager.getConnector?.(integration.id);
       if (connector?.fetchFullMessage) {
         try {

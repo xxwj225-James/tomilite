@@ -55,16 +55,16 @@ export class IMAPConnector implements EmailConnector {
 
     await this.client.connect();
     this.status.connected = true;
-    console.log(`[IMAP] Connected to ${this.config.host}:${this.config.port}`);
+    console.warn(`[IMAP] Connected to ${this.config.host}:${this.config.port}`);
 
     const mailbox = await this.client.mailboxOpen(this.config.mailbox);
-    console.log(`[IMAP] Mailbox "${this.config.mailbox}": ${mailbox.exists} messages`);
+    console.warn(`[IMAP] Mailbox "${this.config.mailbox}": ${mailbox.exists} messages`);
 
     // Record the highest UID to start polling from (don't process old messages)
     if (mailbox.exists > 0) {
       const lastMsg = await this.client.fetchOne(`${mailbox.exists}`, { uid: true });
       this.lastCheckUid = lastMsg ? lastMsg.uid : 0;
-      console.log(`[IMAP] Initialized: ${mailbox.exists} msgs, last UID: ${this.lastCheckUid}`);
+      console.warn(`[IMAP] Initialized: ${mailbox.exists} msgs, last UID: ${this.lastCheckUid}`);
     }
 
     this.startPolling();
@@ -156,7 +156,7 @@ export class IMAPConnector implements EmailConnector {
     this.pollingTimer = setInterval(async () => {
       try {
         if (!this.client || !this.status.connected) {
-          console.log('[IMAP] Reconnecting...');
+          console.warn('[IMAP] Reconnecting...');
           await this.startWatching();
           return;
         }
@@ -170,7 +170,7 @@ export class IMAPConnector implements EmailConnector {
         this.status.connected = false;
       }
     }, interval);
-    console.log(`[IMAP] Polling every ${this.config.pollIntervalSeconds}s`);
+    console.warn(`[IMAP] Polling every ${this.config.pollIntervalSeconds}s`);
     this.status.polling = true;
   }
 

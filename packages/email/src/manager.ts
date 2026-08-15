@@ -36,7 +36,7 @@ export class EmailManager {
   async startIMAP(id: string, config: IMAPConfigRaw): Promise<void> {
     // F1: guard against concurrent calls with same id (would orphan connector)
     if (this._starting.has(id)) {
-      console.log(`[EmailManager] startIMAP skipped for ${id}: already starting`);
+      console.warn(`[EmailManager] startIMAP skipped for ${id}: already starting`);
       return;
     }
     this._starting.add(id);
@@ -65,7 +65,7 @@ export class EmailManager {
 
       await connector.startWatching();
       this.connectors.set(id, connector);
-      console.log(`[EmailManager] IMAP started: ${config.user}@${config.host}`);
+      console.warn(`[EmailManager] IMAP started: ${config.user}@${config.host}`);
     } catch (err) {
       // F2: if start fails after stopOne already removed old connector,
       // the id would be orphaned — log and re-throw so caller can report

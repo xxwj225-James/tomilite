@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { agentLog } from '../utils/logger.js';
 import { getProxyUrl } from '../utils/proxy.js';
@@ -15,7 +15,8 @@ export async function braveSearch(
 
   const proxy = getProxyUrl();
   const fetchOpts: any = {};
-  if (proxy) { try { const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch {} }
+  if (proxy) { try { // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
+    const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch {} }
 
   try {
     const resp = await fetch('https://api.search.brave.com/res/v1/web/search?q=' + q + '&count=10', {
@@ -51,6 +52,7 @@ export async function webSearch(
     const fetchOpts: any = {};
     if (proxy) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
         const { ProxyAgent } = require('undici');
         fetchOpts.dispatcher = new ProxyAgent(proxy);
         agentLog('[web_search] using proxy:', proxy);

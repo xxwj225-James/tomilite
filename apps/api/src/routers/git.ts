@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 
 // ─── Shared scanning logic — used by periodic interval in server.ts ───
 export async function scanGitWorkDirs() {
@@ -9,7 +9,7 @@ export async function scanGitWorkDirs() {
 
   // Check git availability once
   let gitAvailable = false;
-  try { execSync('git --version', { stdio: 'pipe', timeout: 5000 }); gitAvailable = true; } catch (_) {}
+  try { execSync('git --version', { stdio: 'pipe', timeout: 5000 }); gitAvailable = true; } catch {}
   if (!gitAvailable) return { reposFound: 0, commitsFound: 0, error: 'Git not found. Install Git and ensure it is in system PATH.' };
 
   const workDirs = await prisma.gitWorkDir.findMany({ where: { enabled: true } });
@@ -29,18 +29,18 @@ export async function scanGitWorkDirs() {
           if (!e.isDirectory() || e.name.startsWith('.')) continue;
           scan(join(dir, e.name), depth + 1);
         }
-      } catch (_) {}
+      } catch {}
     }
     scan(basePath, 0);
     return results;
   }
 
   for (const wd of workDirs) {
-    console.log('[GitScan] dir:', wd.path, 'exists:', existsSync(wd.path));
-    if (!existsSync(wd.path)) { console.log('[GitScan] path missing, skip'); continue; }
+    console.warn('[GitScan] dir:', wd.path, 'exists:', existsSync(wd.path));
+    if (!existsSync(wd.path)) { console.warn('[GitScan] path missing, skip'); continue; }
     try {
       const repoPaths = findGitRepos(wd.path, 3);
-      console.log('[GitScan] found repos:', repoPaths.length);
+      console.warn('[GitScan] found repos:', repoPaths.length);
 
       for (const repoPath of repoPaths) {
         // Strip trailing slash/backslash to avoid shell escaping issues
@@ -92,13 +92,13 @@ export async function scanGitWorkDirs() {
             await saveCommit(repo.id, hash, author, email, message, timestamp, files, adds, dels);
             commitsFound++;
           }
-        } catch (_) { /* git log failed, skip repo */ }
+        } catch { /* git log failed, skip repo */ }
 
         await prisma.gitRepo.update({
           where: { id: repo.id }, data: { lastScannedAt: new Date().toISOString() },
         });
       }
-    } catch (_) { /* scan failed */ }
+    } catch { /* scan failed */ }
   }
   return { reposFound, commitsFound };
 }

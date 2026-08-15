@@ -44,7 +44,7 @@ export function useTokenUsage(messages: any[]) {
       tokenMultiplier: 1,
       reset() { setDebugTokenOverride(null); setDebugForceShow(false); win.__tl_debug__.tokenMultiplier = 1; },
     };
-  }, []);
+  }, [debugTokenOverride, debugForceShow]);
   const displayTokens = debugTokenOverride ?? (currentTokens * ((window as any).__tl_debug__?.tokenMultiplier || 1));
 
   return { maxTokens, currentTokens, displayTokens, debugForceShow };

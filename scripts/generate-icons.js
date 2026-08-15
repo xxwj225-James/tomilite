@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // Generate icon PNG + ICO from SVG using sharp
 const sharp = require('sharp');
 const path = require('path');

@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => ({
   ],
   resolve: {
     alias: {
-      '@tomatolite/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
+      '@tomilite/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
       '@': path.resolve(__dirname, './src'),
     },
   },

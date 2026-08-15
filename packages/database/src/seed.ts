@@ -93,7 +93,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Seed complete. Default project, board, and LLM config created.');
+  console.warn('✅ Seed complete. Default project, board, and LLM config created.');
 }
 
 main()

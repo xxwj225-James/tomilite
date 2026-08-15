@@ -79,6 +79,7 @@ export function AboutTab() {
     };
     window.addEventListener('tl-update-dismissed', onDismissed);
     return () => window.removeEventListener('tl-update-dismissed', onDismissed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t recreated per render; listeners registered once
   }, []);
 
   const downloaded = downloadComplete || (!!updateInfo?.downloaded && !dlState?.active);
@@ -168,25 +169,15 @@ export function AboutTab() {
             </div>
           </div>
         )}
-        <p className="text-ink-muted mt-2" style={{ fontSize: 10 }}>{t('© 2026 Tomatovector', '© 2026 Tomatovector', '© 2026 Tomatovector')}</p>
+        <p className="text-ink-muted mt-2" style={{ fontSize: 10 }}>{t('版权所有 © 2026 Tomatovector。保留所有权利。', '© 2026 Tomatovector. 無断複写・転載を禁じます。', 'Copyright © 2026 Tomatovector. All rights reserved.')}</p>
       </div></div>
       <div className="card" style={{ marginTop: 10 }}>
         <div className="card-hd">{t('许可证', 'ライセンス', 'License')}</div>
         <div className="card-bd text-sm" style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.6 }}>
-          <p>{t('本软件以 MIT 许可证开源。可自由使用、修改、分发。', '本ソフトウェアは MIT ライセンスのオープンソースです。自由に使用・改変・配布できます。', 'This software is open source under the MIT License. Free to use, modify, and distribute.')}</p>
-          <p className="mt-1">
-            <a href="https://tomatovector.com" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
-              {t('官方网站', '公式サイト', 'Official Website')}
-            </a>
-            {' · '}
-            <a href="https://github.com/xxwj225-James/tomilite" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
-              {t('GitHub 仓库', 'GitHub リポジトリ', 'GitHub Repository')}
-            </a>
-            {' · '}
-            <a href="https://github.com/xxwj225-James/tomilite/issues" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
-              {t('报告问题', '問題を報告', 'Report an Issue')}
-            </a>
-          </p>
+          <p>{t('本软件为专有保密软件。仅供个人设备内部使用。', '本ソフトウェアは独占的な機密情報です。個人のデバイスでの内部使用に限ります。', 'This software is proprietary and confidential. You may install and use it on your personal devices for internal use only.')}</p>
+          <p className="mt-1">{t('禁止重新分发、转授权、销售、修改、反编译或逆向工程。', '再配布、サブライセンス、販売、改変、逆コンパイル、リバースエンジニアリングを禁止します。', 'You may NOT redistribute, sublicense, sell, modify, decompile, or reverse engineer the Software.')}</p>
+          <p className="mt-1">{t('本软件按"原样"提供，不附带任何形式的明示或暗示担保。', '本ソフトウェアは「現状有姿」で提供され、明示または黙示を問わず、いかなる保証もありません。', 'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.')}</p>
+          <p className="mt-1">Contact: xxwj225@hotmail.com</p>
         </div>
       </div>
     </div>

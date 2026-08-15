@@ -114,7 +114,7 @@ export function Msg({ role, text, tool, staged, card, onApply, onUndo, thinking,
                   const fp = await api.pickSaveFile(card.title, [{ name: isXlsx ? 'Excel' : 'Word', extensions: [ext] }]);
                   if (fp) {
                     try {
-                      api.copyFile(fp, card.key!);
+                      api.copyFile(fp, card.key ?? '');
                       window.dispatchEvent(new CustomEvent('tl-save-result', { detail: { ok: true, message: tr(lang,`✅ 已保存 "${card.title}"`,`✅ 「${card.title}」を保存しました`,`✅ "${card.title}" saved`) } }));
                     } catch {
                       window.dispatchEvent(new CustomEvent('tl-save-result', { detail: { ok: false, message: tr(lang,`保存 "${card.title}" 失败`,`「${card.title}」の保存に失敗`,`Failed to save "${card.title}"`) } }));

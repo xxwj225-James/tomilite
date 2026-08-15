@@ -3,6 +3,7 @@ export function getProxyUrl(): string | undefined {
   let url: any = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (!url && process.platform === 'win32') {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy load in try/catch
       const { execSync } = require('node:child_process');
       const raw = execSync('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer 2>nul', { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim();
       const m = raw.match(/ProxyServer\s+REG_SZ\s+(.+)/i);

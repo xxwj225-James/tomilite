@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
+import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 
 export function FeedbackPanel() {
   const lang = useLang();

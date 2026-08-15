@@ -7,10 +7,9 @@ import { listEmails, editEmailReply, sendEmailReply, readEmailOriginal, dismissE
 import { shellExec } from '../utils/shell.js';
 import { mcpCall } from '../utils/mcp.js';
 import { parseMcpToolName } from '../mcp/inject.js';
-import { mcpRegistry } from '../mcp/registry.js';
 import { createMCPClient } from '../mcp/client.js';
 import { decrypt } from '../../lib/crypto.js';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { executeEmailTool } from '../../routers/emailTools.js';
 
 /** Central dispatcher: routes tool name → handler function, with email fallback */

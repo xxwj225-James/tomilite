@@ -1,5 +1,4 @@
-import type { SSESender } from '../utils/sse.js';
-import { sendToken } from '../utils/sse.js';
+import { sendToken, type SSESender } from '../utils/sse.js';
 import { agentLog } from '../utils/logger.js';
 
 // ─── Types ───
@@ -48,12 +47,13 @@ export async function streamLLM(
   send: SSESender,
   streamTokens = true,
 ): Promise<LLMResult> {
-  const { baseUrl, apiKey, model, remainingTokens, maxOutputTokens, proxy } = config;
+  const { baseUrl, apiKey, model, remainingTokens, proxy } = config;
   // Proxy only for foreign providers (OpenAI/Anthropic). Domestic (DeepSeek/Qwen/Kimi) go direct.
   const needsProxy = proxy && (baseUrl?.includes('openai') || baseUrl?.includes('anthropic'));
   const fetchOpts: any = {};
   if (needsProxy) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
       const { ProxyAgent } = require('undici');
       fetchOpts.dispatcher = new ProxyAgent(proxy);
     } catch { /* undici not available */ }
@@ -152,7 +152,7 @@ export async function streamLLM(
           reasoningBuf += delta.reasoning_content;
           flushReasoning(); // immediate — prevent content from appearing before reasoning
         }
-      } catch (_) { /* skip malformed SSE lines */ }
+      } catch { /* skip malformed SSE lines */ }
     }
   }
   // Final flush
@@ -203,9 +203,9 @@ export async function streamLLM(
         })();
         if (validCall) {
           foundCalls.push({ id: 'v4-' + (Date.now() + foundCalls.length), name: resolvedName, args: jsonStr });
-          removeRanges.push([fnMatch.index!, endIdx]);
+          removeRanges.push([fnMatch.index ?? 0, endIdx]);
         }
-      } catch (_) { /* not valid JSON */ }
+      } catch { /* not valid JSON */ }
       searchFrom = endIdx + 1;
     }
     if (foundCalls.length > 0) {

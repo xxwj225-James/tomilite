@@ -1,4 +1,4 @@
-import { ConfirmDialog } from '@tomatolite/shared-ui/components/ConfirmDialog';
+import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { useLang } from '@/stores/useLang';
 import { tr, t as tt2 } from '@/lib/i18n';
 import { useEmailState } from './useEmailState';
@@ -27,7 +27,7 @@ export function EmailPanel({ emailRefresh, active }: {
         loading={s.dismissing as boolean}
         confirmLabel={s.dismissing ? tt2('emailPanel.processing', lang) : s.t('dismiss')}
         cancelLabel={tr(lang, '取消', 'キャンセル', 'ยกเลิก', 'Whakakore', 'Отмена', 'Cancel')}
-        onConfirm={() => s.dismissEmail(s.dismissTarget!)}
+        onConfirm={() => { if (s.dismissTarget) s.dismissEmail(s.dismissTarget); }}
         onCancel={() => s.setDismissTarget(null)}
       />
 

@@ -1,9 +1,10 @@
-import { useRef, type RefObject } from 'react';
+import { useRef, type RefObject, type Dispatch, type SetStateAction } from 'react';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import { dispatchUICommand, useUICommandStore } from '@/stores/uiCommandStore';
 import type { ChatCard } from '@/types/chat';
+import type { ChatHook } from './useChatThreads';
 
 // Pre-flight: instant panel navigation for explicit OPEN commands only.
 // Does NOT open panel for create commands — agent handles creation, C Plan cards show results.
@@ -19,7 +20,7 @@ export function preFlightPanel(msg: string): string | null {
 
 // ═══ Send message: SSE streaming, force-create, blocked-card intent, staged edits, editor context ═══
 export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, setQuery, maxTokens, currentTokens, llmConfigured, setLlmConfigured, editingNote, editingTask, editingReportRef, panel, setPanel, handleApplyEdit, bumpNote, bumpTask, bumpReport, bumpEmail, attachedFiles, setAttachedFiles, setAppliedEdit, setAppliedTaskEdit, setAppliedReport }: {
-  chatHook: any;
+  chatHook: ChatHook;
   saveMsg: (msg: any) => Promise<any>;
   currentSessionId: string;
   query: string;
@@ -38,8 +39,8 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
   bumpTask: () => void;
   bumpReport: () => void;
   bumpEmail: () => void;
-  attachedFiles: Array<{ name: string; content: string }>;
-  setAttachedFiles: (f: Array<{ name: string; content: string }>) => void;
+  attachedFiles: Array<{ name: string; size: number; content: string }>;
+  setAttachedFiles: Dispatch<SetStateAction<Array<{ name: string; size: number; content: string }>>>;
   setAppliedEdit: (e: any) => void;
   setAppliedTaskEdit: (e: any) => void;
   setAppliedReport: (e: any) => void;
@@ -149,7 +150,6 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
                     fullText = data.message || t('misc.forceCreateFailed', lang);
                   }
                   if (currentEvent === 'debug') {
-                    console.log('[LLM DEBUG]', JSON.stringify(data));
                     fullText += `\n\n🔍 **LLM Debug** | model: \`${data.model}\` | reasoning: ${data.reasoningLen} chars | content: ${data.contentLen} chars | toolCalls: ${data.toolCalls}${data.tools?.length ? ' [' + data.tools.join(', ') + ']' : ''}`;
                   }
                   if (data.tool && data.result) {
@@ -199,7 +199,7 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
           const copy = [...prev];
           for (let i = copy.length - 2; i >= 0; i--) {
             if (copy[i]?.card?.blocked && !copy[i]?.card?.resolved) {
-              const updatedCard = { ...copy[i].card!, resolved: true };
+              const updatedCard = { ...copy[i].card, resolved: true };
               copy[i] = { ...copy[i], card: updatedCard };
               const _ea = (window as any).electronAPI;
               if (_ea?.log) _ea.log('[forceResolved] m.id=' + copy[i].id + ' blocked=true');
@@ -239,7 +239,7 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
         const copy = [...prev];
         const idx = copy.findIndex(m => m && m.card?.blocked && !m.card?.resolved);
         if (idx >= 0) {
-          const updatedCard = { ...copy[idx].card!, resolved: true };
+          const updatedCard = { ...copy[idx].card, resolved: true };
           copy[idx] = { ...copy[idx], card: updatedCard };
           if (copy[idx].id) api.chat.updateMessage({ id: copy[idx].id, card: JSON.stringify(updatedCard) }).catch(() => {});
         }
@@ -414,7 +414,6 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
               continue;
             }
             if (currentEvent === 'debug') {
-              console.log('[LLM DEBUG]', JSON.stringify(data));
               continue;
             }
             if (currentEvent === 'thinking') {
@@ -445,10 +444,10 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
             // Only tool_result events (not tool_call) should add to fullText. Tool names go to reasoningContent only.
             if (data.tool && data.args && currentEvent !== 'tool_call') {
               lastToolArgsRef.current = data.args;
-              var cut2 = fullText.lastIndexOf('{');
+              const cut2 = fullText.lastIndexOf('{');
               if (cut2 >= 0) fullText = fullText.substring(0, cut2).trimEnd();
-              var brief2 = '';
-              try { var a2 = JSON.parse(data.args); brief2 = a2.title ? ' ' + String(a2.title).substring(0, 40) : ''; } catch (e: any) { brief2 = ' ERR:' + e.message; }
+              let brief2 = '';
+              try { const a2 = JSON.parse(data.args); brief2 = a2.title ? ' ' + String(a2.title).substring(0, 40) : ''; } catch (e: any) { brief2 = ' ERR:' + e.message; }
               fullText += '\n🔧 ' + data.tool + brief2;
             }
             let msgCard: ChatCard | undefined;
@@ -559,7 +558,7 @@ export function useSendMessage({ chatHook, saveMsg, currentSessionId, query, set
       saveMsg({ ...finalMsg, _sessionId: lockedSid });
       setMessages(prev => { const copy = [...prev]; if (copy[assistantIdx]) copy[assistantIdx] = { ...copy[assistantIdx], status: 'done' as const }; return copy; });
     } catch (e: any) {
-      setMessages(prev => { const copy = [...prev]; if (copy[assistantIdx]) copy[assistantIdx] = { ...copy[assistantIdx], status: (e?.name === 'AbortError' ? 'aborted' : 'error') as const }; return copy; });
+      setMessages(prev => { const copy = [...prev]; if (copy[assistantIdx]) copy[assistantIdx] = { ...copy[assistantIdx], status: (e?.name === 'AbortError' ? 'aborted' : 'error') }; return copy; });
       if (e?.name === 'AbortError') {
         // Stream was interrupted by user — no fallback, message already cleaned up by stopStream
       } else {

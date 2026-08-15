@@ -57,8 +57,11 @@ export function useReportsState(onEditingReport?: (r: any) => void, appliedRepor
   const prevSelectedRef = useRef<any>(null);
   useEffect(() => {
     if (active && selected) onEditingReport?.({ title, content, id: currentReportId || undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- [active] only; sync effect at line 74 covers field changes
   }, [active]);
-  useEffect(() => { const h = (e: Event) => { const d = (e as any).detail; fetchReports(); setTitle(d.title); setReportType(d.reportType||'daily'); setCurrentReportId(d.id); api.report.byId(d.id).then((r:any) => { if(r) { setSelected({id:d.id,title:d.title,content:r.content||''}); setContent(r.content||''); onEditingReport?.({title:r.title,content:r.content||'',id:d.id}); } else { setDeletedNotify(tr(lang,'该报告已被删除。','このレポートは削除されました。','รายงานนี้ถูกลบแล้ว','Kua Mukua tēnei Pūrongo','Этот отчёт удалён.','This report has been deleted.')); } }).catch(()=>{}); }; window.addEventListener('tl-select-report', h); const onCloseEditor = () => { setSelected(null); setTitle(''); setContent(''); onEditingReport?.(null as any); }; window.addEventListener('tl-close-report-editor', onCloseEditor); const consumePending = () => { const pending = (window as any).__tl_pendingReportSelect; if (pending) { (window as any).__tl_pendingReportSelect = null; h({ detail: pending } as any); } }; consumePending(); return () => { window.removeEventListener('tl-select-report', h); window.removeEventListener('tl-close-report-editor', onCloseEditor); }; }, []);
+  useEffect(() => { const h = (e: Event) => { const d = (e as any).detail; fetchReports(); setTitle(d.title); setReportType(d.reportType||'daily'); setCurrentReportId(d.id); api.report.byId(d.id).then((r:any) => { if(r) { setSelected({id:d.id,title:d.title,content:r.content||''}); setContent(r.content||''); onEditingReport?.({title:r.title,content:r.content||'',id:d.id}); } else { setDeletedNotify(tr(lang,'该报告已被删除。','このレポートは削除されました。','รายงานนี้ถูกลบแล้ว','Kua Mukua tēnei Pūrongo','Этот отчёт удалён.','This report has been deleted.')); } }).catch(()=>{}); }; window.addEventListener('tl-select-report', h); const onCloseEditor = () => { setSelected(null); setTitle(''); setContent(''); onEditingReport?.(null as any); }; window.addEventListener('tl-close-report-editor', onCloseEditor); const consumePending = () => { const pending = (window as any).__tl_pendingReportSelect; if (pending) { (window as any).__tl_pendingReportSelect = null; h({ detail: pending } as any); } }; consumePending(); return () => { window.removeEventListener('tl-select-report', h); window.removeEventListener('tl-close-report-editor', onCloseEditor); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once; lang/onEditingReport recreated per render
+  }, []);
   // Auto-refresh when returning to list (selected goes from truthy → null)
   const skipFetchRef = useRef(false);
   useEffect(() => {
@@ -68,9 +71,11 @@ export function useReportsState(onEditingReport?: (r: any) => void, appliedRepor
     skipFetchRef.current = false;
   }, [selected]);
   // Clear App.tsx editingReport when editor closes (returns to report list)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [selected] is the real trigger
   useEffect(() => { if (!selected) (onEditingReport as any)?.(null); }, [selected]);
   // Re-check pending selection when panel becomes active (panel stays mounted via lazy-mount)
   useEffect(() => { if (!active) return; const pending = (window as any).__tl_pendingReportSelect; if (pending) { (window as any).__tl_pendingReportSelect = null; window.dispatchEvent(new CustomEvent('tl-select-report', { detail: pending })); } fetchReports(); }, [active]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [title, content, currentReportId] are the real triggers
   useEffect(() => { if (selected) onEditingReport?.({title, content, id: currentReportId||undefined}); }, [title, content, currentReportId]);
   useEffect(() => { if (appliedReport) { if (appliedReport.title) setTitle(appliedReport.title); if (appliedReport.content) setContent(appliedReport.content); } }, [appliedReport]);
 
@@ -81,6 +86,7 @@ export function useReportsState(onEditingReport?: (r: any) => void, appliedRepor
   const onReportContent = (val: string) => { setContent(val); if (reportReady) reportEditedRef.current = true; };
   const onReportTitle = (e: any) => { setTitle(e.target.value); if (reportReady) reportEditedRef.current = true; };
   const onReportType = (e: any) => { setReportType(e.target.value); if (reportReady) reportEditedRef.current = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- selected identity changes on list refresh; selected?.id is the real trigger
   useEffect(() => { const dirty = selected && reportReady && reportEditedRef.current; (window as any).__tl_unsaved = dirty ? 'reports' : null; return () => { if ((window as any).__tl_unsaved === 'reports') (window as any).__tl_unsaved = null; }; }, [title, content, reportType, reportReady, selected?.id]);
 
   // ─── Save ───

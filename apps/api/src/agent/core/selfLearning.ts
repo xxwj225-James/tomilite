@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 
 /** Retrieve past mistakes to avoid (REJECT feedback from last 7 days, top 3) */
 export async function getLearnHint(): Promise<string> {
@@ -10,7 +10,7 @@ export async function getLearnHint(): Promise<string> {
     if (lessons.length > 0) {
       return `\n📚 PAST MISTAKES TO AVOID:\n${lessons.map(l => `- ${l.featureType}: you said "${l.aiOutput?.substring(0, 80)}" → user REJECTED`).join('\n')}`;
     }
-  } catch (_) { /* best-effort */ }
+  } catch { /* best-effort */ }
   return '';
 }
 
@@ -35,6 +35,6 @@ export async function getPreferenceHint(): Promise<string> {
       });
       if (hints.length > 0) return `\n📚 Learned preferences (user has accepted these):\n${hints.join('\n')}\n`;
     }
-  } catch (_) { /* best-effort */ }
+  } catch { /* best-effort */ }
   return '';
 }

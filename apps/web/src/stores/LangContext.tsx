@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
-import type { Lang } from './languageStore';
-import { useLanguageStore } from './languageStore';
+import { useLanguageStore, type Lang } from './languageStore';
 
 interface LangContextValue {
   lang: Lang;

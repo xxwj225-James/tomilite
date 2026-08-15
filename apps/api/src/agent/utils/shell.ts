@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { prisma } from '@tomatolite/database';
-import { agentLog } from './logger.js';
+import { prisma } from '@tomilite/database';
 
 // ─── Workspace roots ───
 let WORKSPACE_ROOTS: string[] = [process.cwd()];
@@ -10,7 +9,7 @@ export async function refreshWorkspaceRoots(): Promise<void> {
   try {
     const dirs = await prisma.gitWorkDir.findMany({ where: { enabled: true } });
     WORKSPACE_ROOTS = [process.cwd(), ...dirs.map(d => d.path)];
-  } catch (_) { /* best-effort */ }
+  } catch { /* best-effort */ }
 }
 
 export function initWorkspaceRoots(): void {
@@ -92,7 +91,7 @@ export async function shellExec(command: string, cwd?: string): Promise<{ code: 
     proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     const timer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch (_) { /* best-effort */ }
+      try { proc.kill('SIGKILL'); } catch { /* best-effort */ }
       resolve({ code: -1, stdout: stdout.slice(0, 8000), stderr: '⏱ Timeout (30s)' });
     }, 30000);
 

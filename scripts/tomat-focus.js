@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script */
 // tomat focus — Universal IDE focus tracker
 // Watches a project directory for file changes and sends heartbeats to TomiLite API.
 // Works with any IDE/editor: VS Code, JetBrains, Cursor, vim, etc.

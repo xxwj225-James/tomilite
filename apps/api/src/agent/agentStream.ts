@@ -1,15 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../lib/crypto.js';
 
 import { createSSESender, sendToken, sendDone, sendError } from './utils/sse.js';
-import { agentLog } from './utils/logger.js';
 import { getProxyUrl } from './utils/proxy.js';
 import { getWorkspaceRoots } from './utils/shell.js';
-import { DEFAULT_PROJECT_ID } from './utils/constants.js';
 
-import type { LLMConfig } from './llm/client.js';
-import { isQwenProvider } from './llm/client.js';
+import { isQwenProvider, type LLMConfig } from './llm/client.js';
 
 import { ALL_TOOLS, getActiveTools, type PruningContext } from './tools/registry.js';
 import { executeAgentTool } from './tools/dispatcher.js';
@@ -63,9 +60,7 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
       if (!provider?.apiKey) { sendError(send, 'No API key configured.'); res.end(); return; }
       const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
       const apiKey = await decrypt(provider.apiKey);
-      const cfg = await prisma.llmConfig.findFirst();
       const baseUrl = master?.apiBaseUrl || '';
-      const model = cfg?.proModel || cfg?.flashModel || '';
       if (!baseUrl || !apiKey) { sendError(send, 'LLM not configured.'); res.end(); return; }
       sendToken(send, 'Creating...');
       // Force-create: call the right tool directly (skipping dedup)
@@ -153,7 +148,8 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
       { role: 'system', content: systemPrompt },
       ...history.map((h: any) => {
         if (h.role === 'assistant' && h.reasoning_content && (!config.baseUrl?.includes('deepseek') || !h.tool_calls || h.tool_calls.length === 0)) {
-          const { reasoning_content, ...rest } = h;
+          const rest = { ...h };
+          delete rest.reasoning_content;
           return rest;
         }
         return h;

@@ -1,4 +1,4 @@
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { embedText } from './search.js';
 
 /** Generate and save embedding vector for a report (fire-and-forget) */
@@ -8,7 +8,7 @@ export async function generateReportVector(reportId: string): Promise<void> {
     if (!report?.content) return;
     const v = await embedText(report.title + '\n' + report.content);
     if (v) await prisma.report.update({ where: { id: reportId }, data: { vector: JSON.stringify(v) } });
-  } catch (_) { /* non-critical */ }
+  } catch { /* non-critical */ }
 }
 
 /** Generate and save embedding vector for a note (fire-and-forget) */
@@ -18,5 +18,5 @@ export async function generateNoteVector(noteId: string): Promise<void> {
     if (!note?.content) return;
     const v = await embedText(note.title + '\n' + note.content);
     if (v) await prisma.knowledgePage.update({ where: { id: noteId }, data: { vector: JSON.stringify(v) } });
-  } catch (_) { /* non-critical */ }
+  } catch { /* non-critical */ }
 }

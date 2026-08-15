@@ -1,28 +1,28 @@
 import { getProxyUrl } from './agent/utils/proxy.js';
 const proxyUrl = getProxyUrl();
-if (proxyUrl) console.log('[server] Proxy detected:', proxyUrl);
+if (proxyUrl) console.warn('[server] Proxy detected:', proxyUrl);
 
 import { createServer } from 'node:http';
 import { router } from './trpc';
 import { issueRouter } from './routers/issue';
 import { boardRouter } from './routers/board';
 import { wikiRouter } from './routers/wiki';
-import { gitRouter } from './routers/git';
+import { gitRouter, scanGitWorkDirs } from './routers/git';
 import { focusRouter } from './routers/focus';
 import { systemRouter } from './routers/system';
 import { llmRouter } from './routers/llm';
 import { emailRouter } from './routers/email';
-import { agentRouter, handleAgentStream } from './routers/agent';
+import { agentRouter, handleAgentStream, initWorkspaceRoots } from './routers/agent';
 import { mcpRouter } from './routers/mcp';
 import { apikeyRouter } from './routers/apikey';
 import { healthRouter } from './routers/health';
 import { searchRouter } from './routers/search';
 import { learnRouter } from './routers/learn';
 import { knowledgeRouter } from './routers/knowledge';
-import { reportRouter } from './routers/report';
+import { reportRouter, startReportArchiver } from './routers/report';
 import { feedbackRouter } from './routers/feedback';
 import { chatRouter } from './routers/chat';
-import { standupRouter } from './routers/standup';
+import { standupRouter, checkAndGenerateEvening, checkAndGenerateMorning } from './routers/standup';
 import { mcpServerRouter } from './routers/mcpServer';
 
 // ─── Compose all routers ───
@@ -53,7 +53,8 @@ export type AppRouter = typeof appRouter;
 
 // ─── Minimal tRPC HTTP server (no express/fastify needed) ───
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join, extname } from 'node:path';
 
 const MIME: Record<string, string> = {
@@ -108,12 +109,12 @@ try {
 } catch {}
 function ensureApiToken() {
   if (API_TOKEN) return API_TOKEN;
-  API_TOKEN = 'tl_' + require('crypto').randomBytes(32).toString('hex');
+  API_TOKEN = 'tl_' + randomBytes(32).toString('hex');
   try {
-    if (!existsSync(DATA_DIR)) require('fs').mkdirSync(DATA_DIR, { recursive: true });
-    require('fs').writeFileSync(tokenFile, API_TOKEN, { mode: 0o600 });
+    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(tokenFile, API_TOKEN, { mode: 0o600 });
   } catch {}
-  console.log('[Init] API token generated');
+  console.warn('[Init] API token generated');
   return API_TOKEN;
 }
 ensureApiToken();
@@ -227,12 +228,12 @@ async function sendNotification(title: string, body: string) {
       create: { key: 'notifyCount', value: String(count) },
       update: { value: String(count) },
     });
-  } catch (_) {}
+  } catch {}
 }
 
 // ─── Start email watchers ───
-import { emailManager, classifyEmail, heuristicClassify } from '@tomatolite/email';
-import { prisma } from '@tomatolite/database';
+import { emailManager, classifyEmail, heuristicClassify } from '@tomilite/email';
+import { prisma } from '@tomilite/database';
 
 /** Clean up processed emails older than 12h (piggybacks on each incoming message) */
 async function cleanupOldEmails() {
@@ -252,7 +253,7 @@ async function cleanupOldEmails() {
       await prisma.smartEmail.delete({ where: { id: email.id } });
       cleaned++;
     }
-    if (cleaned > 0) console.log(`[Email Cleanup] Removed ${cleaned} completed emails`);
+    if (cleaned > 0) console.warn(`[Email Cleanup] Removed ${cleaned} completed emails`);
   } catch (err) {
     console.error('[Email Cleanup] Error:', (err as Error).message);
   }
@@ -267,7 +268,7 @@ emailManager.onMessage(async (msg) => {
     // Run AI classifier (fallback to heuristic if LLM unavailable)
     let classification;
     try {
-      const cfg = await import('@tomatolite/database').then(m => m.prisma.llmConfig.findFirst());
+      const cfg = await import('@tomilite/database').then(m => m.prisma.llmConfig.findFirst());
       const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
       if (provider?.apiKey && cfg) {
         const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
@@ -283,10 +284,8 @@ emailManager.onMessage(async (msg) => {
 
     // All categories stored to DB
 
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-
     // Create SmartEmail record
-    const smartEmail = await prisma.smartEmail.create({
+    await prisma.smartEmail.create({
       data: {
         messageId: msg.externalId,
         uid: msg.uid ?? 0,
@@ -305,15 +304,15 @@ emailManager.onMessage(async (msg) => {
     // Send notifications for Cat 1/2/3 (no auto-issue creation — user creates tasks manually)
     if (classification.category === 1) {
       sendNotification('📥 紧急邮件', msg.subject).catch(() => {});
-      console.log(`[Email] Urgent: "${msg.subject}" from ${msg.from}`);
+      console.warn(`[Email] Urgent: "${msg.subject}" from ${msg.from}`);
     } else if (classification.category === 2) {
       sendNotification('📥 新邮件', msg.subject).catch(() => {});
-      console.log(`[Email] Reply today: "${msg.subject}" from ${msg.from}`);
+      console.warn(`[Email] Reply today: "${msg.subject}" from ${msg.from}`);
     } else if (classification.category === 3) {
       sendNotification('📥 新通知', msg.subject).catch(() => {});
-      console.log(`[Email] Notification: "${msg.subject}" from ${msg.from}`);
+      console.warn(`[Email] Notification: "${msg.subject}" from ${msg.from}`);
     } else if (classification.category === 4) {
-      console.log(`[Email] Other: "${msg.subject}" from ${msg.from}`);
+      console.warn(`[Email] Other: "${msg.subject}" from ${msg.from}`);
     }
 
     // Piggyback: run cleanup after each new email
@@ -324,11 +323,6 @@ emailManager.onMessage(async (msg) => {
 });
 
 // ─── Background tasks (started by startBackgroundTasks() after server is ready) ───
-import { scanGitWorkDirs } from './routers/git';
-import { startReportArchiver } from './routers/report';
-import { initWorkspaceRoots } from './routers/agent';
-import { checkAndGenerateEvening, checkAndGenerateMorning } from './routers/standup';
-
 function startBackgroundTasks() {
   // Hourly cleanup of processed emails older than 12h
   setInterval(cleanupOldEmails, 60 * 60 * 1000);
@@ -369,7 +363,7 @@ function startBackgroundTasks() {
         data: { archived: true },
       });
       if (a1.count + a2.count + a3.count > 0) {
-        console.log(`[Archive] Issues:${a1.count} Git:${a2.count} Emails:${a3.count}`);
+        console.warn(`[Archive] Issues:${a1.count} Git:${a2.count} Emails:${a3.count}`);
       }
     } catch {}
   }, 60 * 60 * 1000);
@@ -417,7 +411,7 @@ async function ensureSchema() {
     // Table might not exist yet — first launch, proceed with migration
   }
 
-  console.log('[Init] Syncing database schema to v' + SCHEMA_VERSION + '...');
+  console.warn('[Init] Syncing database schema to v' + SCHEMA_VERSION + '...');
 
   // ─── Phase 1: Raw SQL migration (reliable, no prisma db push dependency) ───
   // Each migration is idempotent — catches "duplicate column" errors silently
@@ -455,11 +449,11 @@ async function ensureSchema() {
     if (cfg && parseInt(cfg.value) >= m.version) continue; // already applied
     try {
       await prisma.$executeRawUnsafe(m.sql);
-      console.log('[Init] Raw migration v' + m.version + ' applied');
+      console.warn('[Init] Raw migration v' + m.version + ' applied');
     } catch (e: any) {
       // SQLite "duplicate column" → column already exists, skip
       if (e.message?.includes('duplicate column') || e.message?.includes('already exists')) {
-        console.log('[Init] Raw migration v' + m.version + ' skipped (already applied)');
+        console.warn('[Init] Raw migration v' + m.version + ' skipped (already applied)');
       } else {
         console.error('[Init] Raw migration v' + m.version + ' failed:', e.message);
       }
@@ -478,22 +472,21 @@ async function ensureSchema() {
   const schemaPath = candidates.find(p => existsSync(p)) || candidates[0];
   try {
     // Use Electron's bundled Node.js (or system node in dev)
-    var nodeBin = process.env.ELECTRON_RUN_AS_NODE === '1' ? process.execPath : 'node';
+    const nodeBin = process.env.ELECTRON_RUN_AS_NODE === '1' ? process.execPath : 'node';
     // Prisma CLI writes cache to node_modules/.cache — redirect to writable user dir
-    var p = require('node:path');
-    var cacheDir = p.join(DATA_DIR, 'prisma-cache');
-    if (!require('node:fs').existsSync(cacheDir)) require('node:fs').mkdirSync(cacheDir, { recursive: true });
+    const cacheDir = join(DATA_DIR, 'prisma-cache');
+    if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
     // Point Prisma to bundled engine binaries (avoid downloading from internet)
-    var engineDir = p.join(root, 'node_modules', '@prisma', 'engines');
-    var schemaEngine = p.join(engineDir, 'schema-engine-windows.exe');
+    const engineDir = join(root, 'node_modules', '@prisma', 'engines');
+    const schemaEngine = join(engineDir, 'schema-engine-windows.exe');
     // OTA: additive-only migrations. Remove --accept-data-loss — never silently drop user data.
     (execSync as any)(`"${nodeBin}" "${prismaCli}" db push --schema="${schemaPath}" --skip-generate`, {
       stdio: 'pipe', timeout: 60000, shell: true,
       env: Object.assign({}, process.env, {
         ELECTRON_RUN_AS_NODE: '1',
-        npm_config_cache: p.join(DATA_DIR, 'npm-cache'),
+        npm_config_cache: join(DATA_DIR, 'npm-cache'),
         PRISMA_SCHEMA_ENGINE_BINARY: schemaEngine,
-        PRISMA_QUERY_ENGINE_BINARY: p.join(engineDir, 'query_engine-windows.dll.node'),
+        PRISMA_QUERY_ENGINE_BINARY: join(engineDir, 'query_engine-windows.dll.node'),
       }),
       cwd: DATA_DIR,
     });
@@ -503,7 +496,7 @@ async function ensureSchema() {
       create: { key: 'schemaVersion', value: String(SCHEMA_VERSION) },
       update: { value: String(SCHEMA_VERSION) },
     });
-    console.log('[Init] Schema synced to v' + SCHEMA_VERSION);
+    console.warn('[Init] Schema synced to v' + SCHEMA_VERSION);
     return true;
   } catch (e: any) {
     console.error('[Init] db push failed:', e.stderr?.toString() || e.message);
@@ -606,7 +599,7 @@ async function initFTS5() {
       `CREATE TRIGGER IF NOT EXISTS fts_report_d AFTER DELETE ON Report BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='report'; END`,
     ];
     for (const sql of triggers) {
-      try { await prisma.$executeRawUnsafe(sql); } catch (_) {}
+      try { await prisma.$executeRawUnsafe(sql); } catch {}
     }
     // Initial population (INSERT OR IGNORE to skip duplicates)
     await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'issue',title,COALESCE(description,''),id FROM Issue`);
@@ -614,7 +607,7 @@ async function initFTS5() {
     await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'email',subject,COALESCE(bodySnapshot,summary,''),id FROM SmartEmail`);
     await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'git',message,author,id FROM GitCommit`);
     await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'report',title,COALESCE(content,''),id FROM Report`);
-    console.log('[Init] FTS5 search index ready');
+    console.warn('[Init] FTS5 search index ready');
   } catch (e: any) {
     console.error('[Init] FTS5 setup failed:', e.message);
   }
@@ -627,10 +620,10 @@ ensureSchema().then((schemaOk) => {
   if (!schemaOk) { console.error('[Init] Schema push failed'); }
   return ensureSeed();
 }).then(initFTS5).then(() => {
-  console.log('[Init] Database ready');
+  console.warn('[Init] Database ready');
   startBackgroundTasks();
   // Start HTTP server only after DB is fully ready
   server.listen(PORT, () => {
-    console.log(`TomiLite API running on http://localhost:${PORT}/api`);
+    console.warn(`TomiLite API running on http://localhost:${PORT}/api`);
   });
 });

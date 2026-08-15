@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { LLM_PROVIDERS, getProvider, DEFAULT_PROVIDER, type ProviderConfig } from '@/lib/llmProviders';
+import { LLM_PROVIDERS, getProvider, DEFAULT_PROVIDER } from '@/lib/llmProviders';
 import { useLang } from '@/stores/useLang';
 import { t as tt } from '@/lib/i18n';
 

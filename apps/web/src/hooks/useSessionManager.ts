@@ -3,9 +3,10 @@ import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import type { StagedEdit, ChatCard } from '@/types/chat';
+import type { ChatHook } from './useChatThreads';
 
 // ═══ Session management: session list + bootstrap, per-session locked saveMsg, rename/delete/compress ═══
-export function useSessionManager({ chatHook, maxTokens, currentTokens }: { chatHook: any; maxTokens: number; currentTokens: number }) {
+export function useSessionManager({ chatHook, maxTokens, currentTokens }: { chatHook: ChatHook; maxTokens: number; currentTokens: number }) {
   const lang = useLang();
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; tokenPercent: number }>>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
@@ -29,6 +30,7 @@ export function useSessionManager({ chatHook, maxTokens, currentTokens }: { chat
         });
       }
     }).catch(() => {}).finally(() => setSessionsLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   // Save individual message to DB
@@ -65,7 +67,8 @@ export function useSessionManager({ chatHook, maxTokens, currentTokens }: { chat
         return s.id;
       });
     }
-    return sessionCreatingRef.current!.then((sid2: string) => doSave(sid2)).catch(() => null);
+    const creating = sessionCreatingRef.current;
+    return creating ? creating.then((sid2: string) => doSave(sid2)).catch(() => null) : Promise.resolve(null);
   };
 
   const switchSession = (sid: string) => {
@@ -162,6 +165,7 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
       executeCompress();
     }
     if (pct < 50) didAutoCompress.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- executeCompress is per-render; guard ref prevents loops
   }, [currentTokens, maxTokens, messages.length, compressing]);
   const commitRename = () => {
     if (editingSessionId && editTitle.trim()) {

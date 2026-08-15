@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 import { decrypt } from '../lib/crypto.js';
 import { t } from '../lib/i18n.js';
 
@@ -312,7 +312,7 @@ export const standupRouter = router({
         i.updatedAt && (now - new Date(i.updatedAt).getTime()) > 3 * dayMs
       ).map(i => ({
         key: `TL-${i.issueNumber}`, title: i.title, priority: i.priority,
-        daysStale: Math.floor((now - new Date(i.updatedAt!).getTime()) / dayMs),
+        daysStale: Math.floor((now - new Date(i.updatedAt || now).getTime()) / dayMs),
       })).sort((a, b) => b.daysStale - a.daysStale);
 
       const todo = openTasks.filter(i => i.status === 'todo');
@@ -571,7 +571,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
           create: { key: 'standupSettings', value: JSON.stringify(input) },
           update: { value: JSON.stringify(input) },
         });
-        console.log('[Standup] Settings saved:', JSON.stringify(input));
+        console.warn('[Standup] Settings saved:', JSON.stringify(input));
         return { ok: true };
       } catch (e: any) {
         console.error('[Standup] Failed to save settings:', e?.message || e);

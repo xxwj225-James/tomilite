@@ -1,5 +1,5 @@
 import { router, publicProcedure, z } from '../trpc';
-import { prisma } from '@tomatolite/database';
+import { prisma } from '@tomilite/database';
 
 // ═══ FTS5 Full-Text Search ═══
 // global_fts virtual table created by initFTS5() in server.ts
