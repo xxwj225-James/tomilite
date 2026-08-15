@@ -1,5 +1,7 @@
 # TomiLite: Remove SetupWizard + Separate Email from Tasks
 
+> **Status**: ✅ DONE (as of v2.0.3). Both features are implemented. Deviations from the original plan are marked inline.
+
 ## Context
 
 Two UX improvements for TomiLite:
@@ -12,40 +14,36 @@ Two UX improvements for TomiLite:
 
 ## Feature 1: Remove SetupWizard → Actionable Inline User Guide
 
-### Step 1.1 — Delete SetupWizard component
+### Step 1.1 — Delete SetupWizard component — ✅ DONE
 
-- **Delete**: `apps/web/src/components/SetupWizard.tsx`
-- **Edit** `apps/web/src/App.tsx`:
-  - Remove `import { SetupWizard } from '@/components/SetupWizard';`
-  - Remove `showSetup` state and setup check logic
-  - Remove `{showSetup && <SetupWizard onDone={...}/>}` JSX
-  - Remove the `setupChecked` loading screen — replace with simple spinner gated on `sessionsLoaded`
-  - Morning/evening standup effects: change `if (!setupChecked) return;` → `if (!sessionsLoaded) return;`
+- `apps/web/src/components/SetupWizard.tsx` is **deleted** (no trace in the codebase)
+- `App.tsx` no longer imports it; loading is gated on `sessionsLoaded` via `<LoadingScreen />` (in `components/LoadingScreen.tsx`)
+- Morning/evening standup effects are gated on `sessionsLoaded` (passed into `useNotifications`)
 
-### Step 1.2 — Soft Gate: LLM API Key missing banner
+### Step 1.2 — Soft Gate: LLM API Key missing banner — ✅ DONE
 
 **Risk**: New user sends message without configuring LLM API Key → backend agent throws AuthenticationError.
 
-**Solution** — Add a `SetupChecklist` component that:
-1. On mount, queries `api.llm.getConfig()` to check `activeProvider?.hasKey`
-2. If `llmConfigured === false`, renders a **prominent banner above the chat input**:
-   > ⚠️ LLM API Key not configured. **[Configure now →]** (click opens Settings → LLM tab)
-3. If user presses Enter with empty API key, frontend intercepts and shows the banner (no wasted API call)
-4. Banner is dismissible but reappears on next message attempt until key is set
+**Implemented** as `components/chat/LlmBanner.tsx`:
 
-**Also add to welcome guide** (see Step 1.4).
+1. `useSetupChecks` queries `api.llm.getConfig()` for `activeProvider?.hasKey` (plus email/git/apikey/standup/MCP checks)
+2. If `llmConfigured === false` and not dismissed, a **prominent banner renders above the chat input**:
+   > ⚠️ LLM API Key not configured. **[Configure →]** (click dispatches `tl-navigate` → Settings → LLM tab)
+3. Banner is dismissible (`llmBannerDismissed`) and reappears on next launch while the key is missing
+4. The banner is also reflected in the welcome guide (Step 1.4)
 
-### Step 1.3 — Expand language options
+### Step 1.3 — Expand language options — ⚠️ NOT DONE as specified (deviation)
 
-Currently `LANGS = ['en', 'zh']` in App.tsx. SetupWizard was the only place users could pick ja/th/mi/ru.
+The UI was **not** expanded to 6 languages. As built:
 
-- Expand `LANGS` to `['en', 'zh', 'ja', 'th', 'mi', 'ru']`
-- Expand `LANG_LABELS` and `LANGS_FULL` accordingly
-- Falls back to English strings where translations are missing (existing pattern)
+- `LANGS = ['en', 'zh', 'ja']` and `LANGS_FULL` cover only en/zh/ja (`apps/web/src/lib/constants.ts`); the top-bar dropdown offers 3 languages
+- The centralized i18n dictionary (`apps/web/src/lib/i18n.ts`) **reserves** th/mi/ru keys for future use — many keys already carry th/mi/ru strings, and `t()` falls back to `en` when a language entry is missing
+- `ContentPanel`'s `MENU_TEXTS` also carries th/mi/ru labels, but the active language set remains en/zh/ja
 
 ### Step 1.4 — Actionable Welcome Guide (replaces SetupWizard)
 
 Replace the passive welcome text with an **interactive setup checklist**. Each item has:
+
 - An **action button** that directly opens the relevant Settings tab or UI
 - A **feature description** explaining what the user gains after configuring
 
@@ -80,125 +78,114 @@ Replace the passive welcome text with an **interactive setup checklist**. Each i
 └─────────────────────────────────────────────┘
 ```
 
-**Behavior**:
-- Each `[Configure →]` button dispatches `tl-navigate` to `'settings'` with a tab hint
+**Behavior (as built)**:
+
+- Each `[Configure →]` button sets `window.__tl_settingsTab` and dispatches `tl-navigate` to `'settings'`
 - Language dropdown + theme dots work instantly in-place
-- Guide only shows when DB has zero chat sessions (existing `showWelcome` logic)
+- Guide shows when `localStorage['tl-welcome-dismissed'] !== '1'` (checked by `useSetupChecks`); if ALL configs (LLM + email + git + apikey + standup + MCP servers) are already set, it auto-dismisses
+- **Deviation**: an extra `mcpConfigured` checklist item was added ("MCP Servers" → "Connect to Tomihub, GitHub, Jira..."), and suggestion chips are passed through `onSuggestion` → `sendMessage`
 
-**Dismiss logic** (guide stops showing when either condition is met):
-1. **All setup completed** → auto-hide, set `localStorage['tl-welcome-dismissed'] = '1'`. "All setup completed" = LLM key configured (required) + user has interacted with at least one optional item or explicitly clicked "Skip for now"
-2. **User explicitly dismisses** → clicks `[Don't show again]` → set `localStorage['tl-welcome-dismissed'] = '1'`
+**Dismiss logic (as built)**:
+
+1. **All setup completed** → auto-hide, set `localStorage['tl-welcome-dismissed'] = '1'`
+2. **User explicitly dismisses** → `[Don't show again]` sets `localStorage['tl-welcome-dismissed'] = '1'`; `[Skip for now]` hides for the session
 3. On subsequent launches, if `localStorage['tl-welcome-dismissed'] === '1'`, guide never shows again
-4. The checklist re-evaluates live: as user configures items, completed items show ✅; when LLM is done (required), a "Start using →" button appears to dismiss and begin chatting
+4. The checklist re-evaluates live (`useSetupChecks` polls while the guide is visible): as user configures items, completed items show ✅; when LLM is done, a "Start Using →" button appears
 
-### Step 1.5 — Remove backend setup check
+### Step 1.5 — Remove backend setup check — ⚠️ NOT DONE (dead code remains)
 
-- Remove `isSetupCompleted` and `markSetupCompleted` from `apps/api/src/routers/system.ts`
-- Remove corresponding API client methods from `apps/web/src/lib/api.ts`
+- `isSetupCompleted` and `markSetupCompleted` **still exist** in `apps/api/src/routers/system.ts` (backed by `SystemConfig` key `setupCompleted`)
+- The API client methods `api.system.isSetupCompleted` / `markSetupCompleted` **still exist** in `apps/web/src/lib/api.ts`
+- They are no longer called by the frontend (the setup gate lives in `useSetupChecks`), so they are effectively dead code; removing them was deferred
 
 ---
 
-## Feature 2: Separate Email from Tasks
+## Feature 2: Separate Email from Tasks — ✅ DONE
 
-### Step 2.0 — Backend: draft endpoints accept SmartEmail ID
+### Step 2.0 — Backend: draft endpoints accept SmartEmail ID — ✅ DONE
 
 **File**: `apps/api/src/routers/email.ts`
-- `saveDraft`: add optional `smartEmailId` param; if provided, update `SmartEmail.replyDraft` directly
-- `generateDraft`: add optional `smartEmailId` param; save draft to SmartEmail row
 
-### Step 2.1 — Create Email panel (`apps/web/src/panels/email/`)
+- `saveDraft` accepts optional `smartEmailId`; if provided it updates `SmartEmail.replyDraft` directly
+- `generateDraft` accepts optional `smartEmailId`; it saves the generated draft to the `SmartEmail` row
 
-#### `useEmailState.ts` — standalone hook (independent polling)
-- **Independent polling** with debounce — does NOT share fetch cycle with Tasks
-- State: `emails`, `activeCategory`, `selected`, `replyText`, `draftGenerating`, `sending`, `sendError`, `emailFullBody`, `emailLoading`, `connected`, `configLoaded`
-- `fetchEmails()` via `/api/email.listSmartEmails` (debounced, 500ms)
-- `handleConvertToTask()` — creates Issue from email, links via `issueId`
+### Step 2.1 — Create Email panel (`apps/web/src/panels/email/`) — ✅ DONE
 
-#### `EmailList.tsx` — category tabs + email cards
-- Category tabs with **i18n labels** (not hardcoded): `email.tab.urgent`, `email.tab.today`, `email.tab.fyi`, `email.tab.all`
-- Email cards: subject, sender, date, one-line summary, linked task badge
-- "No email account" → shows link to Settings → Email tab
+All four planned files exist: `useEmailState.ts`, `EmailList.tsx`, `EmailDetail.tsx`, `EmailPanel.tsx`.
 
-#### `EmailDetail.tsx` — reply workflow + "Convert to Task" bridge
-- AI summary block (direct from `SmartEmail.summary` field)
-- AI reply draft in `MarkdownEditor`
-- **`[Convert to Task →]` button**: creates Issue with `title=subject, description=summary, source_email_id=email.id`, switches to Tasks panel
-- Send / Dismiss / Mark Done actions
-- All strings via i18n; all colors via CSS variables
+- `useEmailState.ts` — standalone hook with independent polling (does NOT share fetch cycle with Tasks); fetches via `/api/email.listSmartEmails`; `handleConvertToTask()` creates an Issue and links it
+- `EmailList.tsx` — category tabs with i18n labels + email cards (subject, sender, time, one-line summary, linked task badge); "No email account" shows a link to Settings → Email tab
+- `EmailDetail.tsx` — AI summary block (from `SmartEmail.summary`), AI reply draft in `MarkdownEditor`, **`[Convert to Task →]`** button (creates Issue + switches to Tasks panel), Send / Dismiss / Mark Done actions
+- `EmailPanel.tsx` — thin shell (list | detail)
 
-#### `EmailPanel.tsx` — thin shell (list | detail)
+### Step 2.2 — Wire into ContentPanel + App.tsx — ✅ DONE
 
-### Step 2.2 — Wire into ContentPanel + App.tsx
+- `email` is in the menu (`MENU`/`MENU_LABEL` in `lib/constants.ts`) with icon (`components/icons.tsx`) and mounted by `ContentPanel`
+- **Notification badge** moved from the Tasks button to the Email button (`MenuNav` renders `notif-badge` on the email item from `notifyCount`)
+- `enteredEmail` / `exitedEmail` context signals exist (`useEditorMonitors` + i18n keys `agent.enteredEmail`/`agent.exitedEmail`)
+- `emailRefresh` state exists (`useEditorMonitors` `bumpEmail`); email tools bump it
 
-- Add `email` to ContentPanel `MENU_TEXTS` (all 6 languages)
-- Add `email` to App.tsx `MENU` array with icon
-- **Move notification badge** from Tasks button → Email button
-- Add `enteredEmail` / `exitedEmail` context signals for AI agent
-- Add `emailRefresh` state; agent email tools (`send_email_reply`, `dismiss_email`) bump `emailRefresh`
+### Step 2.3 — Remove email from Tasks panel — ✅ DONE
 
-### Step 2.3 — Remove email from Tasks panel
+- `TasksList.tsx` filters out `type === 'email'` entries (no email cards/grouping in the task list)
+- `TasksEditor.tsx` / `TasksPanel.tsx` / `useTaskState.ts` no longer host the email detail panel or email state
+- **Note**: some email-task i18n keys (`tasks.emailDetail`, `tasks.markDone`, `tasks.type.email`, ...) remain in `lib/i18n.ts` but are unused
 
-- `TasksList.tsx`: remove Cat-3 notification bar, email filter option, emailCards logic, email kanban cards, email type grouping
-- `TasksEditor.tsx`: remove email detail panel (both active and done states), email option from type dropdown
-- `useTaskState.ts`: remove all email state/handlers/dirty-tracking; remove `fetchNotifications` and its call sites
-- `TasksPanel.tsx`: remove `_email` branches in ConfirmDialogs
+### Step 2.4 — Agent Context Bridge (cross-panel coordination) — ✅ DONE (tool names differ)
 
-### Step 2.4 — Agent Context Bridge (cross-panel coordination)
+**Mitigations (as built)**:
 
-**Risk**: After extracting email from Tasks, AI agent loses visibility into email state.
+1. **Email Agent Tools remain registered** in `apps/api/src/agent/tools/emailTools.ts` (via `routers/emailTools.ts`): `list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email`. (Planned names `reply_email`/`fetch_emails` were not used.)
+2. **Context signal**: opening the Email panel notifies the agent (`agent.enteredEmail`), same pattern as Tasks/Notes/Reports
+3. **"Convert to Task" bridge**: `EmailDetail.tsx` has an explicit button that calls the `email.createLinkedTask` API endpoint, creates the Issue, and switches to the Tasks panel
+4. **Agent-initiated conversion**: there is no dedicated `convert_email_to_task` tool; the bridge is the `createLinkedTask` endpoint + `emailRefresh`/`taskRefresh` counters that update both panels
 
-**Mitigations**:
-1. **Keep all email Agent Tools intact**: `reply_email`, `fetch_emails`, `dismiss_email`, `read_email_original`, `send_email_reply` remain registered in `apps/api/src/agent/tools/emailTools.ts` — no pruning
-2. **Context signal**: When Email panel is open, `sendMessage` prepends `[Email panel OPEN — viewing ${subject}]` to the message context (same pattern as Tasks/Notes panels)
-3. **"Convert to Task" bridge**: `EmailDetail.tsx` has explicit button that creates Issue + switches to Tasks panel + dispatches `tl-select-task`
-4. **Agent-initiated conversion**: Agent tool `convert_email_to_task` (already exists) continues working — its result triggers `setTaskRefresh` to update Tasks panel
+### Step 2.5 — i18n + Theme compliance — ✅ DONE
 
-### Step 2.5 — i18n + Theme compliance
+- Zero hardcoded strings — all labels go through `t()` with en/zh/ja entries (th/mi/ru reserved with en fallback)
+- Zero hardcoded colors — all colors via CSS variables; dynamic classNames via `cn()`
 
-**ALL new components MUST**:
-- Zero hardcoded strings → every label through `tr()` or `t()` with en/zh/ja/th/mi/ru entries
-- Zero hardcoded colors → all colors via CSS variables (`var(--bg)`, `var(--surface)`, `var(--edge)`, `var(--brand)`, `var(--green)`, `var(--amber)`, `var(--muted)`, `var(--ink)`)
-- Category tab colors use existing semantic vars: urgent=`var(--brand)`, today=`var(--amber)`, fyi=`var(--blue)`
-- Dynamic classNames via `cn()`
+**i18n keys as built** (in `apps/web/src/lib/i18n.ts` — NOT in `apps/web/src/i18n/translations.ts`, which is vendor-legacy only):
 
-**New i18n keys needed** (in `apps/web/src/i18n/translations.ts` or App.tsx T object):
 ```
-email.tab.all, email.tab.urgent, email.tab.today, email.tab.fyi
-email.empty, email.noConfig, email.goToSettings
-email.summary, email.draft, email.send, email.readOriginal
-email.dismiss, email.dismissConfirm, email.convertToTask
-email.from, email.received, email.connected, email.disconnected
-email.markDone, email.genDraft, email.genDrafting, email.original
+emailDetail.tabAll, emailDetail.tabUrgent, emailDetail.tabAction, emailDetail.tabNotify, emailDetail.tabLow
+emailDetail.empty, emailDetail.noConfig, emailDetail.goToSettings
+emailDetail.summary, emailDetail.draft, emailDetail.send, emailDetail.readOrig
+emailDetail.dismiss, emailDetail.dismissConfirm, emailDetail.convertToTask
+emailDetail.from, emailDetail.received, emailDetail.connected, emailDetail.disconnected
+emailDetail.markDone, emailDetail.genDraft, emailDetail.genDrafting, emailDetail.original
+emailList.*, emailPanel.* (sendError variants, unlink/delete dialogs, unsaved-changes, ...)
 ```
 
 ---
-## Files Changed Summary
 
-| Action | File |
-|--------|------|
-| **DELETE** | `apps/web/src/components/SetupWizard.tsx` |
-| **CREATE** | `apps/web/src/panels/email/EmailPanel.tsx` |
-| **CREATE** | `apps/web/src/panels/email/EmailList.tsx` |
-| **CREATE** | `apps/web/src/panels/email/EmailDetail.tsx` |
-| **CREATE** | `apps/web/src/panels/email/useEmailState.ts` |
-| **EDIT** | `apps/web/src/App.tsx` (wizard removal, soft-gate banner, welcome guide, menu, badge, lang expansion, emailRefresh, context signals) |
-| **EDIT** | `apps/web/src/components/ContentPanel.tsx` (email panel mount) |
-| **EDIT** | `apps/web/src/panels/tasks/TasksList.tsx` (remove email) |
-| **EDIT** | `apps/web/src/panels/tasks/TasksEditor.tsx` (remove email) |
-| **EDIT** | `apps/web/src/panels/tasks/useTaskState.ts` (remove email state) |
-| **EDIT** | `apps/web/src/panels/tasks/TasksPanel.tsx` (remove email dialogs) |
-| **EDIT** | `apps/web/src/i18n/translations.ts` (new email i18n keys) |
-| **EDIT** | `apps/web/src/lib/api.ts` (remove setup API methods) |
-| **EDIT** | `apps/api/src/routers/system.ts` (remove setup endpoints) |
-| **EDIT** | `apps/api/src/routers/email.ts` (smartEmailId param) |
+## Files Changed Summary (actual)
 
-## Verification
+| Action       | File                                                                                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| **DELETE**   | `apps/web/src/components/SetupWizard.tsx` (done)                                                                                 |
+| **CREATE**   | `apps/web/src/panels/email/EmailPanel.tsx`, `EmailList.tsx`, `EmailDetail.tsx`, `useEmailState.ts` (done)                        |
+| **CREATE**   | `apps/web/src/components/chat/WelcomeGuide.tsx`, `LlmBanner.tsx` (welcome guide + soft gate)                                     |
+| **CREATE**   | `apps/web/src/hooks/useSetupChecks.ts` (setup config flags + dismiss logic)                                                      |
+| **EDIT**     | `apps/web/src/App.tsx` (wizard removal, banner, welcome guide mount, menu, badge, emailRefresh, context signals)                 |
+| **EDIT**     | `apps/web/src/components/ContentPanel.tsx` (email panel mount)                                                                   |
+| **EDIT**     | `apps/web/src/panels/tasks/TasksList.tsx` (filter out email type)                                                                |
+| **EDIT**     | `apps/web/src/panels/tasks/TasksEditor.tsx` (remove email)                                                                       |
+| **EDIT**     | `apps/web/src/panels/tasks/useTaskState.ts` (remove email state)                                                                 |
+| **EDIT**     | `apps/web/src/panels/tasks/TasksPanel.tsx` (remove email dialogs)                                                                |
+| **EDIT**     | `apps/web/src/lib/i18n.ts` (emailDetail/emailList/emailPanel + agent.enteredEmail/exitedEmail keys) — not `i18n/translations.ts` |
+| **EDIT**     | `apps/web/src/lib/constants.ts` (MENU/MENU_LABEL incl. email)                                                                    |
+| **EDIT**     | `apps/web/src/components/icons.tsx` (email icon)                                                                                 |
+| **EDIT**     | `apps/api/src/routers/email.ts` (smartEmailId param on saveDraft/generateDraft, createLinkedTask)                                |
+| **NOT DONE** | `apps/web/src/lib/api.ts` / `apps/api/src/routers/system.ts` (setup methods/endpoints still present as dead code)                |
+
+## Verification (as built)
 
 1. **Fresh install**: Launch → chat with actionable welcome guide → click "Configure LLM" → Settings opens → configure key → banner disappears → chat works
-2. **Soft gate**: No API key → send message → banner shows, message blocked
+2. **Soft gate**: No API key → `LlmBanner` shows above the input; sending is blocked until configured
 3. **Email panel**: Open → category tabs with i18n labels → click email → AI summary + reply draft → Convert to Task → Tasks panel opens with new issue
-4. **Tasks regression**: Tasks panel has zero email elements, kanban works, CRUD works
-5. **Agent tools**: `reply_email`, `dismiss_email`, `send_email_reply` all work from chat
-6. **i18n**: Switch zh/ja/th/mi/ru → all email labels, category tabs, welcome guide update
+4. **Tasks regression**: Tasks panel has no email elements, kanban works, CRUD works
+5. **Agent tools**: `list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email` all work from chat
+6. **i18n**: Switch zh/ja → all email labels, category tabs, welcome guide update (th/mi/ru reserved with en fallback, not selectable in the dropdown)
 7. **Theme**: Switch themes → email panel colors follow CSS variables, no hardcoded colors
-8. **Language**: All 6 languages available in top-bar dropdown + welcome guide
+8. **Language**: 3 languages (en/zh/ja) in the top-bar dropdown + welcome guide

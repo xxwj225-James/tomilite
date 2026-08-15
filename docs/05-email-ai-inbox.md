@@ -1,97 +1,107 @@
-# AI-Native Zero Inbox — Implementation Plan
+# AI-Native Zero Inbox — Implementation Status
+
+> Status: IMPLEMENTED (divergences from the original plan marked inline)
 
 ## Context
 
-Replace the current "download & dump" email approach (full body stored in SQLite InboundMessage) with an AI pipeline: IMAP fetches headers → Flash model classifies → creates Issues (not Task model) in existing Task panel → 12h auto-cleanup. No standalone EmailInbox page — everything shown in TasksPanel or as notification badges.
+The original plan ("download & dump" → AI pipeline, emails rendered inside TasksPanel, no standalone email panel) was implemented with three deliberate divergences:
 
-## What Changes
+1. **No auto-issue creation** — emails are never auto-converted into Issues. The user links them manually ("Link Task" → `createLinkedTask` router, which AI-generates the task title/description and writes `issueId` back to the SmartEmail row).
+2. **Category 4 emails ARE stored** — all four categories are persisted to `SmartEmail` (cat 4 is stored without a notification).
+3. **Email has its own standalone panel again** — `apps/web/src/panels/email/EmailPanel.tsx` at panel `'email'`, NOT a TasksPanel integration. Unprocessed-email count shows as a badge on the sidebar Email menu (`MenuNav.tsx`, `notifyCount`).
 
-### 1. Database — Add SmartEmail model, modify InboundMessage
+## What Was Shipped
 
-Add `SmartEmail` to Prisma schema (`packages/database/prisma/schema.prisma`):
-- Lightweight: only AI analysis metadata + partial header (no full body)
-- Fields: id, messageId (@unique), **uid Int** (IMAP UID for fast on-demand fetch), from, to, subject, date, summary, category (1-4), replyDraft, isRead, isReplied, isProcessed, processedAt, issueId (FK to Issue, **onDelete: SetNull** — never cascade)
-- Leverage existing `Issue` model (what TasksPanel already uses) — create Issue for cat 1/2 emails
-- **⚠️ 12h cleanup only deletes SmartEmail row, never cascades to Issue** — developer's DONE history is preserved
-- Remove `InboundMessage` model (replaced by SmartEmail)
+### 1. Database — SmartEmail model added, InboundMessage removed
 
-### 2. IMAP Connector — Two-phase fetch
+`SmartEmail` in `packages/database/prisma/schema.prisma` (actual fields):
 
-Modify `packages/email/src/imap.ts`:
-- **Phase 1 (auto-poll)**: Fetch only `HEADER.FIELDS (FROM TO SUBJECT DATE)` + `BODY[]<0.500>` (first 500 bytes). Store `uid` from IMAP response into SmartEmail.uid.
-- **Phase 2 (on-demand)**: `fetchFullMessage(uid: number)` — uses numeric IMAP UID to directly FETCH full source. Fast O(1) lookup, no string-based message-id search.
-- Reduce default poll interval to 300s (5 min).
+- id, **messageId (@unique)** for dedup, **uid Int** (IMAP UID for fast on-demand fetch), fromAddr, toAddr, cc, subject, date
+- category (1-4), summary (AI-extracted), replyDraft (nullable), **bodySnapshot** (first 2000 chars of the body, stored at ingest for "Read Original")
+- **issueId (String @unique, FK to Issue, onDelete: SetNull)** — never cascades; developer's DONE history is preserved
+- isRead, isReplied, isProcessed, processedAt, **topicGroup** (AI topic grouping, persisted by `groupByTopic`), **archived** (default false; `listSmartEmails` filters archived out)
 
-### 3. AI Classification Pipeline — New module
+`InboundMessage` model was removed from the schema.
 
-Create `packages/email/src/classifier.ts`:
-- Function `classifyEmail(msg: NormalizedMessage): Promise<ClassificationResult>`
-- Calls DeepSeek Flash model (reuse pattern from `agent.ts` guard: `temperature:0`, `response_format:json_object`, `max_tokens:300`)
-- Prompt instructs: extract summary (150 chars with key points for cat 3), classify into 4 categories, generate reply draft for cat 1/2
-- Returns structured JSON: `{ category: 1|2|3|4, summary: string, priority: string, replyDraft?: string }`
+### 2. IMAP Connector — on-demand full fetch
 
-### 4. Server Handler — Rewrite onMessage
+`packages/email/src/imap.ts`:
 
-Modify `apps/api/src/server.ts` email handler:
-- On incoming message: run classifier → get AI result
-- Store only to `SmartEmail` (not old InboundMessage)
-- If cat 1 or 2: auto-create `Issue` record (project: 'proj-default', title: "[Email To-Do] subject", description with AI summary, priority mapped, status 'todo')
-- If cat 3: just store SmartEmail — shown as notification
-- If cat 4: skip entirely (don't store)
-- After classification, emit notification to frontend (via taskRefresh)
+- Default poll interval **60s** (`pollIntervalSeconds ?? 60`), not 300s.
+- Polling does NOT do a 500-byte partial fetch — new messages are detected by UID range + UNSEEN search, then each new message's full source is parsed once.
+- `fetchFullMessage(uid: number)` uses `client.fetch({ uid: `${uid}` }, { source: true, uid: true })` — numeric IMAP UID lookup via the `uid` fetch option, not `fetchOne` (which uses seq by default).
 
-### 5. API Router — New endpoints
+### 3. AI Classification Pipeline — shipped module
 
-Add to `apps/api/src/routers/email.ts`:
-- `fetchFullEmail` — on-demand IMAP fetch (takes IMAP **uid**, returns full body HTML/text)
-- `markProcessed` — marks SmartEmail as processed, sets processedAt
-- `listSmartEmails` — returns unprocessed SmartEmails (for notification badge)
-- `cleanup` — manual trigger for 12h cleanup
-- Auto-cleanup: `setInterval` every hour, deletes SmartEmails where `isProcessed && processedAt < 12h ago`
+`packages/email/src/classifier.ts`:
 
-### 6. Remove EmailInbox, Add Email Notifications to TasksPanel
+- Signature: `classifyEmail(msg: NormalizedMessage, apiKey: string, baseUrl: string, flashModel: string): Promise<ClassificationResult>`
+- Calls the Flash model with `temperature: 0`, `response_format: json_object`, **max_tokens: 350**, `thinking` disabled for moonshot/deepseek/dashscope; 10s timeout.
+- Output: `{ category: 1|2|3|4, summary: string, priority: string, replyDraft: undefined }` — **`replyDraft` is always `undefined`; reply drafts are generated on demand** when the user opens a cat 1/2 email (`generateDraft` endpoint) or clicks "Generate Draft".
+- **`heuristicClassify(msg)` fallback** — language-independent heuristic (sender/subject/body signals) used when the LLM is unavailable or the call throws.
 
-Modify `apps/web/src/components/ContentPanel.tsx`:
-- **Remove**: `EmailInbox` component entirely, `panel === 'email'` route
-- **Add to TasksPanel**: 
-  - Small notification bar at top for cat 3 emails (just count + "N notifications"). Clicking opens a quick-dismiss card.
-  - Email-source Issues shown normally in list — add `📥` icon prefix to title
-  - Detail view for email tasks: show AI summary + reply draft (read-only) + action buttons
-- **Action buttons for email tasks**:
-  - [Read Original] — fetch full email via API, show in detail panel
-  - [Mark Read] (cat 3) — mark processed, dismiss
-  - [✍️ Reply] (cat 1/2) — open reply draft editor, send via SMTP
-- **Remove**: Email tab from panel menu (mail icon in sidebar)
+### 4. Server Handler — `onMessage` pipeline
 
-### 7. Settings — Simplify EmailTab
+`apps/api/src/server.ts`:
 
-Keep EmailTab in Settings for IMAP/SMTP config only. Remove email Inbox references.
+- Dedup by messageId, run classifier (LLM → heuristic fallback), **store ALL categories** to `SmartEmail` (cat 4 included, no notification), `bodySnapshot: msg.body?.substring(0, 2000)`.
+- `sendNotification()` fired for cat 1 (📥 紧急邮件 / Urgent), cat 2 (📥 新邮件), cat 3 (📥 新通知) — increments `notifyCount` for the sidebar badge.
+- **No auto-issue creation** (code comment: "no auto-issue creation — user creates tasks manually").
+- Piggyback cleanup after each new email: `cleanupOldEmails()`.
 
-### 8. Auto-cleanup — Piggyback on IMAP Poll (no timers)
+### 5. API Router — actual endpoints (`apps/api/src/routers/email.ts`)
 
-- **No `setInterval`** — avoids laptop sleep/wake timer drift issues
-- Trigger cleanup at the end of each IMAP poll cycle (`checkNewMessages` in `imap.ts`, or in `manager.ts` after handler finishes)
-- Delete SmartEmails where `isProcessed && processedAt < 12h ago`
-- **Never cascade to Issue** — `onDelete: SetNull` ensures DONE history preserved
-- Also delete associated DraftReply if any (separate query, not cascade)
+By SmartEmail **id** (not IMAP uid):
 
-## Files to Modify
+- `listSmartEmails` (limit, unprocessedOnly; archived excluded)
+- `fetchFullEmail` (by smartEmailId → `fetchFullMessage(uid)` via IMAP connector)
+- `getBody` (by id → bodySnapshot, for "Read Original")
+- `markRead`, `markProcessed` (by id)
+- `cleanup` (manual 12h cleanup)
+- `generateDraft` (on-demand AI reply draft, saved to replyDraft), `saveDraft`, `getDraft` (by issueId)
+- `createLinkedTask` (by smartEmailId — AI generates title/description/type, creates Issue, writes `issueId` back), `unlinkTask` (deletes the Issue, sets issueId null)
+- `sendEmail`, `sendReport` (SMTP), `testSmtp`, `testIMAP`
+- `imapStatus`, `connectIMAP`, `disconnectIMAP`, `saveIMAP` (pollIntervalSeconds default 60), `saveConfig`, `stats`
+- `subGroupByCategory`, `groupByTopic` (AI sub-grouping; `groupByTopic` persists `topicGroup` back to SmartEmail rows)
 
-| File | Change |
-|------|--------|
-| `packages/database/prisma/schema.prisma` | Add SmartEmail model, update/remove InboundMessage |
-| `packages/email/src/imap.ts` | Two-phase fetch (headers only poll, full body on demand) |
-| `packages/email/src/classifier.ts` | **New file** — AI classification pipeline |
-| `packages/email/src/types.ts` | Add ClassificationResult type |
-| `packages/email/src/index.ts` | Export classifier |
-| `apps/api/src/server.ts` | Rewrite onMessage, add cleanup job |
-| `apps/api/src/routers/email.ts` | Add fetchFullEmail, markProcessed, listSmartEmails, cleanup |
-| `apps/web/src/components/ContentPanel.tsx` | Remove EmailInbox, add email notifications to TasksPanel, email task detail actions |
+### 6. Email UI — standalone EmailPanel (supersedes the TasksPanel plan)
+
+`apps/web/src/panels/email/EmailPanel.tsx` (+ `EmailList.tsx`, `EmailDetail.tsx`, `useEmailState.ts`):
+
+- Standalone panel mounted by `ContentPanel` at `panel === 'email'`; 60s polling when the panel is active.
+- Category tabs (All / Urgent / Action Required / Notifications / Other) with counts; per-category AI sub-groups; batch dismiss; AI topic grouping.
+- Detail actions: **Read Original** (fetch full body via `getBody`), **Mark Read** (marks read/processed, dismisses), **Reply** (AI draft on demand or manual reply, send via SMTP; sending marks the linked Issue done if one exists), **Link Task** (createLinkedTask) / **Unlink Task**.
+- Task selection from an email opens the Tasks panel via `tl-navigate` + `tl-select-task` events.
+- Unprocessed-email badge on the sidebar Email menu (`MenuNav.tsx` — `notifyCount > 0` → `.notif-badge`), not a TasksPanel notification bar.
+
+### 7. Settings — EmailTab kept
+
+`EmailTab` stays in Settings for IMAP/SMTP config only (as planned). No email-inbox references remain there.
+
+### 8. Auto-cleanup — BOTH mechanisms shipped
+
+- **Piggyback** on each incoming message (`cleanupOldEmails()` after every `onMessage`).
+- **Hourly `setInterval(cleanupOldEmails, 60 * 60 * 1000)`** in `startBackgroundTasks()`.
+- Deletes SmartEmails where `isProcessed && processedAt < 12h ago`, **skipping any whose linked Issue is not done** (preserves DONE history; `onDelete: SetNull` never cascades).
+
+## Files Shipped
+
+| File                                                                               | Change                                                                                        |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `packages/database/prisma/schema.prisma`                                           | SmartEmail model added, InboundMessage removed                                                |
+| `packages/email/src/imap.ts`                                                       | UID-based on-demand full fetch (`fetch({uid})`), 60s default poll                             |
+| `packages/email/src/classifier.ts`                                                 | **New** — `classifyEmail(msg, apiKey, baseUrl, flashModel)` + `heuristicClassify`             |
+| `packages/email/src/types.ts`                                                      | ClassificationResult type                                                                     |
+| `apps/api/src/server.ts`                                                           | `onMessage` pipeline — classify, store all cats, notify cat 1/2/3, piggyback + hourly cleanup |
+| `apps/api/src/routers/email.ts`                                                    | Endpoints listed in §5                                                                        |
+| `apps/web/src/panels/email/EmailPanel.tsx` (+ EmailList/EmailDetail/useEmailState) | Standalone email panel                                                                        |
+| `apps/web/src/components/ContentPanel.tsx`                                         | `'email'` panel route                                                                         |
+| `apps/web/src/components/chat/MenuNav.tsx`                                         | Unprocessed-email badge on the sidebar Email menu                                             |
 
 ## Verification
 
-1. Save IMAP config → Connect → wait for poll → check SmartEmails created in DB
-2. Check TasksPanel: cat 1/2 emails appear as Issues with 📥 prefix
-3. Click [Read Original] → fetches full email from IMAP and displays
-4. Click [Mark Read] → marks processed, 12h countdown starts
-5. Wait 12h (or trigger cleanup manually) → verify SmartEmail deleted, Issue persists
+1. Save IMAP config → Connect → wait for poll → check SmartEmails created in DB (all 4 categories stored)
+2. Email panel shows categorized list with AI summaries
+3. Click Read Original → fetches full email from IMAP by UID
+4. Click Link Task → Issue created, `issueId` written back; click Mark Read → processed, 12h countdown starts
+5. Wait 12h (or trigger cleanup manually) → verify SmartEmail deleted, linked Issue persists if not done

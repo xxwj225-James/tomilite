@@ -1,232 +1,176 @@
-# App.tsx Optimization Plan
+# App.tsx Optimization — Plan & Completion Record
 
-## Current State
+> **Status**: ✅ COMPLETE (as of v2.0.3). All phases were executed; this document records the original plan and how the final structure differs from it.
 
-`apps/web/src/App.tsx` — **2116 lines**, single default-exported component. It is the "god component" of TomiLite, handling chat streaming, session management, panel navigation, setup guide, notifications, updates, theme/language, file attachments, and card actions.
+## Original Current State
 
-### Why This Matters
+`apps/web/src/App.tsx` — **2116 lines**, single default-exported component. It was the "god component" of TomiLite, handling chat streaming, session management, panel navigation, setup guide, notifications, updates, theme/language, file attachments, and card actions.
 
-- **Maintainability**: making a small change requires scrolling through 2000+ lines
+### Why This Mattered
+
+- **Maintainability**: making a small change required scrolling through 2000+ lines
 - **Testability**: impossible to unit-test any single concern
-- **Readability**: new contributors can't grasp the structure quickly
+- **Readability**: new contributors couldn't grasp the structure quickly
 - **Risk**: high coupling means changes in one area easily break another
 
 ---
 
-## Target Architecture
+## Actual Final Structure (as built)
 
 ```
 apps/web/src/
-├── App.tsx                    (~400 lines)  — shell: layout + routing + top-level state
+├── App.tsx                    (~292 lines)  — slim shell: composes hooks + layout JSX
 ├── components/
 │   ├── chat/
-│   │   ├── Msg.tsx            (~170 lines)  — message bubble (extracted from App.tsx:124-295)
-│   │   ├── ChatInput.tsx      (~60 lines)   — textarea + send/stop + file chips
-│   │   ├── SessionSidebar.tsx (~80 lines)   — session list + new/rename/delete
-│   │   └── ChatTopBar.tsx     (~50 lines)   — language + theme + compress/clear
-│   ├── welcome/
-│   │   └── WelcomeGuide.tsx   (~120 lines)  — onboarding checklist (extracted from 1776-1882)
-│   ├── update/
-│   │   └── UpdateBar.tsx      (~60 lines)   — OTA notification bar
-│   ├── panels/
-│   │   └── PanelResizeHandle.tsx (~60 lines) — existing, keep
-│   └── overlays/
-│       └── AppDialogs.tsx     (~80 lines)   — 7 ConfirmDialogs extracted from 2043-2113
+│   │   ├── Msg.tsx            — message bubble (staged edit + card + pin + thinking)
+│   │   ├── MsgList.tsx        — message list wrapper + thinking indicator (NEW vs plan)
+│   │   ├── ChatInput.tsx      — textarea + send/stop + attached-file chips
+│   │   ├── ChatToolbar.tsx    — language dropdown + theme dots + compress/clear
+│   │   │                       (planned name was ChatTopBar.tsx)
+│   │   ├── SessionSidebar.tsx — session list + new/rename/delete + token meter
+│   │   ├── MenuNav.tsx        — always-visible bottom menu bar + notification bubbles (NEW vs plan)
+│   │   ├── LlmBanner.tsx      — soft-gate banner: LLM API key missing (NEW vs plan)
+│   │   ├── WelcomeGuide.tsx   — onboarding checklist (lives in chat/, planned welcome/)
+│   │   ├── UpdateBar.tsx      — OTA notification bar (lives in chat/, planned update/)
+│   │   └── ConfirmDialogs.tsx — delete/compress/leave/stop-download dialogs
+│   │                           (planned name was overlays/AppDialogs.tsx)
+│   ├── ContentPanel.tsx       — keep-alive panel router (lazy-mount, hide/show)
+│   ├── PanelResizeHandle.tsx  — right slide-in panel drag handle
+│   ├── RobotFace.tsx          — robot face (Phase 4, done)
+│   ├── MarkdownEditor.tsx, UpdateDialog.tsx, LoadingScreen.tsx, icons.tsx
 ├── hooks/
-│   ├── useChatStream.ts       (~200 lines)  — sendMessage + stopStream + SSE loop
-│   ├── useSessions.ts         (~100 lines)  — session CRUD + compress
-│   ├── useSetupGuide.ts       (~60 lines)   — welcome config checks + dismiss logic
-│   ├── useNotifications.ts    (~50 lines)   — email/MCP/standup polling
-│   ├── useAutoUpdate.ts       (~60 lines)   — electron-updater events
-│   ├── useCardActions.ts      (~80 lines)   — card event listeners + executeDelete
-│   ├── useAgentContext.ts     (~80 lines)   — editor monitors + focus heartbeat + notifyAgent
-│   ├── useTokenEstimation.ts  (~30 lines)   — estimateTokens + auto-compress trigger
-│   └── useThemeLanguage.ts    (~30 lines)   — theme/lang state + persistence
-└── lib/
-    └── fileParser.ts          (~50 lines)   — handleFiles (xlsx/docx/pdf/text)
+│   ├── useSendMessage.ts      — sendMessage + stopStream + SSE loop (planned useChatStream)
+│   ├── useChatTasks.ts        — concurrent task pool, each task owns its SSE stream,
+│   │                           MAX_CONCURRENT = 4 (Phase 3, done)
+│   ├── useChatThreads.ts      — per-session message store (planned useSessions part 1)
+│   ├── useSessionManager.ts   — session CRUD + bootstrap + saveMsg + compress (planned useSessions part 2)
+│   ├── useSetupChecks.ts      — welcome config checks + dismiss (planned useSetupGuide)
+│   ├── useNotifications.ts    — email/MCP/standup polling + morning/evening bubbles
+│   ├── useUpdates.ts          — electron-updater events (planned useAutoUpdate)
+│   ├── useChatCardActions.ts  — card event listeners + executeDelete (planned useCardActions)
+│   ├── useEditorMonitors.ts   — editor monitors + refresh counters + panel lifecycle (planned useAgentContext)
+│   ├── useTokenUsage.ts       — estimateTokens + context window (planned useTokenEstimation)
+│   └── useFileAttach.ts       — handleFiles (xlsx/docx/pdf/text) + drag/paste (NEW vs plan;
+│                               planned lib/fileParser.ts was not created — parsing lives in this hook)
+├── lib/
+│   ├── i18n.ts                — canonical keyed dictionary t(key, lang); legacy inline
+│   │                           tr(lang, zh, ja, en) helper retained for a few App.tsx strings
+│   ├── constants.ts           — MENU / MENU_LABEL / THEMES / THEME_COLORS / LANGS / LANGS_FULL
+│   │                           (Phase 4: planned constants.ts, done here)
+│   └── cn.ts, api.ts, sanitize.ts, renderMarkdown.ts, tokenEstimate.ts, llmProviders.ts
+└── types/chat.ts              — StagedEdit + ChatCard (Phase 4: planned types.ts, done as types/chat.ts)
 ```
 
----
+**Files that did NOT end up as planned**:
 
-## Phase 1: Extract Components (low risk)
-
-Extract presentational components first — no logic changes, pure copy-paste.
-
-### 1.1 Msg.tsx — Message Bubble
-- **Source**: `App.tsx` L124–295 (~170 lines)
-- **Props**: `{ role, text, tool, staged, card, onApply, onUndo, thinking, pinnable, onPin, isPinned, reasoningContent }`
-- **Internal state**: `thinkingOpen`, `thinkingRef`
-- **Dependencies**: `useLang`, `sanitizeHtml`, `marked`, `cn`, `ConfirmDialog`
-- **Estimated effort**: 30 min
-
-### 1.2 WelcomeGuide.tsx — Onboarding Checklist
-- **Source**: `App.tsx` L1776–1882 (~100 lines)
-- **Props**: `{ llmConfigured, emailConfigured, gitConfigured, apikeyConfigured, standupConfigured, onDismiss, onSkip, onStart, query, setQuery, sendMessage, t, tr, lang }`
-- **Estimated effort**: 20 min
-
-### 1.3 SessionSidebar.tsx
-- **Source**: `App.tsx` L1648–1685 (~40 lines)
-- **Props**: `{ sessions, currentSessionId, onSwitch, onNew, onRename, onDelete, maxTokens, tokenPercent }`
-- **Estimated effort**: 15 min
-
-### 1.4 UpdateBar.tsx
-- **Source**: `App.tsx` L1738–1768 (~30 lines)
-- **Props**: `{ updateAvailable, updateProgress, updateTimedOut, updateError, updateFilePath, updateSeen, onDismiss, onDownload, onInstall, onStopDownload }`
-- **Estimated effort**: 15 min
-
-### 1.5 ChatTopBar.tsx
-- **Source**: `App.tsx` L1703–1737 (~35 lines)
-- **Props**: `{ theme, onThemeChange, lang, onLangChange, onCompress, compressing, onClear }`
-- **Estimated effort**: 15 min
-
-### 1.6 ChatInput.tsx
-- **Source**: `App.tsx` L1985–2022 (~40 lines) + L309–354 (handleFiles)
-- **Props**: `{ query, onChange, onSend, onStop, thinking, attachedFiles, onFilesChange }`
-- **Estimated effort**: 20 min
-
-### 1.7 AppDialogs.tsx
-- **Source**: `App.tsx` L2043–2113 (~70 lines)
-- **Props**: various dialog open/close/message handlers
-- **Estimated effort**: 25 min
+- `useThemeLanguage.ts` — not extracted; theme/lang state still lives in `App.tsx` (constants moved to `lib/constants.ts` instead)
+- `lib/fileParser.ts` — not created; file parsing lives in `hooks/useFileAttach.ts`
+- `useT.ts` — never existed; the canonical i18n dictionary is `lib/i18n.ts`
+- `apps/web/src/i18n/translations.ts` — still exists but is **vendor-legacy only**: its own header states it serves exclusively the 5 `vendor/pages/*` pages (Board, Backlog, IssueDetail, WikiList, WikiEditor); the main app UI uses `@/lib/i18n`
 
 ---
 
-## Phase 2: Extract Hooks (medium risk)
+## Phase 1: Extract Components (low risk) — ✅ DONE
 
-Extract logic into custom hooks. Each hook owns its state + effects.
+Extracted presentational components first — no logic changes, pure copy-paste.
 
-### 2.1 useChatStream
-- **Extract**: `sendMessage`, `stopStream`, `handleApplyEdit`, `handleUndoEdit`
-- **State**: `thinking`, `agentStatus`, `messages`, `appliedEdit`, `appliedReport`, `appliedTaskEdit`, `abortRef`
-- **Lines**: ~470 → ~200
-- **Estimated effort**: 2 hours
-
-### 2.2 useSessions
-- **Extract**: `switchSession`, `renameSession`, `clearSession`, `deleteSession`, `executeCompress`, `saveMsg`, `sessionCreatingRef`
-- **State**: `sessions`, `currentSessionId`, `sessionsLoaded`, `editingSessionId`, `editTitle`, `compressConfirm`, `compressMsg`, `compressing`, `deleteTarget`, `deleting`
-- **Lines**: ~200 → ~100
-- **Estimated effort**: 1.5 hours
-
-### 2.3 useSetupGuide
-- **Extract**: welcome config fetching + dismiss logic
-- **State**: `showWelcome`, `llmConfigured`, `emailConfigured`, `gitConfigured`, `apikeyConfigured`, `standupConfigured`
-- **Lines**: ~80 → ~50
-- **Estimated effort**: 30 min
-
-### 2.4 useNotifications
-- **Extract**: email/MCP/standup polling intervals
-- **State**: `notifyCount`, `mcpPending`, `morningNotify`, `eveningNotify`, `notifyLoading`
-- **Lines**: ~70 → ~50
-- **Estimated effort**: 30 min
-
-### 2.5 useAutoUpdate
-- **Extract**: electron-updater IPC listeners + state
-- **State**: `updateAvailable`, `updateProgress`, `updateSeen`, `updateTimedOut`, `updateError`, `updateFilePath`, `stopDownloadConfirm`
-- **Lines**: ~80 → ~50
-- **Estimated effort**: 30 min
-
-### 2.6 useCardActions
-- **Extract**: card event listeners (`tl-open-card/edit/delete/move-card`, `tl-force-create`, `tl-cancel-dedup`) + `executeDelete`
-- **State**: `saveResult`
-- **Lines**: ~100 → ~60
-- **Estimated effort**: 1 hour
-
-### 2.7 useAgentContext
-- **Extract**: editor monitors (note/task/report) + focus heartbeat + panel lifecycle + `notifyAgent`/`notifyI18n` + `preFlight`
-- **State**: `focusState`, `focusManual`, `editingNote`, `editingTask`, `editingReport`, `panel`, `noteRefresh`, `taskRefresh`, `reportRefresh`
-- **Lines**: ~150 → ~80
-- **Estimated effort**: 1.5 hours
-
-### 2.8 useTokenEstimation
-- **Extract**: `estimateTokens`, `refreshContextWindow`, auto-compress effect
-- **State**: `maxTokens`
-- **Lines**: ~50 → ~30
-- **Estimated effort**: 20 min
-
-### 2.9 useThemeLanguage
-- **Extract**: theme/lang state + persistence + apply
-- **State**: `theme`, `langMenuOpen`, `panelMenuOpen`
-- **Lines**: ~40 → ~20
-- **Estimated effort**: 15 min
+| Planned                                 | Actual                                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1.1 `Msg.tsx` — message bubble          | ✅ `components/chat/Msg.tsx`                                                                    |
+| 1.2 `welcome/WelcomeGuide.tsx`          | ✅ `components/chat/WelcomeGuide.tsx` (chat/ not welcome/)                                      |
+| 1.3 `SessionSidebar.tsx`                | ✅ `components/chat/SessionSidebar.tsx`                                                         |
+| 1.4 `update/UpdateBar.tsx`              | ✅ `components/chat/UpdateBar.tsx` (chat/ not update/)                                          |
+| 1.5 `ChatTopBar.tsx`                    | ✅ `components/chat/ChatToolbar.tsx` (renamed; language + theme + compress/clear)               |
+| 1.6 `ChatInput.tsx` (incl. handleFiles) | ✅ `components/chat/ChatInput.tsx`; handleFiles moved to `hooks/useFileAttach.ts`               |
+| 1.7 `overlays/AppDialogs.tsx`           | ✅ `components/chat/ConfirmDialogs.tsx` (renamed, chat/ not overlays/)                          |
+| —                                       | ➕ extra: `MsgList.tsx`, `MenuNav.tsx`, `LlmBanner.tsx` (soft-gate banner), `LoadingScreen.tsx` |
 
 ---
 
-## Phase 3: Multi-Tasking Support (new feature)
+## Phase 2: Extract Hooks (medium risk) — ✅ DONE
 
-### 3.1 Frontend: Task Queue
+Each hook owns its state + effects. Final names differ from the plan:
 
-Replace single `abortRef` + `thinking` with a queue:
+| Planned hook                                            | Actual hook                                  | Notes                                                                                         |
+| ------------------------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 2.1 `useChatStream` (sendMessage, stopStream, SSE loop) | `useSendMessage.ts`                          | `thinking`/`agentStatus` now derived in App from `messages.some(m => m.status === 'running')` |
+| 2.2 `useSessions` (session CRUD + compress)             | `useChatThreads.ts` + `useSessionManager.ts` | split: per-session message store vs session list/bootstrap/saveMsg                            |
+| 2.3 `useSetupGuide`                                     | `useSetupChecks.ts`                          | adds `mcpConfigured` check + auto-dismiss when all configured                                 |
+| 2.4 `useNotifications`                                  | `useNotifications.ts`                        | gated on `sessionsLoaded`                                                                     |
+| 2.5 `useAutoUpdate`                                     | `useUpdates.ts`                              | electron-updater IPC + progress + timeout watchdog                                            |
+| 2.6 `useCardActions`                                    | `useChatCardActions.ts`                      | card listeners + `executeDelete` + save-result                                                |
+| 2.7 `useAgentContext`                                   | `useEditorMonitors.ts`                       | editor monitors + `note/task/report/emailRefresh` counters + panel lifecycle                  |
+| 2.8 `useTokenEstimation`                                | `useTokenUsage.ts`                           | `maxTokens` from provider, `estimateTokens`, debug overrides                                  |
+| 2.9 `useThemeLanguage`                                  | — (not extracted)                            | theme/lang state stayed in App.tsx; `MENU/THEMES/LANGS` went to `lib/constants.ts`            |
+| —                                                       | ➕ `useFileAttach.ts`                        | file attach state + drag/drop/paste + parsing (planned as `lib/fileParser.ts`)                |
+
+---
+
+## Phase 3: Multi-Tasking Support — ✅ DONE (design differs from plan)
+
+### 3.1 Frontend: Task Queue → `useChatTasks.ts`
+
+The planned single serial queue was replaced by a **concurrent task pool**:
 
 ```typescript
-// useChatStream.ts
-type PendingTask = {
+// useChatTasks.ts
+export interface ChatTask {
   id: string;
-  payload: string;
-  status: 'queued' | 'running' | 'done' | 'aborted';
-};
-
-const [taskQueue, setTaskQueue] = useState<PendingTask[]>([]);
-const [currentTask, setCurrentTask] = useState<string | null>(null);
-```
-
-**Changes**:
-- `sendMessage()`: if agent is busy → push to queue instead of aborting
-- When current task completes → dequeue next
-- Stop button behavior: stop current OR remove from queue
-- UI: show "N tasks queued" indicator
-
-### 3.2 Backend: Session Lock (optional, for safety)
-
-Add lightweight in-memory lock per chat session:
-
-```typescript
-// agentStream.ts
-const sessionLocks = new Map<string, Promise<void>>();
-
-async function acquireLock(sessionId: string): Promise<void> {
-  while (sessionLocks.has(sessionId)) {
-    await sessionLocks.get(sessionId);
-  }
-  // ...
+  threadId: string;
+  status: 'streaming' | 'done' | 'error' | 'aborted';
+  content: string;
+  reasoningContent: string;
+  iteration: number;
+  agentStatus: string;
+  controller: AbortController;
+  assistantIdx: number;
+  card?: any;
+  staged?: any;
 }
+const MAX_CONCURRENT = 4; // soft cap: browser ~6 connections per origin
 ```
 
-Prevents two concurrent agent loops from modifying the same chat session simultaneously.
+- Each `sendMessage()` creates an independent task with its own SSE stream (instead of queuing behind a busy agent)
+- Stop stops the running task of the active session/thread (`stopStream` / `stopThreadTasks`)
+- Status messages via i18n keys `chat.queued` / `chat.working` / `chat.tooMany` ("Max 3 concurrent tasks" copy predates the 4-task cap)
+- "N tasks queued" indicator was not added
 
-### 3.3 Estimated Effort
+### 3.2 Backend: Session Lock — ❌ NOT implemented (was optional)
 
-- Frontend queue: 3–4 hours
-- Backend lock: 1 hour
-- Testing: 1 hour
+No per-session in-memory lock was added; concurrency safety is handled by per-thread task isolation (`streamingThreadRef` in `useSendMessage`) instead.
 
----
-
-## Phase 4: Polish (low priority)
-
-- **RobotFace** → separate file (L4–19)
-- **ICONS/MENU/THEMES/LANGS** → `constants.ts`
-- **StagedEdit/ChatCard** → `types.ts`
-- **Remove unused state**: `debugTokenOverride`, `debugForceShow`, `llmBannerDismissed`, `dragOver`
-- **panel state**: replace string with typed enum
+### 3.3 Estimated Effort — actual effort covered by Phases 1–3 together
 
 ---
 
-## Timeline Summary
+## Phase 4: Polish — ⚠️ PARTIALLY DONE
 
-| Phase | Items | Est. Effort | Risk |
-|-------|-------|-------------|------|
-| 1. Extract Components | 7 files | 2–3 hours | Low |
-| 2. Extract Hooks | 9 hooks | 6–8 hours | Medium |
-| 3. Multi-Tasking | queue + lock | 4–6 hours | Medium |
-| 4. Polish | constants + types | 1 hour | Low |
+| Planned                                                                                       | Status                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RobotFace** → separate file                                                                 | ✅ `components/RobotFace.tsx`                                                                                                                                                                |
+| **ICONS/MENU/THEMES/LANGS** → `constants.ts`                                                  | ✅ split: `components/icons.tsx` (ICONS) + `lib/constants.ts` (MENU/THEMES/LANGS)                                                                                                            |
+| **StagedEdit/ChatCard** → `types.ts`                                                          | ✅ `types/chat.ts`                                                                                                                                                                           |
+| Remove unused state: `debugTokenOverride`, `debugForceShow`, `llmBannerDismissed`, `dragOver` | ⚠️ kept — `debugTokenOverride`/`debugForceShow` remain as console debug helpers (`window.__tl_debug__`), `llmBannerDismissed` powers the soft-gate banner, `dragOver` styles the drop target |
+| **panel state**: string → typed enum                                                          | ❌ still `string \| null` (`MenuKey` exists in `lib/constants.ts` but panel state is not typed to it)                                                                                        |
+
+---
+
+## Timeline Summary (planned vs actual)
+
+| Phase                 | Items             | Est. Effort | Risk   | Status                                    |
+| --------------------- | ----------------- | ----------- | ------ | ----------------------------------------- |
+| 1. Extract Components | 7 files           | 2–3 hours   | Low    | ✅ DONE                                   |
+| 2. Extract Hooks      | 9 hooks           | 6–8 hours   | Medium | ✅ DONE (renamed/split)                   |
+| 3. Multi-Tasking      | queue + lock      | 4–6 hours   | Medium | ✅ DONE (task pool; backend lock skipped) |
+| 4. Polish             | constants + types | 1 hour      | Low    | ⚠️ PARTIAL                                |
 
 **Total**: ~15–20 hours across phases.
 
 ---
 
-## Migration Strategy
+## Migration Strategy — ✅ EXECUTED
 
-1. **Phase 1 first** — pure extraction, no logic changes. Ship after each component to verify nothing breaks.
-2. **Phase 2 incrementally** — extract one hook, test, commit. Start with `useThemeLanguage` (simplest), end with `useChatStream` (hardest).
-3. **Phase 3 after Phase 1+2 stable** — new feature on clean architecture.
-4. **Never break the build** — each commit must pass `npm run pack`.
+1. **Phase 1 first** — pure extraction, no logic changes; shipped after each component.
+2. **Phase 2 incrementally** — one hook at a time; simplest first, `useChatStream` (now `useSendMessage`) last.
+3. **Phase 3 after Phase 1+2 stable** — implemented as the `useChatTasks` task pool.
+4. **Never break the build** — `npm run pack` remained the release gate throughout.

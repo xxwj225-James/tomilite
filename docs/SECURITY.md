@@ -5,7 +5,7 @@ TomiLite is open source (MIT). Since the source is public, the security model fo
 ## Threat Model
 
 - **Local-first app**: all user data lives in a local SQLite database (`~/.tomilite/`), no cloud dependency
-- **Single user**: no multi-tenant isolation needed; the API binds to localhost
+- **Single user**: no multi-tenant isolation needed; the API rejects non-localhost requests without the token (see Network)
 - **External MCP clients**: Claude Code and other AI tools may call TomiLite's MCP server — these are gated by API keys + human-in-the-loop (HITL) approval
 - **Outbound MCP servers**: TomiLite's agent may call external MCP servers — credentials are encrypted and never sent to the LLM
 
@@ -20,20 +20,27 @@ TomiLite is open source (MIT). Since the source is public, the security model fo
 
 ### Network
 
-- API server binds to localhost only; the Electron shell passes a random API token for non-localhost origins (`apps/api/src/server.ts`)
-- Outbound MCP connections enforce HTTPS for remote hosts; plain HTTP allowed only for localhost
-- Web search requests respect the system proxy
+- The API server listens on all interfaces (`server.listen(PORT)` in `apps/api/src/server.ts`), but non-localhost requests are rejected with 403 unless they present the persisted API token: a random token is generated once, stored at `~/.tomilite/.api_token` (mode 0600), and passed to the Electron renderer via the URL hash (`#tl_token=...`); requests must send it as `X-TL-Token` or `Authorization: Bearer`. Localhost is exempt
+- Outbound MCP connections enforce HTTPS for remote hosts; plain HTTP allowed only for localhost (`apps/api/src/agent/mcp/client.ts`)
+- Web search requests respect the system proxy (`apps/api/src/agent/utils/proxy.js`)
 
 ## MCP Human-in-the-Loop (HITL)
 
 Write operations from external MCP clients are risk-gated:
 
-| Risk | Behavior |
-|------|----------|
-| `read_only` | Executes directly |
+| Risk                      | Behavior                                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `read_only`               | Executes directly                                                                               |
 | `low` / `medium` / `high` | Queued for approval in the MCP panel; auto-approved only when the API key's HITL mode is `auto` |
 
 Every external call is audited in `McpAuditLog` (tool, arguments, status, approver).
+
+## Build & Packaging (no security-by-obfuscation)
+
+- TomiLite does **not** obfuscate its code. The security model relies on data-at-rest encryption and the local-first architecture, not on hiding source code (the project is MIT-licensed and public)
+- The frontend is minified with **Terser** for release builds (`apps/web/vite.config.ts`, selective-minify plugin: `drop_console`, `drop_debugger`; sourcemaps are disabled in production builds); the Milkdown vendor chunk is minified with esbuild
+- The API server is bundled with esbuild into `apps/api/dist/server.cjs` (`scripts/bundle-api.js`) — bundled but not minified
+- `scripts/clean-engines.js` removes non-Windows Prisma engine binaries from the installer to shrink its size
 
 ## Reporting a Vulnerability
 
