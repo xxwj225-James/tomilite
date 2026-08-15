@@ -143,6 +143,7 @@ const I18N = {
   'tasks.action.start': { en: '▶ Start', zh: '▶ 开始', ja: '▶ 開始' },
   'tasks.action.complete': { en: '✓ Done', zh: '✓ 完成', ja: '✓ 完了' },
   'tasks.toast.statusChanged': { en: 'Status → {status}', zh: '状态 → {status}', ja: 'ステータス → {status}' },
+  'tasks.toast.statusChangeFailed': { en: '❌ Failed to update status', zh: '❌ 状态更新失败', ja: '❌ ステータス更新に失敗しました' },
   'tasks.dragHint': { en: 'Click # or Title to view details. Drag Priority/Type/Created/Due/Updated columns to change status.', zh: '点击 # 或标题查看详情，拖拽优先级/种类/创建/截止/更新时间区域来修改状态', ja: '# またはタイトルをクリックすると詳細を表示。優先度/種類/作成日/期限/更新日の列をドラッグしてステータスを変更' },
   'tasks.status.done': { en: 'Done', zh: '完成', ja: '完了', th: 'เสร็จ', mi: 'Kua Oti', ru: 'Готово' },
   'tasks.priority.critical': { en: '🔴 Critical', zh: '🔴 紧急', ja: '🔴 緊急', th: '🔴 วิกฤต', mi: '🔴 Mātāmua', ru: '🔴 Критичный' },

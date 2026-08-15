@@ -65,11 +65,12 @@ export function TasksList(p: Record<string, unknown>) {
   };
 
   // ─── Custom mouse drag-to-status (avoids HTML5 drag + obfuscator issues) ───
+  // Perf: drag ghost position is updated via ref + direct DOM style mutation,
+  // so mousemove does NOT trigger React re-renders of the 200-row list.
   const [dragActive, setDragActive] = useState(false);
-  const [, setDragItemId] = useState<string | null>(null);
   const [dragTitle, setDragTitle] = useState('');
-  const [dragX, setDragX] = useState(0);
-  const [dragY, setDragY] = useState(0);
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const dragItemIdRef = useRef<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -80,14 +81,22 @@ export function TasksList(p: Record<string, unknown>) {
     if (activeTab === 'done') return;
     if (e.button !== 0) return;
     e.preventDefault();
-    const startX = e.clientX, startY = e.clientY;
-    setDragItemId(issueId);
+    dragItemIdRef.current = issueId;
     setDragTitle(title);
-    setDragX(startX);
-    setDragY(startY);
     setDragActive(true);
+    // Position ghost immediately at the cursor (no re-render wait)
+    if (dragGhostRef.current) {
+      dragGhostRef.current.style.left = (e.clientX - 80) + 'px';
+      dragGhostRef.current.style.top = (e.clientY - 12) + 'px';
+    }
 
-    const onMove = (ev: MouseEvent) => { setDragX(ev.clientX); setDragY(ev.clientY); };
+    const onMove = (ev: MouseEvent) => {
+      const g = dragGhostRef.current;
+      if (g) {
+        g.style.left = (ev.clientX - 80) + 'px';
+        g.style.top = (ev.clientY - 12) + 'px';
+      }
+    };
     const onUp = (ev: MouseEvent) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
@@ -96,17 +105,20 @@ export function TasksList(p: Record<string, unknown>) {
       // Check if dropped on a drop zone
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
       const zone = el?.closest('[data-drop-zone]');
-      if (zone) {
+      if (zone && dragItemIdRef.current) {
         const newStatus = zone.getAttribute('data-drop-zone') ?? '';
         if (newStatus !== activeTab) {
-          api.issue.update({ id: issueId, status: newStatus }).then(() => {
+          // DB-first: update DB, then re-render UI. On failure, UI stays unchanged.
+          api.issue.update({ id: dragItemIdRef.current, status: newStatus }).then(() => {
             (get('fetchIssues') as () => void)();
             const label = (STATUS_LABEL[newStatus] || {})[lang] || newStatus;
             showToast(tt2('tasks.toast.statusChanged', lang).replace('{status}', label));
-          }).catch(() => {});
+          }).catch(() => {
+            showToast(tt2('tasks.toast.statusChangeFailed' as any, lang));
+          });
         }
       }
-      setDragItemId(null);
+      dragItemIdRef.current = null;
       setDragTitle('');
     };
     document.addEventListener('mousemove', onMove);
@@ -306,12 +318,10 @@ export function TasksList(p: Record<string, unknown>) {
           )}
         </div>
       </div>
-      {/* Drag ghost */}
-      {dragActive && (
-        <div style={{ position: 'fixed', left: dragX - 80, top: dragY - 12, zIndex: 9999, padding: '6px 14px', background: 'var(--brand)', color: '#fff', borderRadius: 6, fontSize: 12, fontWeight: 600, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {dragTitle}
-        </div>
-      )}
+      {/* Drag ghost — position mutated via ref during mousemove (no re-renders) */}
+      <div ref={dragGhostRef} style={{ position: 'fixed', left: 0, top: 0, zIndex: 9999, padding: '6px 14px', background: 'var(--brand)', color: '#fff', borderRadius: 6, fontSize: 12, fontWeight: 600, pointerEvents: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', display: dragActive ? 'block' : 'none' }}>
+        {dragTitle}
+      </div>
     </div>
   );
 }
