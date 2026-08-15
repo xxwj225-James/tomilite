@@ -76,8 +76,9 @@
     "productName": "TomiLite",
     "copyright": "Copyright © 2026 Tomatovector",
     "publish": {
-      "provider": "generic",
-      "url": "https://tomatovector.com/tomilite/updates/"
+      "provider": "github",
+      "owner": "xxwj225-James",
+      "repo": "tomilite"
     },
     "directories": {
       "output": "dist-electron"
