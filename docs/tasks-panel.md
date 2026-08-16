@@ -4,7 +4,7 @@
 
 ## Context
 
-The original plan proposed a three-column Kanban with email cards and a notification bar. What actually shipped is a **tabbed table**: TODO / IN_PROGRESS / DONE tabs (with counts) over the existing flat table, plus drag-to-status. Emails were NOT merged into this panel — they live in the standalone Email panel (see `05-email-ai-inbox.md`), and email-derived rows are filtered out of the task list entirely.
+The original plan proposed a three-column Kanban with email cards and a notification bar. What actually shipped is a **tabbed table**: TODO / IN_PROGRESS / DONE tabs (with counts) over the existing flat table, plus drag-to-status. Emails were NOT merged into this panel — they live in the standalone Email panel (see [email-ai.md](email-ai.md)), and email-derived rows are filtered out of the task list entirely.
 
 ## Shipped Behavior
 

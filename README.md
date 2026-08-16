@@ -64,11 +64,17 @@ Key design points:
 
 ## Documentation
 
-- [docs/](docs/) — architecture design, agent external tools, release notes
+- [Architecture](docs/architecture.md) — system design, panels, tools, OTA
+- [MCP Client](docs/mcp-client.md) — connecting TomiLite to external MCP servers
+- [Email AI Inbox](docs/email-ai.md) — AI email classification and processing
+- [Tasks Panel](docs/tasks-panel.md) — kanban board, drag-to-status, task editor
+- [UI Design System](docs/ui-design-system.md) — design tokens, themes, components
+- [Security](docs/SECURITY.md) — local-first security model
+- [Release Notes](docs/release-notes/)
 
 ## TomiHub for Teams
 
-TomiLite is for personal flow; **[TomiHub](https://tomatovector.com)** is for team synergy — *Local-first, AI-native, privacy by design.*
+TomiLite is for personal flow; **[TomiHub](https://tomatovector.com)** is for team synergy — _Local-first, AI-native, privacy by design._
 
 TomiHub is not just a multi-user version of TomiLite. It is a hub designed for R&D organizations — bridging MCP protocol, RBAC permissions, LLM compute routing, and project management so the entire team collaborates on one board while maintaining the full privacy benefits of the local client.
 
