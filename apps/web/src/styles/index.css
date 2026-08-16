@@ -1480,3 +1480,194 @@ pre code.hljs {
 .ProseMirror {
   white-space: pre-wrap;
 }
+/* ─── Milkdown editor styles (moved out of JSX — re-injecting <style> every render
+       reset CSS animations and caused UI flicker on editor focus changes) ─── */
+.md-tbar {
+  display: flex;
+  gap: 1px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--surface);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.md-tbar button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+.md-tbar button:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+.md-tbar .md-sep {
+  width: 1px;
+  background: var(--edge);
+  margin: 2px 4px;
+  align-self: stretch;
+}
+.milkdown-editor {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.milkdown-editor h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+.milkdown-editor h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 20px 0 10px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--surface2), transparent);
+  border-radius: var(--radius-sm);
+}
+.milkdown-editor h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 12px 0 4px;
+}
+.milkdown-editor p {
+  margin: 0 0 8px;
+}
+.milkdown-editor ul,
+.milkdown-editor ol {
+  padding-left: 20px;
+  margin: 0 0 4px;
+}
+.milkdown-editor ul {
+  list-style-type: disc;
+}
+.milkdown-editor ol {
+  list-style-type: decimal;
+}
+.milkdown-editor li {
+  padding: 1px 0;
+}
+.milkdown-editor code {
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: monospace;
+}
+.milkdown-editor pre {
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+.milkdown-editor pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.milkdown-editor blockquote {
+  margin: 12px 0;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, var(--brand-soft), rgba(99, 102, 241, 0.02));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink);
+}
+.milkdown-editor blockquote p {
+  margin: 0;
+}
+.milkdown-editor table {
+  border-collapse: collapse;
+  width: auto !important;
+  max-width: 100%;
+  min-width: 300px !important;
+  margin: 10px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+  table-layout: fixed;
+}
+.milkdown-editor .tableWrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+}
+.milkdown-editor th {
+  background: linear-gradient(135deg, var(--brand), var(--brand-hover));
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--brand-hover);
+}
+.milkdown-editor td {
+  padding: 7px 12px;
+  border: 1px solid var(--edge);
+  font-size: 13px;
+}
+.milkdown-editor hr {
+  height: 2px;
+  border: none;
+  margin: 16px 0;
+  background: linear-gradient(90deg, var(--brand), transparent);
+}
+.resize-cursor {
+  cursor: col-resize !important;
+}
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  z-index: 20;
+  background: transparent;
+  cursor: col-resize;
+}
+.column-resize-handle:hover {
+  background: var(--brand);
+  opacity: 0.4;
+}
+.milkdown-editor a {
+  color: var(--brand);
+  text-decoration: underline;
+}
+[data-milkdown-root] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: block !important;
+}
+.ProseMirror {
+  outline: none !important;
+  min-height: 200px;
+}
+.ProseMirror img {
+  max-width: 100%;
+  max-height: 400px;
+  min-width: 40px;
+  min-height: 20px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--brand);
+}
+.ProseMirror-focused {
+  outline: none !important;
+}
+.milkdown-editor tr:hover td {
+  background: var(--surface2);
+}
