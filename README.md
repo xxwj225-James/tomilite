@@ -72,6 +72,12 @@ Key design points:
 - [Security](docs/SECURITY.md) — local-first security model
 - [Release Notes](docs/release-notes/)
 
+## Support
+
+TomiLite is free and open source. If it helps your workflow, you can support its continued development:
+
+- 💝 [afdian (爱发电)](https://afdian.com/a/jameswu) — one-time or monthly support
+
 ## TomiHub for Teams
 
 TomiLite is for personal flow; **[TomiHub](https://tomatovector.com)** is for team synergy — _Local-first, AI-native, privacy by design._
