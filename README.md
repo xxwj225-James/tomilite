@@ -1,5 +1,7 @@
 # TomiLite
 
+![TomiLite — chat-first AI agent](docs/images/home.jpg)
+
 AI-powered personal productivity desktop app — chat with an AI agent that manages your tasks, notes, emails, and daily reports. Built with Electron + React + tRPC + SQLite + Milkdown.
 
 > 🌐 **Official Website**: [tomatovector.com](https://tomatovector.com) — AI-powered next-generation R&D ecosystem
@@ -61,6 +63,18 @@ Key design points:
 - **MCP client**: auto-negotiates TomiHub-style / JSON-RPC / legacy protocols; discovered tools are injected as `mcp__<server>__<tool>` functions; API keys encrypted at rest, never sent to the LLM
 - **Human-in-the-loop**: external MCP clients' write operations require approval in the MCP panel
 - **Schema migrations**: additive-only, versioned (`SCHEMA_VERSION` in `apps/api/src/server.ts`)
+
+## Screenshots
+
+![Multi-session chat](docs/images/home-sessions.jpg)
+
+![Task board — drag to change status](docs/images/tasks.jpg)
+
+![Notes — Markdown WYSIWYG editor](docs/images/notes.jpg)
+
+![Email — AI triage and reply drafts](docs/images/email.jpg)
+
+![Daily reports — morning brief + evening wrap-up](docs/images/reports.jpg)
 
 ## Documentation
 
