@@ -66,15 +66,11 @@ Key design points:
 
 ## Screenshots
 
-![Multi-session chat](docs/images/home-sessions.jpg)
+<img src="docs/images/home-sessions.jpg" width="49%" alt="Multi-session chat"> <img src="docs/images/tasks.jpg" width="49%" alt="Task board — drag to change status">
 
-![Task board — drag to change status](docs/images/tasks.jpg)
+<img src="docs/images/notes.jpg" width="49%" alt="Notes — Markdown WYSIWYG editor"> <img src="docs/images/email.jpg" width="49%" alt="Email — AI triage and reply drafts">
 
-![Notes — Markdown WYSIWYG editor](docs/images/notes.jpg)
-
-![Email — AI triage and reply drafts](docs/images/email.jpg)
-
-![Daily reports — morning brief + evening wrap-up](docs/images/reports.jpg)
+<img src="docs/images/reports.jpg" width="49%" alt="Daily reports — morning brief + evening wrap-up">
 
 ## Documentation
 
