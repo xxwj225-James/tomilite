@@ -20,6 +20,23 @@ AI-powered personal productivity desktop app — chat with an AI agent that mana
 - **🌐 i18n** — Chinese / Japanese / English
 - **🎨 4 Themes** — Pipeline / Hub / Canvas / Quantum, CSS-variable based
 
+## What can Tomi do?
+
+Chat with Tomi in plain language — the agent turns your words into actions, and the results appear live in the Task / Notes / Email / Reports panels:
+
+| You say                                   | Tomi does                                      |
+| ----------------------------------------- | ---------------------------------------------- |
+| "创建一个任务：重构登录模块，优先级 high" | Creates a task on the Task Board               |
+| "把任务改成进行中 / 更新这个任务"         | Updates status, priority, description          |
+| "写一篇关于 API 设计的笔记"               | Creates a Markdown note in the knowledge base  |
+| "生成今天的日报"                          | Morning task brief + evening wrap-up report    |
+| "总结未读邮件"                            | Reads email (IMAP), classifies, drafts replies |
+| "搜索知识库里关于缓存的内容"              | Semantic note search                           |
+| "看看最近的 git 提交"                     | Reads your git workspaces                      |
+| "帮我分析 TL-3 这个任务"                  | Opens and analyzes a specific issue            |
+
+> Tip: the welcome guide inside the app also offers one-click example prompts. New sessions start empty — ask Tomi anything, or use one of the suggestions above.
+
 ## Getting Started
 
 ### Install (Windows)
