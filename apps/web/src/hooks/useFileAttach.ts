@@ -24,7 +24,7 @@ export function useFileAttach() {
             const ws = wb.Sheets[sn];
             const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
             rows.push(`--- Sheet: ${sn} ---`);
-            for (const row of data.slice(0, 100)) rows.push(row.map(c => String(c ?? '')).join('\t'));
+            for (const row of data.slice(0, 100)) rows.push(row.map((c) => String(c ?? '')).join('\t'));
           }
           loaded.push({ name: f.name, size: f.size, content: rows.join('\n') });
         } else if (ext === 'docx') {
@@ -44,13 +44,36 @@ export function useFileAttach() {
             pages.push(text.items.map((t: any) => t.str).join(' '));
           }
           loaded.push({ name: f.name, size: f.size, content: pages.join('\n\n').substring(0, 10000) });
+        } else if (ext === 'pptx') {
+          // PPTX is an OOXML zip — extract text runs (<a:t>) from each slide XML
+          const JSZip: any = await import('jszip');
+          const zip = await JSZip.loadAsync(await f.arrayBuffer());
+          const slideNumber = (name: string): number => {
+            const m = name.match(/(\d+)\.xml$/);
+            return m ? parseInt(m[1], 10) : 0;
+          };
+          const slideNames = Object.keys(zip.files)
+            .filter((n: string) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+            .sort((a: string, b: string) => slideNumber(a) - slideNumber(b));
+          const slides: string[] = [];
+          for (let i = 0; i < Math.min(slideNames.length, 20); i++) {
+            const xml = (await zip.files[slideNames[i]].async('string')) as string;
+            const doc = new DOMParser().parseFromString(xml, 'text/xml');
+            const texts = Array.from(doc.getElementsByTagName('a:t'))
+              .map((n) => n.textContent ?? '')
+              .join(' ');
+            slides.push(`--- Slide ${i + 1} ---\n${texts}`);
+          }
+          loaded.push({ name: f.name, size: f.size, content: slides.join('\n\n').substring(0, 10000) });
         } else {
           const text = await f.text();
           loaded.push({ name: f.name, size: f.size, content: text.substring(0, 10000) });
         }
-      } catch { loaded.push({ name: f.name, size: f.size, content: `[${t('misc.cannotParse', lang)}: ${f.name}]` }); }
+      } catch {
+        loaded.push({ name: f.name, size: f.size, content: `[${t('misc.cannotParse', lang)}: ${f.name}]` });
+      }
     }
-    setAttachedFiles(prev => [...prev, ...loaded]);
+    setAttachedFiles((prev) => [...prev, ...loaded]);
   };
 
   return { attachedFiles, setAttachedFiles, dragOver, setDragOver, handleFiles };
