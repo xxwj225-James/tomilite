@@ -9,11 +9,11 @@
   nsExec::ExecToStack 'taskkill /F /IM TomiLite.exe /T'
   nsExec::ExecToStack 'taskkill /F /IM TomatoLite.exe /T'
   Sleep 1500
-  ; Remove old shortcuts (safe — just .lnk files, no user data)
+  ; Remove legacy TomatoLite shortcuts only (pre-rename product name).
+  ; IMPORTANT: do NOT delete TomiLite.lnk here — electron-builder owns the
+  ; current product's shortcuts, and OTA update mode does not recreate them.
   Delete "$SMPROGRAMS\TomatoLite.lnk"
   Delete "$DESKTOP\TomatoLite.lnk"
-  Delete "$SMPROGRAMS\TomiLite.lnk"
-  Delete "$DESKTOP\TomiLite.lnk"
 !macroend
 
 ; No-op in silent mode — electron-builder handles everything
