@@ -33,4 +33,5 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.blockmap
             dist-electron/latest.yml
+          body_path: docs/release-notes/${{ github.ref_name }}.md
           generate_release_notes: true
