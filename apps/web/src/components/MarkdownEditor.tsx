@@ -427,11 +427,28 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
               return false;
             },
             paste: (view: any, event: Event) => {
+              // Image paste: clipboard carries image data (screenshot, copied
+              // image) — read as data-URL and insert an inline image node.
+              const ce = event as ClipboardEvent;
+              const images = Array.from(ce.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+              if (images.length > 0) {
+                event.preventDefault();
+                for (const img of images) {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const nodeType = view.state.schema.nodes.image;
+                    if (!nodeType) return;
+                    const node = nodeType.create({ src: reader.result as string, alt: img.name || 'image' });
+                    view.dispatch(view.state.tr.replaceSelectionWith(node));
+                  };
+                  reader.readAsDataURL(img);
+                }
+                return true;
+              }
               // VS Code / Claude Code terminal copy: clipboard has vscode-editor-data.
               // Milkdown inserts raw text into code_block, bypassing HTML parsing.
               // The plain text contains <span style="..."> tags from terminal ANSI→HTML.
               // Strip those tags before insertion so they don't become literal text.
-              const ce = event as ClipboardEvent;
               if (ce.clipboardData?.types?.includes('vscode-editor-data')) {
                 event.preventDefault();
                 const plain = (ce.clipboardData.getData('text/plain') || '')
