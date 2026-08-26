@@ -12,7 +12,7 @@ AI-powered personal productivity desktop app — chat with an AI agent that mana
 
 Companion Chrome/Edge extension: an AI side panel that summarizes/translates any page, clips selections into tasks & notes, and **auto-syncs with the TomiLite desktop app** (localhost:3192).
 
-📥 **Download**: [TomiLite Browser Extension — Releases](https://github.com/xxwj225-James/tomilite-browser-extension/releases)
+📥 **Download**: [Tomi Browser Extension — Releases](https://github.com/xxwj225-James/tomilite-browser-extension/releases)
 
 ## Features
 
