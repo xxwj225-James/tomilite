@@ -8,6 +8,12 @@ AI-powered personal productivity desktop app — chat with an AI agent that mana
 >
 > Tomi is an AI agent with a Chat-First workflow: chat with it, and it creates tasks, writes notes, triages email, and generates reports for you.
 
+## 🧩 Browser Extension
+
+Companion Chrome/Edge extension: an AI side panel that summarizes/translates any page, clips selections into tasks & notes, and **auto-syncs with the TomiLite desktop app** (localhost:3192).
+
+📥 **Download**: [TomiLite Browser Extension — Releases](https://github.com/xxwj225-James/tomilite-browser-extension/releases)
+
 ## Features
 
 - **💬 Chat-First AI Agent** — multi-session chat with concurrent tasks; the agent calls tools (create/update tasks, notes, reports, web search, git, shell) via function calling
@@ -105,7 +111,7 @@ Key design points:
 
 ## 🧩 Ecosystem
 
-- **🌐 TomiLite Browser Extension** — *coming soon*: capture web pages into your TomiLite tasks/notes, summarize and translate pages with Tomi — right inside Chrome/Edge. [Subscribe for updates](https://tomatovector.com)
+- **🌐 TomiLite Browser Extension** — _coming soon_: capture web pages into your TomiLite tasks/notes, summarize and translate pages with Tomi — right inside Chrome/Edge. [Subscribe for updates](https://tomatovector.com)
 - **🤖 DSH Plugin** — [tomilite-dsh-plugin](https://github.com/xxwj225-James/tomilite-dsh-plugin): give your DeepSeek Harness agent access to your local TomiLite
 
 ## Support
