@@ -349,11 +349,42 @@ app.whenReady().then(function () {
           downloadedFile: info.downloadedFile || info.path || info.installerPath || '',
         });
       });
+      // ─── Update-check retry (GitHub API is frequently unreachable from CN
+      //     networks — ERR_CONNECTION_RESET etc. Retry with backoff before
+      //     surfacing the error to the UI.) ───
+      var updateAttempt = 0;
+      var MAX_UPDATE_ATTEMPTS = 3;
+      var UPDATE_RETRY_DELAYS = [5000, 10000, 20000];
+      var updateRetryTimer = null;
+
+      function isUpdateNetworkError(msg) {
+        return msg.includes('err_connection_reset') || msg.includes('econnreset')
+          || msg.includes('etimedout') || msg.includes('enetdown')
+          || msg.includes('enotfound') || msg.includes('eai_again')
+          || msg.includes('fetch failed') || msg.includes('cannot parse releases feed')
+          || msg.includes('unable to find latest version');
+      }
+
+      function checkUpdateWithRetry() {
+        updateAttempt = 0;
+        try { autoUpdater.checkForUpdates(); } catch (e) { console.error('[Updater] checkForUpdates threw:', e?.message); }
+      }
+
       autoUpdater.on('error', function (err) {
         // Suppress errors from download interruption (app closed mid-download, network drops)
         var msg = (err?.message || String(err)).toLowerCase();
         if (msg.includes('aborted') || msg.includes('interrupted') || msg.includes('typeerror') || msg.includes('cancelled') || msg.includes('destroyed')) return;
         console.error('[Updater] Error:', err.message);
+        if (isUpdateNetworkError(msg) && updateAttempt < MAX_UPDATE_ATTEMPTS) {
+          updateAttempt++;
+          var delay = UPDATE_RETRY_DELAYS[updateAttempt - 1] || 20000;
+          console.log('[Updater] Network error — auto retry ' + updateAttempt + '/' + MAX_UPDATE_ATTEMPTS + ' in ' + delay + 'ms');
+          if (updateRetryTimer) clearTimeout(updateRetryTimer);
+          updateRetryTimer = setTimeout(function () {
+            try { autoUpdater.checkForUpdates(); } catch (e) {}
+          }, delay);
+          return; // retrying — don't surface the error yet
+        }
         safeSend('update-error', err?.message);
       });
 
@@ -374,7 +405,7 @@ app.whenReady().then(function () {
         autoUpdater.downloadUpdate();
       });
       ipcMain.handle('check-update', function () {
-        autoUpdater.checkForUpdates();
+        checkUpdateWithRetry();
       });
       ipcMain.handle('open-folder', function (_e, filePath) {
         const { shell } = require('electron');
@@ -383,7 +414,7 @@ app.whenReady().then(function () {
       });
 
       // Check after a short delay to let the UI settle
-      setTimeout(function () { autoUpdater.checkForUpdates(); }, 5000);
+      setTimeout(checkUpdateWithRetry, 5000);
     })
     .catch(function () {
       var detail = apiErrors ? 'Details:\n' + apiErrors.substring(0, 500) : 'No error output captured.';

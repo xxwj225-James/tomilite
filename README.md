@@ -103,11 +103,21 @@ Key design points:
 - [Security](docs/SECURITY.md) — local-first security model
 - [Release Notes](docs/release-notes/)
 
+## 🧩 Ecosystem
+
+- **🌐 TomiLite Browser Extension** — *coming soon*: capture web pages into your TomiLite tasks/notes, summarize and translate pages with Tomi — right inside Chrome/Edge. [Subscribe for updates](https://tomatovector.com)
+- **🤖 DSH Plugin** — [tomilite-dsh-plugin](https://github.com/xxwj225-James/tomilite-dsh-plugin): give your DeepSeek Harness agent access to your local TomiLite
+
 ## Support
 
 TomiLite is free and open source. If it helps your workflow, you can support its continued development:
 
 - 💝 [afdian (爱发电)](https://afdian.com/a/jameswu) — one-time or monthly support
+
+### Partner Recommendations · Sponsored
+
+- ☁️ [腾讯云新客特惠](https://curl.qcloud.com/kGPqI6IA) — new-user vouchers for cloud servers
+- ☁️ [阿里云云大使](https://www.aliyun.com/minisite/goods?userCode=x4jbzcb6) — up to 45% cashback for new customers
 
 ## TomiHub for Teams
 
