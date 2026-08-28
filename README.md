@@ -111,7 +111,7 @@ Key design points:
 
 ## 🧩 Ecosystem
 
-- **🌐 TomiLite Browser Extension** — _coming soon_: capture web pages into your TomiLite tasks/notes, summarize and translate pages with Tomi — right inside Chrome/Edge. [Subscribe for updates](https://tomatovector.com)
+- **🌐 TomiLite Browser Extension** — [tomilite-browser-extension](https://github.com/xxwj225-James/tomilite-browser-extension): capture web pages into your TomiLite tasks/notes, summarize and translate pages, and translate video subtitles (bilibili / YouTube / HTML5 video sites) — right inside Chrome/Edge, auto-syncing with the desktop app
 - **🤖 DSH Plugin** — [tomilite-dsh-plugin](https://github.com/xxwj225-James/tomilite-dsh-plugin): give your DeepSeek Harness agent access to your local TomiLite
 
 ## Support
