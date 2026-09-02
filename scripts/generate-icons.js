@@ -2,14 +2,13 @@
 // Generate icon PNG + ICO from the brand logo.
 //
 // Source precedence:
-//   1. electron/icon-source.jpg  (raster brand logo — non-square, composited onto a
-//      square brand-colored canvas so it can't be distorted)
+//   1. electron/icon-source.jpg  (raster brand logo on an opaque background —
+//      its background is removed via border-connected flood fill, then trimmed
+//      and centered on a square TRANSPARENT canvas → no painted background)
 //   2. electron/icon-source.png  (square transparent raster logo, used as-is)
 //   3. electron/icon.svg         (legacy vector icon)
 //
-// The square canvas background defaults to the average of the logo's four corner
-// pixels (so a logo with its own background blends seamlessly); override with
-// ICON_BG, e.g. ICON_BG=#ffffff node scripts/generate-icons.js
+// icon-preview.png is composited over a checkerboard so transparency is visible.
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
@@ -51,35 +50,157 @@ function writeICO(pngBuffers) {
   return Buffer.concat([header, dirEntries, imageData]);
 }
 
-// Average hex color of a 3×3 pixel patch — used to infer the logo background
-async function patchAvg(buf, left, top) {
-  const { data } = await sharp(buf)
-    .extract({ left, top, width: 3, height: 3 })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const ch = data.length / 9;
+// Cut the opaque brand background out of a raster: flood-fill from the borders
+// over pixels close to the inferred bg color, so only border-connected bg is
+// removed and dark interior logo detail survives. Returns { data, w, h } RGBA.
+function removeBackground(data, w, h) {
+  // Infer bg from the outer ring (the source is a centered logo on a plain canvas)
+  const ring = 12;
   let r = 0;
   let g = 0;
   let b = 0;
-  for (let i = 0; i < 9; i++) {
-    r += data[i * ch];
-    g += data[i * ch + 1];
-    b += data[i * ch + 2];
+  let n = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x >= ring && y >= ring && x < w - ring && y < h - ring) continue;
+      const i = (y * w + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
   }
-  return [Math.round(r / 9), Math.round(g / 9), Math.round(b / 9)];
+  const bg = [r / n, g / n, b / n];
+  const cutT = 44; // squared-threshold cutoff for "background-ish"
+  const cutT2 = cutT * cutT;
+  const nPix = w * h;
+
+  const isCand = (i) => {
+    const p = i * 4;
+    const dr = data[p] - bg[0];
+    const dg = data[p + 1] - bg[1];
+    const db = data[p + 2] - bg[2];
+    return dr * dr + dg * dg + db * db <= cutT2;
+  };
+
+  // Pass 1: clear background connected to the border
+  const cut = new Uint8Array(nPix);
+  const q = new Int32Array(nPix);
+  let head = 0;
+  let tail = 0;
+  const seed = (i) => {
+    if (!cut[i] && isCand(i)) {
+      cut[i] = 1;
+      q[tail++] = i;
+    }
+  };
+  for (let x = 0; x < w; x++) {
+    seed(x);
+    seed((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    seed(y * w);
+    seed(y * w + w - 1);
+  }
+  while (head < tail) {
+    const i = q[head++];
+    const x = i % w;
+    const nb = [i - 1, i + 1, i - w, i + w];
+    for (const j of nb) {
+      if (j < 0 || j >= nPix) continue;
+      if (Math.abs((j % w) - x) > 1) continue; // skip horizontal wrap
+      if (!cut[j] && isCand(j)) {
+        cut[j] = 1;
+        q[tail++] = j;
+      }
+    }
+  }
+
+  // Pass 2: drop small enclosed bg specks/holes (e.g. JPEG noise, letter counters)
+  const speckT = 500; // px — smaller than any real dark logo mass
+  const visited = new Uint8Array(nPix); // avoids re-flooding kept components
+  for (let s = 0; s < nPix; s++) {
+    if (cut[s] || visited[s] || !isCand(s)) continue;
+    head = 0;
+    tail = 0;
+    visited[s] = 1;
+    cut[s] = 2;
+    q[tail++] = s;
+    while (head < tail) {
+      const i = q[head++];
+      const x = i % w;
+      const nb = [i - 1, i + 1, i - w, i + w];
+      for (const j of nb) {
+        if (j < 0 || j >= nPix) continue;
+        if (Math.abs((j % w) - x) > 1) continue;
+        if (!cut[j] && visited[j] === 0 && isCand(j)) {
+          visited[j] = 1;
+          cut[j] = 2;
+          q[tail++] = j;
+        }
+      }
+    }
+    const remove = tail < speckT;
+    for (let k = 0; k < tail; k++) cut[q[k]] = remove ? 3 : 0; // 3 = speckle, 0 = keep
+  }
+
+  // Apply alpha: cleared → 0, kept → 255 with a feathered boundary
+  const featherLo = cutT;
+  const featherHi = cutT + 26;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const p = i * 4;
+      if (cut[i] === 1 || cut[i] === 3) {
+        data[p + 3] = 0;
+        continue;
+      }
+      data[p + 3] = 255;
+      // Feather: soften pixels touching a cleared one by their distance from bg
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const c = cut[ny * w + nx];
+          if (c === 1 || c === 3) {
+            near = true;
+            break;
+          }
+        }
+      }
+      if (near) {
+        const dr = data[p] - bg[0];
+        const dg = data[p + 1] - bg[1];
+        const db = data[p + 2] - bg[2];
+        const d = Math.sqrt(dr * dr + dg * dg + db * db);
+        if (d < featherHi) {
+          const t = Math.max(0, (d - featherLo) / (featherHi - featherLo));
+          data[p + 3] = Math.round(255 * t * t * (3 - 2 * t));
+        }
+      }
+    }
+  }
+  return { data, w, h, bg };
 }
 
-function toHex(rgb) {
-  return (
-    '#' + [rgb[0], rgb[1], rgb[2]].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')
-  );
-}
-
-function parseHex(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+// Checkerboard PNG so transparency is easy to eyeball in the preview
+async function checkerboard(size) {
+  const cell = size / 16;
+  const buf = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const light = (Math.floor(x / cell) + Math.floor(y / cell)) % 2 === 0;
+      const v = light ? 232 : 255;
+      const p = (y * size + x) * 4;
+      buf[p] = v;
+      buf[p + 1] = v;
+      buf[p + 2] = v;
+      buf[p + 3] = 255;
+    }
+  }
+  return sharp(buf, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer();
 }
 
 async function main() {
@@ -99,62 +220,98 @@ async function main() {
   const meta = await sharp(srcBuf).metadata();
   const square = meta.width === meta.height;
 
-  const CANVAS = 1024;
   let master; // square RGBA PNG buffer of the finished icon
 
   if (srcKind !== 'svg' && !square) {
-    // Raster + non-square → composite centered on a square brand-colored canvas
-    let bgRgb = [99, 102, 241]; // indigo fallback
-    if (process.env.ICON_BG) {
-      const parsed = parseHex(process.env.ICON_BG);
-      if (parsed) bgRgb = [parsed.r, parsed.g, parsed.b];
+    // Raster, non-square → background-remove, trim, center on transparent square
+    const { data, info } = await sharp(srcBuf)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const w = info.width;
+    const h = info.height;
+
+    let rgba;
+    if (meta.hasAlpha) {
+      rgba = { data: Buffer.from(data), w, h }; // already transparent source
+      console.log(`  ℹ logo ${w}x${h} — has alpha, used as-is`);
     } else {
-      // Sample the four corners — for a logo that carries its own background this
-      // makes the icon look seamless instead of floating on a foreign color.
-      const w = meta.width;
-      const h = meta.height;
-      const corners = await Promise.all([
-        patchAvg(srcBuf, 0, 0),
-        patchAvg(srcBuf, w - 3, 0),
-        patchAvg(srcBuf, 0, h - 3),
-        patchAvg(srcBuf, w - 3, h - 3),
-      ]);
-      bgRgb = [
-        Math.round(corners.reduce((s, c) => s + c[0], 0) / 4),
-        Math.round(corners.reduce((s, c) => s + c[1], 0) / 4),
-        Math.round(corners.reduce((s, c) => s + c[2], 0) / 4),
-      ];
+      const r = removeBackground(Buffer.from(data), w, h);
+      rgba = r;
+      console.log(`  ℹ logo ${w}x${h} — removed bg ~rgb(${r.bg.map(Math.round).join(',')}) → transparent`);
     }
-    console.log(`  ℹ logo ${meta.width}x${meta.height} — canvas bg #${toHex(bgRgb).slice(1)} (ICON_BG overrides)`);
+
+    // Trim to the opaque content, then square it up on a transparent canvas
+    const d = rgba.data;
+    const aT = 10;
+    let minX = w;
+    let minY = h;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] >= aT) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < minX) {
+      console.error('No content left after background removal');
+      process.exit(1);
+    }
+    const cw = maxX - minX + 1;
+    const ch = maxY - minY + 1;
+    const pad = Math.round(Math.max(cw, ch) * 0.06);
+    const side = Math.max(cw, ch) + pad * 2;
+    const cropLeft = Math.max(0, minX - pad);
+    const cropTop = Math.max(0, minY - pad);
+    const cropW = Math.min(cw + pad * 2, w - cropLeft);
+    const cropH = Math.min(ch + pad * 2, h - cropTop);
 
     const base = await sharp({
       create: {
-        width: CANVAS,
-        height: CANVAS,
+        width: side,
+        height: side,
         channels: 4,
-        background: { r: bgRgb[0], g: bgRgb[1], b: bgRgb[2], alpha: 1 },
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
       },
     })
       .png()
       .toBuffer();
-    // Contain-fit keeps aspect ratio and letterboxes transparently
-    const logo = await sharp(srcBuf).resize(CANVAS, CANVAS, { fit: 'contain' }).png().toBuffer();
-    master = await sharp(base)
-      .composite([{ input: logo }])
+    const clipped = await sharp(d, { raw: { width: w, height: h, channels: 4 } })
+      .extract({ left: cropLeft, top: cropTop, width: cropW, height: cropH })
       .png()
       .toBuffer();
+    master = await sharp(base)
+      .composite([
+        {
+          input: clipped,
+          left: Math.round((side - cropW) / 2),
+          top: Math.round((side - cropH) / 2),
+        },
+      ])
+      .png()
+      .toBuffer();
+    console.log(`  ℹ content ${cw}x${ch} → transparent ${side}x${side} master`);
   } else {
     // Square source (or legacy SVG) — just resize
-    master = await sharp(srcBuf).resize(CANVAS, CANVAS, { fit: 'contain' }).png().toBuffer();
+    master = await sharp(srcBuf).resize(1024, 1024, { fit: 'contain' }).png().toBuffer();
   }
 
-  // Generate 256x256 PNG (main app icon) + a big preview for eyeballing
+  // 256x256 PNG (main app icon)
   await sharp(master).resize(256, 256).png().toFile(outPng);
-  console.log('  ✅ icon.png (256x256)');
-  await sharp(master).resize(512, 512).png().toFile(outPreview);
-  console.log('  ✅ icon-preview.png (512x512)');
+  console.log('  ✅ icon.png (256x256, transparent)');
 
-  // Generate multiple sizes for ICO
+  // 512x512 preview over a checkerboard so transparency is visible
+  const previewLogo = await sharp(master).resize(512, 512).png().toBuffer();
+  const cb = await checkerboard(512);
+  await sharp(cb).composite([{ input: previewLogo }]).png().toFile(outPreview);
+  console.log('  ✅ icon-preview.png (512x512 over checkerboard)');
+
+  // Multiple sizes for ICO
   const sizes = [16, 32, 48, 256];
   const pngs = [];
   for (const size of sizes) {
