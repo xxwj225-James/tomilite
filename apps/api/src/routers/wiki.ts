@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
-import { exportToExcel, exportToDoc, exportToHtml } from '../agent/tools/reportTools.js';
+import { exportToExcel, exportToDoc, exportToHtml, exportToPptx } from '../agent/tools/reportTools.js';
 
 // ─── Reusable schemas ───
 const wikiIdSchema = z.object({ id: z.string().min(1, 'Wiki ID cannot be empty') });
@@ -87,13 +87,20 @@ export const wikiRouter = router({
   }),
 
   exportNote: publicProcedure
-    .input(z.object({ noteId: z.string(), format: z.enum(['xlsx', 'docx', 'html']) }))
+    .input(z.object({ noteId: z.string(), format: z.enum(['xlsx', 'docx', 'html', 'pptx']) }))
     .query(async ({ input }) => {
       const note = await prisma.knowledgePage.findUnique({ where: { id: input.noteId } });
       if (!note) return { ok: false, error: 'Note not found' };
       const content = `# ${note.title || 'Untitled'}\n\n${note.content || ''}\n`;
       const fn = (note.title || 'note').replace(/[<>:"/\\|?*]/g, '_');
-      const exporter = input.format === 'xlsx' ? exportToExcel : input.format === 'docx' ? exportToDoc : exportToHtml;
+      const exporter =
+        input.format === 'xlsx'
+          ? exportToExcel
+          : input.format === 'docx'
+            ? exportToDoc
+            : input.format === 'pptx'
+              ? exportToPptx
+              : exportToHtml;
       const result = await exporter({ content, filename: fn });
       return result.error
         ? result

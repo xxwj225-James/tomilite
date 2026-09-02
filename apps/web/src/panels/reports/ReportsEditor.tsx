@@ -25,7 +25,7 @@ export function ReportsEditor(p: Record<string, unknown>) {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportResult, setExportResult] = useState('');
 
-  const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'pdf') => {
+  const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'pdf' | 'pptx') => {
     if (!selected?.id) return;
     setShowExportDialog(false);
     try {
@@ -48,14 +48,22 @@ export function ReportsEditor(p: Record<string, unknown>) {
         setExportResult(tt2('export.success', lang).replace('{path}', savePath));
         return;
       }
-      const endpoint = format === 'xlsx' ? 'exportExcel' : format === 'docx' ? 'exportWord' : 'exportHtml';
+      const endpoint =
+        format === 'xlsx'
+          ? 'exportExcel'
+          : format === 'docx'
+            ? 'exportWord'
+            : format === 'pptx'
+              ? 'exportPpt'
+              : 'exportHtml';
       const resp = await fetch(
         `/api/report.${endpoint}?input=${encodeURIComponent(JSON.stringify({ reportId: selected.id }))}`,
       );
       const d = await resp.json();
       if (!d.result?.data?.ok) return;
       const { filePath, filename } = d.result.data;
-      const filterName = format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : 'HTML';
+      const filterName =
+        format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : format === 'pptx' ? 'PowerPoint' : 'HTML';
       const savePath = await (window as any).electronAPI?.pickSaveFile(filename, [
         { name: filterName, extensions: [format] },
       ]);
@@ -187,6 +195,13 @@ export function ReportsEditor(p: Record<string, unknown>) {
                   onClick={() => doExport('html')}
                 >
                   {tt2('export.html', lang)}
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ justifyContent: 'center' }}
+                  onClick={() => doExport('pptx')}
+                >
+                  {tt2('export.ppt', lang)}
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"

@@ -473,6 +473,25 @@ export const ALL_TOOLS: any[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'export_to_ppt',
+      description:
+        'Export content to a PowerPoint presentation (.pptx). Use reportId (UUID) for reports, noteId for notes, taskFilter ("todo"/"done"/"all") for tasks, content (markdown) for custom text — H1 becomes the title slide, each H2+ heading becomes a section slide with the text below it as bullets, tables become table slides. Prefer reportId/noteId/taskFilter over content — they read from DB.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reportId: { type: 'string', description: 'UUID from list_reports' },
+          noteId: { type: 'string', description: 'Note UUID' },
+          taskFilter: { type: 'string', description: 'todo, done, or all' },
+          content: { type: 'string', description: 'Markdown content (last resort)' },
+          filename: { type: 'string', description: 'Optional filename' },
+        },
+        required: [],
+      },
+    },
+  },
 
   // ─── Report Editor Tools (called when report editor is open) ───
   {
@@ -613,4 +632,5 @@ export const toolLabels: Record<string, string> = {
   export_to_excel: 'Exporting to Excel',
   export_to_doc: 'Exporting to Word',
   export_to_pdf: 'Exporting to PDF',
+  export_to_ppt: 'Exporting to PowerPoint',
 };

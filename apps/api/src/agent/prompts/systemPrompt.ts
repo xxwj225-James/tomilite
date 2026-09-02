@@ -131,6 +131,7 @@ Examples:
 	- "export xx to Excel" → Step1: list_reports(query="xx") → Step2: export_to_excel(reportId=<UUID from Step1>)
 	- "export xx to Word" → Step1: list_reports(query="xx") → Step2: export_to_doc(reportId=<UUID from Step1>)
 	- "export xx to PDF" → Step1: list_reports(query="xx") → Step2: export_to_pdf(reportId=<UUID from Step1>)
+		- "export xx to PPT/PowerPoint" → Step1: list_reports(query="xx") → Step2: export_to_ppt(reportId=<UUID from Step1>)
 
 
 Reply ONCE after all tools: "✅ TL-28, TL-29 created". CRITICAL:

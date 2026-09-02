@@ -1154,6 +1154,7 @@ const I18N = {
   'export.html': { en: '🌐 HTML (.html)', zh: '🌐 HTML (.html)', ja: '🌐 HTML (.html)' },
   'export.markdown': { en: '📝 Markdown (.md)', zh: '📝 Markdown (.md)', ja: '📝 Markdown (.md)' },
   'export.pdf': { en: '📄 PDF (.pdf)', zh: '📄 PDF (.pdf)', ja: '📄 PDF (.pdf)' },
+  'export.ppt': { en: '📽 PowerPoint (.pptx)', zh: '📽 PowerPoint (.pptx)', ja: '📽 PowerPoint (.pptx)' },
   'export.success': { en: '✅ Exported to {path}', zh: '✅ 已导出至 {path}', ja: '✅ {path} にエクスポートしました' },
   'export.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
   'export.ok': { en: 'OK', zh: '确定', ja: 'OK' },

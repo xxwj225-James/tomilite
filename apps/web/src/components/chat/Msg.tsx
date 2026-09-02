@@ -460,7 +460,10 @@ export function Msg({
                 >
                   {tr(lang, '🗑 删除', '🗑 削除', '🗑 Delete')}
                 </button>
-                {(card.type === 'export_xlsx' || card.type === 'export_doc' || card.type === 'export_pdf') && (
+                {(card.type === 'export_xlsx' ||
+                  card.type === 'export_doc' ||
+                  card.type === 'export_pdf' ||
+                  card.type === 'export_ppt') && (
                   <button
                     className="btn btn-brand btn-xs"
                     onClick={async () => {
@@ -538,9 +541,10 @@ export function Msg({
                           return;
                         }
                         const isXlsx = card.type === 'export_xlsx';
-                        const ext = isXlsx ? 'xlsx' : 'docx';
+                        const isPpt = card.type === 'export_ppt';
+                        const ext = isXlsx ? 'xlsx' : isPpt ? 'pptx' : 'docx';
                         const fp = await api.pickSaveFile(card.title, [
-                          { name: isXlsx ? 'Excel' : 'Word', extensions: [ext] },
+                          { name: isXlsx ? 'Excel' : isPpt ? 'PowerPoint' : 'Word', extensions: [ext] },
                         ]);
                         if (fp) {
                           api.copyFile(fp, card.key ?? '');

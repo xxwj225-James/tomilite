@@ -324,7 +324,7 @@ export async function runAgentLoop(
           messages.push({
             role: 'user',
             content:
-              '⚠️ SYSTEM CHECK: The user asked to export to Excel/Word/PDF. You MUST call export_to_excel, export_to_doc, or export_to_pdf. First use list_reports to find the report UUID, then call the export tool. Do NOT just say "done" — actually CALL the tool.',
+              '⚠️ SYSTEM CHECK: The user asked to export to Excel/Word/PDF/PPT. You MUST call export_to_excel, export_to_doc, export_to_pdf, or export_to_ppt. First use list_reports to find the report UUID, then call the export tool. Do NOT just say "done" — actually CALL the tool.',
           });
           continue;
         }
@@ -337,7 +337,7 @@ export async function runAgentLoop(
         messages.push({
           role: 'user',
           content:
-            '⚠️ The export has NOT been completed yet. You must call export_to_excel, export_to_doc, or export_to_pdf with the correct reportId and get ok:true before confirming.',
+            '⚠️ The export has NOT been completed yet. You must call export_to_excel, export_to_doc, export_to_pdf, or export_to_ppt with the correct reportId and get ok:true before confirming.',
         });
         continue;
       }
@@ -493,7 +493,10 @@ export async function runAgentLoop(
           createdKeys.push('Note:' + (r as any).id.substring(0, 8));
         // Track export success via return value — reliable, not text heuristics
         if (
-          (tc.name === 'export_to_excel' || tc.name === 'export_to_doc' || tc.name === 'export_to_pdf') &&
+          (tc.name === 'export_to_excel' ||
+            tc.name === 'export_to_doc' ||
+            tc.name === 'export_to_pdf' ||
+            tc.name === 'export_to_ppt') &&
           (r as any)?.ok
         )
           exportSucceeded = true;

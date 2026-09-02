@@ -10,6 +10,7 @@ import {
   exportToExcel,
   exportToDoc,
   exportToHtml,
+  exportToPptx,
 } from './reportTools.js';
 import { braveSearch, webSearch, searchLocalData } from './searchTools.js';
 import { listGitCommits, listWorkspaces } from './gitTools.js';
@@ -113,6 +114,8 @@ export async function executeAgentTool(tool: string, args: Record<string, any>):
       return exportToDoc(args);
     case 'export_to_html':
       return exportToHtml(args);
+    case 'export_to_ppt':
+      return exportToPptx(args);
     case 'export_to_pdf': {
       // Server renders HTML; Electron main prints to PDF via the renderer's printPdf IPC.
       // filePath here is display-only (the real PDF is written by printPdf in the renderer) —

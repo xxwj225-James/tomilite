@@ -1,6 +1,6 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
-import { exportToExcel, exportToDoc, exportToHtml } from '../agent/tools/reportTools.js';
+import { exportToExcel, exportToDoc, exportToHtml, exportToPptx } from '../agent/tools/reportTools.js';
 
 // Archive sent reports older than 90 days (hide from UI, never delete)
 export function startReportArchiver() {
@@ -91,5 +91,10 @@ export const reportRouter = router({
     return result.error
       ? result
       : { ok: true, filePath: result.filePath, filename: result.filename, html: result.html };
+  }),
+
+  exportPpt: publicProcedure.input(z.object({ reportId: z.string() })).query(async ({ input }) => {
+    const result = await exportToPptx(input);
+    return result.error ? result : { ok: true, filePath: result.filePath, filename: result.filename };
   }),
 });

@@ -638,3 +638,310 @@ ${html}
     return { error: 'Export failed: ' + e.message };
   }
 }
+
+// ═══ PowerPoint (.pptx) export ═══
+
+/** Strip inline markdown so a slide never shows literal **x**, [t](u) or `code` backticks. */
+function stripInlineForSlide(s: string): string {
+  return s
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*([^*\s][^*]*?)\*\*/g, '$1')
+    .replace(/^#{1,6}\s+/, '')
+    .trim();
+}
+
+interface PptxBlock {
+  kind: 'title' | 'slide' | 'table';
+  title?: string;
+  bullets?: Array<{ text: string; mono?: boolean }>;
+  table?: string[][];
+}
+
+/**
+ * Turn a markdown note/report into deck blocks: an optional title slide,
+ * one slide per H2+ heading (bullets underneath), plus dedicated table slides.
+ */
+function markdownToDeck(content: string): PptxBlock[] {
+  const lines = content.split('\n');
+  const deck: PptxBlock[] = [];
+  let title = '';
+  let current: PptxBlock | null = null;
+
+  const closeSlide = () => {
+    if (current && current.bullets && current.bullets.length > 0) deck.push(current);
+    current = null;
+  };
+  const ensureSlide = (heading: string) => {
+    closeSlide();
+    current = { kind: 'slide', title: heading, bullets: [] };
+  };
+  const addBullet = (heading: string, text: string, mono: boolean) => {
+    if (!current) ensureSlide(heading);
+    if (current?.bullets) current.bullets.push({ text, mono });
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) {
+      i++;
+      continue;
+    }
+    // Horizontal rule — skip
+    if (/^(-{3,}|_{3,}|\*{3,})$/.test(t)) {
+      i++;
+      continue;
+    }
+    // Heading — first H1 becomes the deck title, everything else opens a slide
+    const h = t.match(/^(#{1,6})\s+(.+)$/);
+    if (h) {
+      const text = stripInlineForSlide(h[2]);
+      if (h[1].length === 1 && !title) {
+        title = text;
+      } else {
+        ensureSlide(text);
+      }
+      i++;
+      continue;
+    }
+    // Fenced code block — render verbatim in monospace (cap for slide sanity)
+    const fence = t.match(/^(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      i++;
+      const codeLines: string[] = [];
+      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++; // consume closing fence
+      if (!current) ensureSlide('Code');
+      codeLines.slice(0, 20).forEach((cl) => addBullet('Code', cl || ' ', true));
+      if (codeLines.length > 20) addBullet('Code', '…', false);
+      continue;
+    }
+    // Markdown table — dedicated table slide (up to 30 rows)
+    if (t.startsWith('|') && t.endsWith('|') && i + 1 < lines.length) {
+      const sep = (lines[i + 1] || '').replace(/\|/g, '').trim();
+      if (sep && /^[\s\-:]+$/.test(sep)) {
+        const parseRow = (l: string) =>
+          l
+            .split('|')
+            .slice(1, -1)
+            .map((c: string) => stripInlineForSlide(c));
+        const rows = [parseRow(t)];
+        i += 2;
+        while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+          rows.push(parseRow(lines[i].trim()));
+          i++;
+        }
+        closeSlide();
+        deck.push({ kind: 'table', title: rows[0].slice(0, 4).join(' · ') || 'Table', table: rows.slice(0, 30) });
+        continue;
+      }
+    }
+    // Bullet / ordered list / paragraph / blockquote → one slide bullet
+    let text = lines[i]
+      .replace(/^>\s?/, '')
+      .replace(/^[-*+]\s+/, '')
+      .replace(/^\d+[.)]\s+/, '');
+    text = stripInlineForSlide(text);
+    if (!text) {
+      i++;
+      continue;
+    }
+    if (!current) ensureSlide('Overview');
+    addBullet('Overview', text, false);
+    i++;
+  }
+  closeSlide();
+  if (title) deck.unshift({ kind: 'title', title });
+  return deck;
+}
+
+/** Export content to PowerPoint (.pptx). Supports reportId, noteId, taskFilter, or content. */
+export async function exportToPptx(args: Record<string, any>): Promise<any> {
+  try {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const os = await import('node:os');
+    const mod: any = await import('pptxgenjs');
+    const PptxGen = mod.default || mod;
+    let content = '';
+    let fname = 'presentation.pptx';
+    if (args.reportId) {
+      const looksLikePlaceholder =
+        /(UUID|REPORT.*ID|placeholder|from.*list|result)/i.test(args.reportId) ||
+        /^[<(]?(the|from|check|use|see|UUID|REPORT)/i.test(args.reportId);
+      if (looksLikePlaceholder || (args.reportId.length < 20 && args.reportId.indexOf('-') < 0)) {
+        return {
+          error: `"${args.reportId}" is not a valid report ID — it looks like placeholder text. Look at the PREVIOUS list_reports result for the actual id field (UUID with dashes) and use THAT.`,
+        };
+      }
+      let report =
+        args.reportId.includes('-') && args.reportId.length > 20
+          ? await prisma.report.findUnique({ where: { id: args.reportId } })
+          : null;
+      if (!report)
+        report = await prisma.report.findFirst({
+          where: { title: { contains: args.reportId } },
+          orderBy: { createdAt: 'desc' },
+        });
+      if (!report) return { error: `Report not found for "${args.reportId}".` };
+      content = report.content || '';
+      fname = (args.filename || (report.title || 'report').replace(/[<>:"/\\|?*]/g, '_')) + '.pptx';
+    } else if (args.noteId) {
+      const looksLikePlaceholder =
+        /(UUID|REPORT|placeholder|from.*list|result)/i.test(args.noteId) ||
+        /^[<(]?(the|from|check|use|see|NOTE)/i.test(args.noteId);
+      if (looksLikePlaceholder || (args.noteId.length < 20 && args.noteId.indexOf('-') < 0)) {
+        return {
+          error: `"${args.noteId}" looks like placeholder text, not a real note ID. Use search_notes(query="keyword") to find the note, then use its id field (UUID) for noteId.`,
+        };
+      }
+      const note = await prisma.knowledgePage.findUnique({ where: { id: args.noteId } });
+      if (!note) return { error: `Note not found: ${args.noteId}. Use search_notes to find the correct UUID.` };
+      content = note.content || '';
+      fname = (args.filename || (note.title || 'note').replace(/[<>:"/\\|?*]/g, '_')) + '.pptx';
+    } else if (args.taskFilter) {
+      const issues = await prisma.issue.findMany({
+        where: {
+          projectId: DEFAULT_PROJECT_ID,
+          ...(args.taskFilter === 'todo' ? { status: 'todo' } : args.taskFilter === 'done' ? { status: 'done' } : {}),
+        },
+        orderBy: { issueNumber: 'asc' },
+        take: 200,
+      });
+      content = issues
+        .map(
+          (i) =>
+            `## TL-${i.issueNumber} ${i.title}\n- Type: ${i.type} · Status: ${i.status} · Priority: ${i.priority}\n${i.description || ''}`,
+        )
+        .join('\n\n');
+      fname = (args.filename || 'tasks') + '.pptx';
+    } else if (args.content) {
+      content = args.content;
+      fname = (args.filename || 'notes').replace(/\.pptx$/i, '') + '.pptx';
+    }
+    if (!content || !content.trim()) return { error: 'No content to export.' };
+
+    const deck = markdownToDeck(content);
+    if (deck.length === 0) return { error: 'No slide content found in the source.' };
+
+    const pptx = new PptxGen();
+    pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 in
+    pptx.author = 'TomiLite';
+    const INK = '1F2937';
+    const SUB = '6B7280';
+    const BODY = '374151';
+    const BRAND = '6366F1';
+    const EDGE = 'E5E7EB';
+    const PAPER = 'FFFFFF';
+
+    for (const block of deck) {
+      if (block.kind === 'title') {
+        const s = pptx.addSlide();
+        s.background = { color: PAPER };
+        s.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.14, fill: { color: BRAND } });
+        s.addText(block.title || 'Presentation', {
+          x: 0.9,
+          y: 2.7,
+          w: 11.5,
+          h: 1.3,
+          fontSize: 36,
+          bold: true,
+          color: INK,
+          align: 'center',
+          fontFace: 'Calibri',
+        });
+        const d = new Date();
+        const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        s.addText(`${stamp} · TomiLite`, {
+          x: 0.9,
+          y: 4.1,
+          w: 11.5,
+          h: 0.5,
+          fontSize: 13,
+          color: SUB,
+          align: 'center',
+        });
+      } else if (block.kind === 'table' && block.table && block.table.length > 0) {
+        const s = pptx.addSlide();
+        s.background = { color: PAPER };
+        s.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.1, fill: { color: BRAND } });
+        s.addText((block.title || '').substring(0, 60), {
+          x: 0.55,
+          y: 0.3,
+          w: 12.2,
+          h: 0.7,
+          fontSize: 20,
+          bold: true,
+          color: INK,
+        });
+        const rows = block.table.map((row, ri) =>
+          row.map((cell) => ({
+            text: cell === '' ? ' ' : cell,
+            options: {
+              bold: ri === 0,
+              color: ri === 0 ? 'FFFFFF' : BODY,
+              fill: { color: ri === 0 ? BRAND : ri % 2 === 0 ? 'F9FAFB' : PAPER },
+              margin: 3,
+            },
+          })),
+        );
+        s.addTable(rows, {
+          x: 0.55,
+          y: 1.35,
+          w: 12.2,
+          fontSize: 12,
+          color: BODY,
+          border: { type: 'solid', pt: 0.5, color: EDGE },
+          rowH: 0.42,
+          autoPage: true,
+        });
+      } else {
+        const s = pptx.addSlide();
+        s.background = { color: PAPER };
+        s.addShape('rect', { x: 0, y: 0, w: 13.33, h: 0.1, fill: { color: BRAND } });
+        if (block.title) {
+          s.addText(block.title.substring(0, 80), {
+            x: 0.6,
+            y: 0.3,
+            w: 12.1,
+            h: 0.85,
+            fontSize: 24,
+            bold: true,
+            color: INK,
+            fontFace: 'Calibri',
+          });
+          s.addShape('rect', { x: 0.66, y: 1.16, w: 1.5, h: 0.06, fill: { color: BRAND } });
+        }
+        const y0 = block.title ? 1.5 : 0.5;
+        const bullets = (block.bullets || []).map((b) => ({
+          text: b.text || ' ',
+          options: b.mono
+            ? { fontFace: 'Consolas', fontSize: 12, color: BODY, breakLine: true }
+            : { bullet: { code: '2022' }, fontSize: 15, color: BODY, breakLine: true, paraSpaceAfter: 8 },
+        }));
+        if (bullets.length > 0) {
+          s.addText(bullets, {
+            x: 0.7,
+            y: y0,
+            w: 11.9,
+            h: 7.3 - y0,
+            valign: 'top',
+            shrinkText: true,
+            lineSpacingMultiple: 1.12,
+          });
+        }
+      }
+    }
+
+    const filePath = path.join(os.tmpdir(), fname);
+    await pptx.writeFile({ fileName: filePath });
+    const size = fs.statSync(filePath).size;
+    return { ok: true, filePath, filename: fname, size, type: 'pptx', slideCount: deck.length };
+  } catch (e: any) {
+    return { error: 'Export failed: ' + e.message };
+  }
+}

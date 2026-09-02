@@ -40,7 +40,7 @@ export function NotesEditor(p: Props) {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportResult, setExportResult] = useState('');
 
-  const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'md' | 'pdf') => {
+  const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'md' | 'pdf' | 'pptx') => {
     if (!p.selected?.id) return;
     setShowExportDialog(false);
     // Markdown: save raw content directly (no API needed)
@@ -90,7 +90,8 @@ export function NotesEditor(p: Props) {
       const d = await resp.json();
       if (!d.result?.data?.ok) return;
       const { filePath, filename } = d.result.data;
-      const filterName = format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : 'HTML';
+      const filterName =
+        format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : format === 'pptx' ? 'PowerPoint' : 'HTML';
       const savePath = await (window as any).electronAPI?.pickSaveFile(filename, [
         { name: filterName, extensions: [format] },
       ]);
@@ -259,6 +260,13 @@ export function NotesEditor(p: Props) {
                   onClick={() => doExport('pdf')}
                 >
                   {tt2('export.pdf', lang)}
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ justifyContent: 'center' }}
+                  onClick={() => doExport('pptx')}
+                >
+                  {tt2('export.ppt', lang)}
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"

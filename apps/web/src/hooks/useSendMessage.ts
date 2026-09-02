@@ -472,19 +472,17 @@ export function useSendMessage({
         }),
       }).catch(() => {});
       if (lastStaged.staged.type === 'task') {
-        useUICommandStore
-          .getState()
-          .enqueue({
-            type: 'apply_task_edit',
-            payload: {
-              title: orig.title || '',
-              description: orig.description || '',
-              status: orig.status || 'todo',
-              priority: orig.priority || 'medium',
-              storyPoints: orig.storyPoints ?? 0,
-              __undo: true,
-            },
-          });
+        useUICommandStore.getState().enqueue({
+          type: 'apply_task_edit',
+          payload: {
+            title: orig.title || '',
+            description: orig.description || '',
+            status: orig.status || 'todo',
+            priority: orig.priority || 'medium',
+            storyPoints: orig.storyPoints ?? 0,
+            __undo: true,
+          },
+        });
       } else if (lastStaged.staged.type === 'report') {
         setAppliedReport({ title: orig.title, content: orig.content });
       } else {
@@ -817,12 +815,26 @@ export function useSendMessage({
               } else if (
                 data.tool === 'export_to_excel' ||
                 data.tool === 'export_to_doc' ||
-                data.tool === 'export_to_pdf'
+                data.tool === 'export_to_pdf' ||
+                data.tool === 'export_to_ppt'
               ) {
                 if (r.filePath) {
-                  const kind = r.type === 'xlsx' ? 'xlsx' : r.type === 'pdf' ? 'pdf' : 'doc';
+                  const kind =
+                    r.type === 'xlsx' ? 'xlsx' : r.type === 'pdf' ? 'pdf' : r.type === 'pptx' ? 'ppt' : 'doc';
+                  const typeMap: Record<string, string> = {
+                    xlsx: 'export_xlsx',
+                    doc: 'export_doc',
+                    pdf: 'export_pdf',
+                    ppt: 'export_ppt',
+                  };
+                  const labelMap: Record<string, string> = {
+                    xlsx: '📊 Excel',
+                    doc: '📝 Word',
+                    pdf: '📄 PDF',
+                    ppt: '📽 PPT',
+                  };
                   cardRef.current = {
-                    type: (kind === 'xlsx' ? 'export_xlsx' : kind === 'pdf' ? 'export_pdf' : 'export_doc') as any,
+                    type: typeMap[kind] as any,
                     id: r.filePath,
                     title: r.filename,
                     key: r.filePath,
@@ -830,7 +842,7 @@ export function useSendMessage({
                     description: `${(r.size / 1024).toFixed(1)}KB`,
                     html: r.html,
                   };
-                  fullText += `\n\n📥 ${kind === 'xlsx' ? '📊 Excel' : kind === 'pdf' ? '📄 PDF' : '📝 Word'} **${r.filename}** (${(r.size / 1024).toFixed(1)}KB)`;
+                  fullText += `\n\n📥 ${labelMap[kind] || 'File'} **${r.filename}** (${(r.size / 1024).toFixed(1)}KB)`;
                 }
               } else if (data.tool === 'create_note' || data.tool === 'force_create_note') {
                 fullText += `\n\n> 📄 ${r.title || 'Untitled'}${r.category ? ` · \`${r.category}\`` : ''}`;
@@ -906,7 +918,8 @@ export function useSendMessage({
               msgCard &&
               cardRef.current?.type !== 'export_xlsx' &&
               cardRef.current?.type !== 'export_doc' &&
-              cardRef.current?.type !== 'export_pdf'
+              cardRef.current?.type !== 'export_pdf' &&
+              cardRef.current?.type !== 'export_ppt'
             ) {
               cardRef.current = msgCard;
             }
@@ -914,7 +927,8 @@ export function useSendMessage({
             const cardForMsg =
               cardRef.current?.type === 'export_xlsx' ||
               cardRef.current?.type === 'export_doc' ||
-              cardRef.current?.type === 'export_pdf'
+              cardRef.current?.type === 'export_pdf' ||
+              cardRef.current?.type === 'export_ppt'
                 ? cardRef.current
                 : msgCard || cardRef.current;
             setMessages((prev) => {

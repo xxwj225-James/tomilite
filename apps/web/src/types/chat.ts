@@ -13,7 +13,7 @@ export interface StagedEdit {
 }
 
 export interface ChatCard {
-  type: 'task' | 'note' | 'report' | 'export_xlsx' | 'export_doc' | 'export_pdf';
+  type: 'task' | 'note' | 'report' | 'export_xlsx' | 'export_doc' | 'export_pdf' | 'export_ppt';
   id?: string;
   title: string;
   key?: string;
