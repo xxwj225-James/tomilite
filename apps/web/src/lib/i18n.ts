@@ -118,6 +118,11 @@ const I18N = {
     zh: '聊天记录太少，至少需要 4 条消息才能压缩。',
     ja: 'チャット履歴が短すぎます — 圧縮には少なくとも4つのメッセージが必要です。',
   },
+  'chat.compressBusy': {
+    en: 'A message is still generating — wait for it to finish before compressing.',
+    zh: '当前有消息正在生成，请等待完成后再压缩。',
+    ja: 'メッセージが生成中です — 完了するまで圧縮できません。',
+  },
   'chat.tokens': { en: 'tokens', zh: 'tokens', ja: 'トークン', th: 'โทเค็น', mi: 'tokens', ru: 'токены' },
 
   // ═══ Menu Bar ═══
@@ -1148,6 +1153,7 @@ const I18N = {
   'export.word': { en: '📄 Word (.docx)', zh: '📄 Word (.docx)', ja: '📄 Word (.docx)' },
   'export.html': { en: '🌐 HTML (.html)', zh: '🌐 HTML (.html)', ja: '🌐 HTML (.html)' },
   'export.markdown': { en: '📝 Markdown (.md)', zh: '📝 Markdown (.md)', ja: '📝 Markdown (.md)' },
+  'export.pdf': { en: '📄 PDF (.pdf)', zh: '📄 PDF (.pdf)', ja: '📄 PDF (.pdf)' },
   'export.success': { en: '✅ Exported to {path}', zh: '✅ 已导出至 {path}', ja: '✅ {path} にエクスポートしました' },
   'export.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
   'export.ok': { en: 'OK', zh: '确定', ja: 'OK' },

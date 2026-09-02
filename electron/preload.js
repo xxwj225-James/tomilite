@@ -8,7 +8,9 @@ const IS_STORE_BUILD = process.execPath.includes('\\WindowsApps\\');
 function isPathAllowed(filePath) {
   const resolved = path.resolve(filePath);
   const allowed = [os.homedir(), os.tmpdir()];
-  return allowed.some(function (d) { return resolved.startsWith(d); });
+  return allowed.some(function (d) {
+    return resolved.startsWith(d);
+  });
 }
 
 // Read API token synchronously before page loads
@@ -26,12 +28,14 @@ const LOG_DIR = DATA_DIR;
 const LOG_FILE = path.join(LOG_DIR, 'frontend.log');
 const DEBUG_FLAG = path.join(LOG_DIR, 'debug.flag');
 const IS_DEBUG = fs.existsSync(DEBUG_FLAG);
-try { if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
+try {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+} catch {}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isDebug: IS_DEBUG,
   // File logging for debugging (only active when debug.flag exists)
-  log: function() {
+  log: function () {
     if (!IS_DEBUG) return;
     try {
       var ts = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -46,13 +50,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => shell.openExternal(url),
   pickDirectory: () => ipcRenderer.invoke('dialog:pickDirectory'),
   pickSaveFile: (defaultName, filters) => ipcRenderer.invoke('dialog:pickSaveFile', defaultName, filters),
+  printPdf: (html, filename) => ipcRenderer.invoke('pdf:print', { html, filename }),
   saveFile: (filePath, content) => {
     if (!isPathAllowed(filePath)) throw new Error('Access denied');
-    fs.writeFileSync(filePath, content, 'utf-8'); return true;
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return true;
   },
   copyFile: (destPath, srcPath) => {
     if (!isPathAllowed(destPath) || !isPathAllowed(srcPath)) throw new Error('Access denied');
-    fs.copyFileSync(srcPath, destPath); return true;
+    fs.copyFileSync(srcPath, destPath);
+    return true;
   },
   fileExists: (filePath) => isPathAllowed(filePath) && fs.existsSync(filePath),
   // Auto-updater (disabled on Store builds — updates via Microsoft Store)

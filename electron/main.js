@@ -4,7 +4,11 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 let autoUpdater = null;
-try { autoUpdater = require('electron-updater').autoUpdater; } catch (e) { console.error('[Updater] electron-updater not available:', e.message); }
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+} catch (e) {
+  console.error('[Updater] electron-updater not available:', e.message);
+}
 
 ipcMain.handle('dialog:pickDirectory', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
@@ -16,6 +20,33 @@ ipcMain.handle('dialog:pickSaveFile', async (_event, defaultName, filters) => {
   else opts.filters = [{ name: 'All Files', extensions: ['*'] }];
   const result = await dialog.showSaveDialog(opts);
   return result.canceled ? null : result.filePath;
+});
+
+// ─── PDF export — render self-contained HTML in a hidden window, print via Chromium ───
+ipcMain.handle('pdf:print', async (_event, payload) => {
+  const html = payload?.html;
+  const filename = payload?.filename || 'export.pdf';
+  if (!html || typeof html !== 'string') return { ok: false, error: 'No HTML content' };
+  if (html.length > 50 * 1024 * 1024) return { ok: false, error: 'Content too large for PDF export' };
+  let win = null;
+  try {
+    win = new BrowserWindow({ show: false });
+    await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const buf = await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      margins: { top: 0.6, bottom: 0.6, left: 0.5, right: 0.5 },
+    });
+    const safeName = filename.replace(/[<>:"/\\|?*]/g, '_');
+    const finalName = safeName.toLowerCase().endsWith('.pdf') ? safeName : safeName + '.pdf';
+    const filePath = path.join(os.tmpdir(), finalName);
+    fs.writeFileSync(filePath, buf);
+    return { ok: true, filePath, filename: finalName, size: buf.length };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  } finally {
+    if (win && !win.isDestroyed()) win.destroy();
+  }
 });
 const os = require('os');
 const fs = require('fs');
@@ -35,35 +66,45 @@ let pendingNotifications = 0;
 // ─── Port helper — kill stale process left by crash/force-quit ───
 function killPortProcess(port) {
   try {
-    const result = require('child_process').execSync(
-      'netstat -ano | findstr :' + port + '.*LISTENING', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-    );
+    const result = require('child_process').execSync('netstat -ano | findstr :' + port + '.*LISTENING', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
     const match = result.match(/(\d+)\s*$/m);
     if (match && match[1] && match[1] !== String(process.pid)) {
       console.log('[Startup] Killing PID ' + match[1] + ' on port ' + port);
       require('child_process').execSync('taskkill /F /PID ' + match[1] + ' /T', { stdio: 'ignore' });
     }
-  } catch (e) { /* port is free or netstat failed */ }
+  } catch (e) {
+    /* port is free or netstat failed */
+  }
 }
 
 // ─── Notification server (API sends Cat-1 email alerts here) ───
 const notifyServer = http.createServer(function (req, res) {
   if (req.method === 'POST' && req.url === '/notify') {
     var body = '';
-    req.on('data', function (chunk) { body += chunk; });
+    req.on('data', function (chunk) {
+      body += chunk;
+    });
     req.on('end', function () {
       try {
         var data = JSON.parse(body);
         pendingNotifications++;
         updateTrayBadge();
         if (Notification.isSupported()) {
-          var n = new Notification({ title: data.title || 'TomiLite', body: data.body, icon: path.join(__dirname, 'icon.png') });
+          var n = new Notification({
+            title: data.title || 'TomiLite',
+            body: data.body,
+            icon: path.join(__dirname, 'icon.png'),
+          });
           n.show();
         }
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ ok: true, count: pendingNotifications }));
       } catch (e) {
-        res.writeHead(400); res.end(JSON.stringify({ ok: false, error: e.message }));
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: e.message }));
       }
     });
   } else {
@@ -118,16 +159,23 @@ function startApiServer() {
       } else {
         fs.copyFileSync(oldDb, newDb);
       }
-      ['dev.db-journal','dev.db-wal','dev.db-shm','.encryption_key','.api_token'].forEach(function(f) {
-        var o = path.join(oldDir,f), n = path.join(homeDir,f);
-        if (fs.existsSync(o) && !fs.existsSync(n)) fs.copyFileSync(o,n);
+      ['dev.db-journal', 'dev.db-wal', 'dev.db-shm', '.encryption_key', '.api_token'].forEach(function (f) {
+        var o = path.join(oldDir, f),
+          n = path.join(homeDir, f);
+        if (fs.existsSync(o) && !fs.existsSync(n)) fs.copyFileSync(o, n);
       });
       fs.writeFileSync(migratedFlag, new Date().toISOString());
       console.log('[migrate] ' + oldDir + ' → ' + homeDir);
-    } catch (e) { console.error('[migrate]', e.message); }
+    } catch (e) {
+      console.error('[migrate]', e.message);
+    }
     // Clean old install dir
-    var oldInst = path.join(os.homedir(),'AppData','Local','Programs','TomatoLite');
-    try { if (fs.existsSync(oldInst)) { fs.rmSync(oldInst,{recursive:true,force:true}); } } catch (e) {}
+    var oldInst = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'TomatoLite');
+    try {
+      if (fs.existsSync(oldInst)) {
+        fs.rmSync(oldInst, { recursive: true, force: true });
+      }
+    } catch (e) {}
   }
   var dbPath = newDb;
 
@@ -178,17 +226,22 @@ function waitForApi(url, retries) {
     var attempts = 0;
     function check() {
       attempts++;
-      http.get(url, function (res) { resolve(true); }).on('error', function () {
-        if (attempts >= retries) reject(new Error('API not ready'));
-        else setTimeout(check, 150);
-      });
+      http
+        .get(url, function (res) {
+          resolve(true);
+        })
+        .on('error', function () {
+          if (attempts >= retries) reject(new Error('API not ready'));
+          else setTimeout(check, 150);
+        });
     }
     check();
   });
 }
 
 // ─── Loading screen HTML — fixed pipeline theme ───
-var loadingHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
+var loadingHtml =
+  '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
   'body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8f9fb;font-family:sans-serif;overflow:hidden}' +
   '.wrap{text-align:center}' +
   '.icon{width:80px;height:80px;fill:#6366f1;animation:pulse 2s ease-in-out infinite}' +
@@ -226,7 +279,6 @@ function createWindow() {
     },
   });
 
-
   mainWindow.setMenuBarVisibility(false);
   Menu.setApplicationMenu(null);
 
@@ -250,7 +302,9 @@ function createWindow() {
   });
 
   // Show loading screen when ready (avoids white flash)
-  mainWindow.once('ready-to-show', function () { mainWindow.show(); });
+  mainWindow.once('ready-to-show', function () {
+    mainWindow.show();
+  });
   mainWindow.loadURL(LOADING_HTML);
 }
 
@@ -264,13 +318,32 @@ function createTray() {
 
   if (tray) {
     var contextMenu = Menu.buildFromTemplate([
-      { label: 'Show TomiLite', click: function () { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      {
+        label: 'Show TomiLite',
+        click: function () {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        },
+      },
       { type: 'separator' },
-      { label: 'Quit', click: function () { isQuitting = true; app.quit(); } },
+      {
+        label: 'Quit',
+        click: function () {
+          isQuitting = true;
+          app.quit();
+        },
+      },
     ]);
     tray.setToolTip('TomiLite');
     tray.setContextMenu(contextMenu);
-    tray.on('double-click', function () { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+    tray.on('double-click', function () {
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
   }
 }
 
@@ -289,7 +362,10 @@ app.whenReady().then(function () {
   waitForApi('http://localhost:' + API_PORT + '/api/system.currentVersion')
     .then(function () {
       console.log('API ready, loading app...');
-      if (!mainWindow) { console.error('[Startup] mainWindow is null'); return; }
+      if (!mainWindow) {
+        console.error('[Startup] mainWindow is null');
+        return;
+      }
       mainWindow.webContents.on('did-fail-load', function (_e, code, desc, url) {
         console.error('[Startup] Page load failed:', code, desc, url);
         // Retry once, then show error
@@ -307,12 +383,20 @@ app.whenReady().then(function () {
       var dataDir = process.env.TL_USER_DATA || path.join(os.homedir(), '.tomilite');
       var tokenPath = path.join(dataDir, '.api_token');
       var tokenParam = '';
-      try { if (fs.existsSync(tokenPath)) tokenParam = '#tl_token=' + fs.readFileSync(tokenPath, 'utf-8').trim(); } catch (e) {}
+      try {
+        if (fs.existsSync(tokenPath)) tokenParam = '#tl_token=' + fs.readFileSync(tokenPath, 'utf-8').trim();
+      } catch (e) {}
       if (mainWindow) mainWindow.loadURL('http://localhost:' + API_PORT + '/' + tokenParam);
 
       // ─── Auto-updater (electron-updater) ───
-      if (IS_STORE_BUILD) { console.log('[Updater] Skipped — Store build, updates via Microsoft Store.'); return; }
-      if (!autoUpdater) { console.log('[Updater] Skipped — module not loaded.'); return; }
+      if (IS_STORE_BUILD) {
+        console.log('[Updater] Skipped — Store build, updates via Microsoft Store.');
+        return;
+      }
+      if (!autoUpdater) {
+        console.log('[Updater] Skipped — module not loaded.');
+        return;
+      }
       autoUpdater.autoDownload = false; // let user decide
       autoUpdater.autoInstallOnAppQuit = true;
 
@@ -320,12 +404,23 @@ app.whenReady().then(function () {
       var pendingDir = path.join(os.homedir(), 'AppData', 'Local', 'tomilite-updater', 'pending');
       // Clean up old updater dir from TomatoLite rename
       var oldPendingDir = path.join(os.homedir(), 'AppData', 'Local', 'tomatolite-updater', 'pending');
-      try { if (fs.existsSync(pendingDir)) { fs.rmSync(pendingDir, { recursive: true, force: true }); } } catch (e) {}
-      try { if (fs.existsSync(oldPendingDir)) { fs.rmSync(oldPendingDir, { recursive: true, force: true }); console.log('[Updater] Cleaned old updater cache'); } } catch (e) {}
+      try {
+        if (fs.existsSync(pendingDir)) {
+          fs.rmSync(pendingDir, { recursive: true, force: true });
+        }
+      } catch (e) {}
+      try {
+        if (fs.existsSync(oldPendingDir)) {
+          fs.rmSync(oldPendingDir, { recursive: true, force: true });
+          console.log('[Updater] Cleaned old updater cache');
+        }
+      } catch (e) {}
 
       // Safe IPC send — guards against destroyed window during quit
       function safeSend(channel, data) {
-        try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data); } catch (e) {}
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
+        } catch (e) {}
       }
 
       autoUpdater.on('checking-for-update', function () {
@@ -342,7 +437,12 @@ app.whenReady().then(function () {
         safeSend('download-progress', progress);
       });
       autoUpdater.on('update-downloaded', function (info) {
-        console.log('[Updater] Update downloaded:', info.version, 'file:', info.downloadedFile || info.path || '(unknown)');
+        console.log(
+          '[Updater] Update downloaded:',
+          info.version,
+          'file:',
+          info.downloadedFile || info.path || '(unknown)',
+        );
         console.log('[Updater] Download info keys:', Object.keys(info));
         safeSend('update-downloaded', {
           version: info.version,
@@ -358,30 +458,51 @@ app.whenReady().then(function () {
       var updateRetryTimer = null;
 
       function isUpdateNetworkError(msg) {
-        return msg.includes('err_connection_reset') || msg.includes('econnreset')
-          || msg.includes('etimedout') || msg.includes('enetdown')
-          || msg.includes('enotfound') || msg.includes('eai_again')
-          || msg.includes('fetch failed') || msg.includes('cannot parse releases feed')
-          || msg.includes('unable to find latest version');
+        return (
+          msg.includes('err_connection_reset') ||
+          msg.includes('econnreset') ||
+          msg.includes('etimedout') ||
+          msg.includes('enetdown') ||
+          msg.includes('enotfound') ||
+          msg.includes('eai_again') ||
+          msg.includes('fetch failed') ||
+          msg.includes('cannot parse releases feed') ||
+          msg.includes('unable to find latest version')
+        );
       }
 
       function checkUpdateWithRetry() {
         updateAttempt = 0;
-        try { autoUpdater.checkForUpdates(); } catch (e) { console.error('[Updater] checkForUpdates threw:', e?.message); }
+        try {
+          autoUpdater.checkForUpdates();
+        } catch (e) {
+          console.error('[Updater] checkForUpdates threw:', e?.message);
+        }
       }
 
       autoUpdater.on('error', function (err) {
         // Suppress errors from download interruption (app closed mid-download, network drops)
         var msg = (err?.message || String(err)).toLowerCase();
-        if (msg.includes('aborted') || msg.includes('interrupted') || msg.includes('typeerror') || msg.includes('cancelled') || msg.includes('destroyed')) return;
+        if (
+          msg.includes('aborted') ||
+          msg.includes('interrupted') ||
+          msg.includes('typeerror') ||
+          msg.includes('cancelled') ||
+          msg.includes('destroyed')
+        )
+          return;
         console.error('[Updater] Error:', err.message);
         if (isUpdateNetworkError(msg) && updateAttempt < MAX_UPDATE_ATTEMPTS) {
           updateAttempt++;
           var delay = UPDATE_RETRY_DELAYS[updateAttempt - 1] || 20000;
-          console.log('[Updater] Network error — auto retry ' + updateAttempt + '/' + MAX_UPDATE_ATTEMPTS + ' in ' + delay + 'ms');
+          console.log(
+            '[Updater] Network error — auto retry ' + updateAttempt + '/' + MAX_UPDATE_ATTEMPTS + ' in ' + delay + 'ms',
+          );
           if (updateRetryTimer) clearTimeout(updateRetryTimer);
           updateRetryTimer = setTimeout(function () {
-            try { autoUpdater.checkForUpdates(); } catch (e) {}
+            try {
+              autoUpdater.checkForUpdates();
+            } catch (e) {}
           }, delay);
           return; // retrying — don't surface the error yet
         }
@@ -401,7 +522,11 @@ app.whenReady().then(function () {
       });
       ipcMain.handle('start-download', function () {
         // Clean stale pending before new download
-        try { if (fs.existsSync(pendingDir)) { fs.rmSync(pendingDir, { recursive: true, force: true }); } } catch (e) {}
+        try {
+          if (fs.existsSync(pendingDir)) {
+            fs.rmSync(pendingDir, { recursive: true, force: true });
+          }
+        } catch (e) {}
         autoUpdater.downloadUpdate();
       });
       ipcMain.handle('check-update', function () {
@@ -419,7 +544,14 @@ app.whenReady().then(function () {
     .catch(function () {
       var detail = apiErrors ? 'Details:\n' + apiErrors.substring(0, 500) : 'No error output captured.';
       if (mainWindow) {
-        mainWindow.loadURL('data:text/html,' + encodeURIComponent('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="background:#0d0d0d;color:#ff6b6b;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column"><h2>Startup Error</h2><p style="color:#999;font-size:12px;max-width:500px;text-align:center">TomiLite API server failed to start.<br>Try restarting the app. If this persists, delete the app data folder and reinstall.</p><pre style="color:#666;font-size:10px;max-width:500px;overflow:auto">' + detail.replace(/</g,'&lt;').substring(0, 500) + '</pre></body></html>'));
+        mainWindow.loadURL(
+          'data:text/html,' +
+            encodeURIComponent(
+              '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="background:#0d0d0d;color:#ff6b6b;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column"><h2>Startup Error</h2><p style="color:#999;font-size:12px;max-width:500px;text-align:center">TomiLite API server failed to start.<br>Try restarting the app. If this persists, delete the app data folder and reinstall.</p><pre style="color:#666;font-size:10px;max-width:500px;overflow:auto">' +
+                detail.replace(/</g, '&lt;').substring(0, 500) +
+                '</pre></body></html>',
+            ),
+        );
       } else {
         dialog.showErrorBox('Startup Error', 'API server failed to start.\n' + detail);
       }
@@ -438,7 +570,9 @@ app.on('window-all-closed', function () {
 app.on('before-quit', function () {
   isQuitting = true;
   // Close HTTP notify server so port is released immediately
-  notifyServer.close(function () { /* ignore close errors */ });
+  notifyServer.close(function () {
+    /* ignore close errors */
+  });
   if (apiProcess && !apiProcess.killed) {
     try {
       require('child_process').execSync('taskkill /F /PID ' + apiProcess.pid + ' /T', { stdio: 'ignore' });

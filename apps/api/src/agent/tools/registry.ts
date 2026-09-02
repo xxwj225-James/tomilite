@@ -454,6 +454,25 @@ export const ALL_TOOLS: any[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'export_to_pdf',
+      description:
+        'Export content to PDF (.pdf). Use reportId (UUID) for reports, noteId for notes, taskFilter ("todo"/"done"/"all") for tasks, content (markdown) for custom text. Prefer reportId/noteId/taskFilter over content — they read from DB.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reportId: { type: 'string', description: 'UUID from list_reports' },
+          noteId: { type: 'string', description: 'Note UUID' },
+          taskFilter: { type: 'string', description: 'todo, done, or all' },
+          content: { type: 'string', description: 'Markdown content (last resort)' },
+          filename: { type: 'string', description: 'Optional filename' },
+        },
+        required: [],
+      },
+    },
+  },
 
   // ─── Report Editor Tools (called when report editor is open) ───
   {
@@ -593,4 +612,5 @@ export const toolLabels: Record<string, string> = {
   list_reports: 'Listing reports',
   export_to_excel: 'Exporting to Excel',
   export_to_doc: 'Exporting to Word',
+  export_to_pdf: 'Exporting to PDF',
 };

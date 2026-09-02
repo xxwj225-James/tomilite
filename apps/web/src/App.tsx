@@ -92,19 +92,17 @@ export function App() {
   const handleUndoEdit = (staged: StagedEdit) => {
     if (!staged.original) return;
     if (staged.type === 'task') {
-      useUICommandStore
-        .getState()
-        .enqueue({
-          type: 'apply_task_edit',
-          payload: {
-            title: staged.original.title || '',
-            description: staged.original.description || '',
-            status: staged.original.status || 'todo',
-            priority: staged.original.priority || 'medium',
-            storyPoints: staged.original.storyPoints ?? 0,
-            __undo: true,
-          },
-        });
+      useUICommandStore.getState().enqueue({
+        type: 'apply_task_edit',
+        payload: {
+          title: staged.original.title || '',
+          description: staged.original.description || '',
+          status: staged.original.status || 'todo',
+          priority: staged.original.priority || 'medium',
+          storyPoints: staged.original.storyPoints ?? 0,
+          __undo: true,
+        },
+      });
     } else if (staged.type === 'report') {
       setAppliedReport({ title: staged.original.title, content: staged.original.content });
     } else {
@@ -219,6 +217,7 @@ export function App() {
     setAppliedEdit,
     setAppliedTaskEdit,
     setAppliedReport,
+    compressing,
   });
 
   // Chat-card listeners (apply/undo/force-create/delete) + executeDelete
@@ -577,6 +576,7 @@ export function App() {
                 onSend={() => sendMessage()}
                 onStop={stopStream}
                 textareaRef={textareaRef}
+                disabled={compressing}
               />
             </div>
             <PanelResizeHandle panelOpen={!!panel} />

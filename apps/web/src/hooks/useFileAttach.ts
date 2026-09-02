@@ -3,6 +3,10 @@ import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 
 // ═══ File attach state + parser — handles .xlsx .docx .pdf and all text formats ═══
+// Cap how much text a single attachment feeds the agent. 10k chars silently cut long
+// markdown mid-document (e.g. a 14-chapter plan became 11) — raised to 100k so whole
+// docs survive. The API/LLM can absorb that; message size is not a bottleneck here.
+const MAX_ATTACH_CHARS = 100000;
 export function useFileAttach() {
   const lang = useLang();
   const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; size: number; content: string }>>([]);
@@ -31,7 +35,7 @@ export function useFileAttach() {
           const mammoth = await import('mammoth');
           const buf = await f.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer: buf });
-          loaded.push({ name: f.name, size: f.size, content: result.value.substring(0, 10000) });
+          loaded.push({ name: f.name, size: f.size, content: result.value.substring(0, MAX_ATTACH_CHARS) });
         } else if (ext === 'pdf') {
           const pdfjsLib = await import('pdfjs-dist');
           pdfjsLib.GlobalWorkerOptions.workerSrc = '';
@@ -43,7 +47,7 @@ export function useFileAttach() {
             const text = await page.getTextContent();
             pages.push(text.items.map((t: any) => t.str).join(' '));
           }
-          loaded.push({ name: f.name, size: f.size, content: pages.join('\n\n').substring(0, 10000) });
+          loaded.push({ name: f.name, size: f.size, content: pages.join('\n\n').substring(0, MAX_ATTACH_CHARS) });
         } else if (ext === 'pptx') {
           // PPTX is an OOXML zip — extract text runs (<a:t>) from each slide XML
           const JSZip: any = await import('jszip');
@@ -64,10 +68,10 @@ export function useFileAttach() {
               .join(' ');
             slides.push(`--- Slide ${i + 1} ---\n${texts}`);
           }
-          loaded.push({ name: f.name, size: f.size, content: slides.join('\n\n').substring(0, 10000) });
+          loaded.push({ name: f.name, size: f.size, content: slides.join('\n\n').substring(0, MAX_ATTACH_CHARS) });
         } else {
           const text = await f.text();
-          loaded.push({ name: f.name, size: f.size, content: text.substring(0, 10000) });
+          loaded.push({ name: f.name, size: f.size, content: text.substring(0, MAX_ATTACH_CHARS) });
         }
       } catch {
         loaded.push({ name: f.name, size: f.size, content: `[${t('misc.cannotParse', lang)}: ${f.name}]` });

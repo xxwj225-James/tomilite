@@ -25,24 +25,24 @@ export const wikiRouter = router({
   /**
    * Get a single wiki page by ID. Throws NOT_FOUND if the ID does not exist.
    */
-  byId: publicProcedure
-    .input(wikiIdSchema)
-    .query(async ({ input }) => {
-      const page = await prisma.knowledgePage.findUnique({ where: { id: input.id } });
-      if (!page) throw new TRPCError({ code: 'NOT_FOUND', message: `Wiki page ${input.id} not found` });
-      return page;
-    }),
+  byId: publicProcedure.input(wikiIdSchema).query(async ({ input }) => {
+    const page = await prisma.knowledgePage.findUnique({ where: { id: input.id } });
+    if (!page) throw new TRPCError({ code: 'NOT_FOUND', message: `Wiki page ${input.id} not found` });
+    return page;
+  }),
 
   /**
    * Create a new wiki page.
    */
   create: publicProcedure
-    .input(z.object({
-      projectId: z.string().min(1),
-      title: z.string().min(1, 'Title is required'),
-      content: z.string().optional(),
-      category: z.string().default('general'),
-    }))
+    .input(
+      z.object({
+        projectId: z.string().min(1),
+        title: z.string().min(1, 'Title is required'),
+        content: z.string().optional(),
+        category: z.string().default('general'),
+      }),
+    )
     .mutation(async ({ input }) => prisma.knowledgePage.create({ data: input })),
 
   /**
@@ -50,13 +50,15 @@ export const wikiRouter = router({
    * updatedAt is handled automatically by Prisma's @updatedAt.
    */
   update: publicProcedure
-    .input(z.object({
-      id: z.string().min(1),
-      title: z.string().min(1).optional(),
-      content: z.string().optional(),
-      category: z.string().optional(),
-      status: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        id: z.string().min(1),
+        title: z.string().min(1).optional(),
+        content: z.string().optional(),
+        category: z.string().optional(),
+        status: z.string().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
       if (Object.keys(data).length === 0) {
@@ -65,7 +67,8 @@ export const wikiRouter = router({
       try {
         return await prisma.knowledgePage.update({ where: { id }, data });
       } catch (error: any) {
-        if (error?.code === 'P2025') throw new TRPCError({ code: 'NOT_FOUND', message: 'Wiki page not found or already deleted' });
+        if (error?.code === 'P2025')
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Wiki page not found or already deleted' });
         throw error;
       }
     }),
@@ -73,26 +76,27 @@ export const wikiRouter = router({
   /**
    * Delete a wiki page by ID.
    */
-  delete: publicProcedure
-    .input(wikiIdSchema)
-    .mutation(async ({ input }) => {
-      try {
-        return await prisma.knowledgePage.delete({ where: { id: input.id } });
-      } catch (error: any) {
-        if (error?.code === 'P2025') throw new TRPCError({ code: 'NOT_FOUND', message: 'Wiki page not found or already deleted' });
-        throw error;
-      }
-    }),
+  delete: publicProcedure.input(wikiIdSchema).mutation(async ({ input }) => {
+    try {
+      return await prisma.knowledgePage.delete({ where: { id: input.id } });
+    } catch (error: any) {
+      if (error?.code === 'P2025')
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Wiki page not found or already deleted' });
+      throw error;
+    }
+  }),
 
   exportNote: publicProcedure
-    .input(z.object({ noteId: z.string(), format: z.enum(['xlsx','docx','html']) }))
+    .input(z.object({ noteId: z.string(), format: z.enum(['xlsx', 'docx', 'html']) }))
     .query(async ({ input }) => {
       const note = await prisma.knowledgePage.findUnique({ where: { id: input.noteId } });
       if (!note) return { ok: false, error: 'Note not found' };
-      const content = `# ${note.title || 'Untitled'}\n\n${note.content||''}\n`;
-      const fn = (note.title || 'note').replace(/[<>:"/\\|?*]/g,'_');
+      const content = `# ${note.title || 'Untitled'}\n\n${note.content || ''}\n`;
+      const fn = (note.title || 'note').replace(/[<>:"/\\|?*]/g, '_');
       const exporter = input.format === 'xlsx' ? exportToExcel : input.format === 'docx' ? exportToDoc : exportToHtml;
       const result = await exporter({ content, filename: fn });
-      return result.error ? result : { ok: true, filePath: result.filePath, filename: result.filename };
+      return result.error
+        ? result
+        : { ok: true, filePath: result.filePath, filename: result.filename, html: result.html };
     }),
 });
