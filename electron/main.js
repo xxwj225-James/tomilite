@@ -239,12 +239,20 @@ function waitForApi(url, retries) {
   });
 }
 
-// ─── Loading screen HTML — fixed pipeline theme ───
+// ─── Loading screen HTML — brand icon + fixed pipeline theme ───
+// The splash is a data: URL, so the real icon.png is embedded as a data URI at
+// runtime — keeps the splash in sync with whatever icon.png is shipped.
+var loadingIcon = '';
+try {
+  loadingIcon = 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, 'icon.png')).toString('base64');
+} catch (e) {
+  loadingIcon = '';
+}
 var loadingHtml =
   '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
   'body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8f9fb;font-family:sans-serif;overflow:hidden}' +
   '.wrap{text-align:center}' +
-  '.icon{width:80px;height:80px;fill:#6366f1;animation:pulse 2s ease-in-out infinite}' +
+  '.icon{width:88px;height:88px;object-fit:contain;animation:pulse 2s ease-in-out infinite}' +
   '@keyframes pulse{0%,100%{opacity:.4;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}' +
   '.title{font-size:18px;font-weight:600;color:#1c1c1e;margin-top:20px}' +
   '.bar{width:200px;height:3px;background:#e8eaef;border-radius:2px;margin:16px auto 0;overflow:hidden}' +
@@ -252,7 +260,9 @@ var loadingHtml =
   '@keyframes slide{0%{transform:translateX(-30%)}100%{transform:translateX(330%)}}' +
   '</style></head><body>' +
   '<div class="wrap">' +
-  '<svg class="icon" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/></svg>' +
+  '<img class="icon" alt="TomiLite" src="' +
+  loadingIcon +
+  '"/>' +
   '<div class="title">TomiLite</div>' +
   '<div class="bar"><div class="bar-fill"></div></div>' +
   '</div></body></html>';
