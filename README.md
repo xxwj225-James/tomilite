@@ -25,6 +25,7 @@ Companion Chrome/Edge extension: an AI side panel that summarizes/translates any
 - **📄 PDF Export** — ask the agent to export any note, report, or document to PDF, or use the export menu in the Notes / Reports editors: the server renders a self-contained HTML report and Electron prints it via Chromium's print-to-PDF (A4, background colors, page margins). The save dialog opens instantly while rendering runs in the background, and filenames are normalized so you never get a double suffix like `report.pdf.pdf`.
 - **🔌 MCP Server & Client** — expose your tasks/notes to external AI clients (Claude Code) with API-key auth + human-in-the-loop approval; connect to other MCP servers and let the agent use their tools
 - **🤖 Multi-Provider LLM** — DeepSeek, Qwen (DashScope), Kimi (Moonshot), OpenAI, Anthropic, Ollama
+- **🌐 Hosted Trial** — no API key needed: sign in with an email under **Settings → LLM → Hosted** and the agent runs through the official gateway with a free quota. BYOK (your own DeepSeek / Qwen / OpenAI / … keys) still works and switching is one click
 - **🌐 i18n** — Chinese / Japanese / English
 - **🎨 4 Themes** — Pipeline / Hub / Canvas / Quantum, CSS-variable based
 
@@ -71,7 +72,7 @@ Prerequisites: Node.js 20+, npm 10+.
 
 ### Configure
 
-1. **Settings → LLM**: add your API key (DeepSeek / Qwen / Kimi / OpenAI / …) and test the connection
+1. **Settings → LLM**: add your own API key (DeepSeek / Qwen / Kimi / OpenAI / …) and test the connection — or pick **Hosted** to sign in with an email and use the official gateway trial, no key needed
 2. **Settings → Email**: add an IMAP account for email triage (optional)
 3. **Settings → MCP Servers**: connect external MCP servers the agent can use (optional)
 
