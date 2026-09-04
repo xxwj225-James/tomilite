@@ -81,6 +81,17 @@ export function useSendMessage({
   compressing: boolean;
 }) {
   const lang = useLang();
+  // Gateway errors arrive with a stable code (feature_closed / quota_exhausted / ...).
+  // Localize here instead of echoing the server's English text verbatim.
+  const fmtErr = (data: any, fallback?: string): string => {
+    const c = data?.code;
+    if (c === 'feature_closed') return t('hosted.errFeatureClosed', lang);
+    if (c === 'account_disabled') return t('hosted.errAccountDisabled', lang);
+    if (c === 'model_not_allowed') return t('hosted.errModelNotAllowed', lang);
+    if (c === 'not_configured') return t('hosted.errNotConfigured', lang);
+    if (c === 'quota_exhausted') return t('hosted.quotaExhausted', lang);
+    return data?.message || fallback || 'Unknown error';
+  };
   const messages = chatHook.messages;
   const setMessages = chatHook.setMessages;
   const lastToolArgsRef = useRef<string>('');
@@ -204,7 +215,7 @@ export function useSendMessage({
                 try {
                   const data = JSON.parse(raw);
                   if (currentEvent === 'error') {
-                    fullText = data.message || t('misc.forceCreateFailed', lang);
+                    fullText = fmtErr(data, t('misc.forceCreateFailed', lang));
                     break;
                   }
                   if (data.text) fullText += String(data.text || '');
@@ -213,7 +224,7 @@ export function useSendMessage({
                     forceSuccess = true;
                   }
                   if (currentEvent === 'error') {
-                    fullText = data.message || t('misc.forceCreateFailed', lang);
+                    fullText = fmtErr(data, t('misc.forceCreateFailed', lang));
                   }
                   if (currentEvent === 'debug') {
                     fullText += `\n\n🔍 **LLM Debug** | model: \`${data.model}\` | reasoning: ${data.reasoningLen} chars | content: ${data.contentLen} chars | toolCalls: ${data.toolCalls}${data.tools?.length ? ' [' + data.tools.join(', ') + ']' : ''}`;
@@ -506,13 +517,22 @@ export function useSendMessage({
       handleApplyEdit(lastStaged.staged);
       return;
     }
-    // Soft-gate: check DB for LLM key (not cached state — avoids stale after Settings change)
-    const hasLLM =
-      llmConfigured ||
-      (await api.llm
-        .getConfig()
-        .then((d: any) => !!d?.activeProvider?.hasKey)
-        .catch(() => false));
+    // Soft-gate: check DB for LLM key OR hosted session (not cached state — avoids stale after Settings change)
+    let hasLLM = llmConfigured;
+    if (!hasLLM) {
+      try {
+        hasLLM = !!(await api.llm.getConfig()).activeProvider?.hasKey;
+      } catch {
+        /* offline */
+      }
+    }
+    if (!hasLLM) {
+      try {
+        hasLLM = (await api.hosted.status()).active;
+      } catch {
+        /* offline */
+      }
+    }
     if (!llmConfigured && hasLLM) setLlmConfigured(true); // update stale cache
     if (!hasLLM) {
       setMessages((prev) => [...prev, { role: 'user', text: q }, { role: 'assistant', text: t('chat.noLLM', lang) }]);
@@ -641,7 +661,7 @@ export function useSendMessage({
           try {
             const data = JSON.parse(raw);
             if (currentEvent === 'error') {
-              fullText = (data.message || 'Unknown error') + (data.chain ? '\n\n`' + data.chain + '`' : '');
+              fullText = fmtErr(data) + (data.chain ? '\n\n`' + data.chain + '`' : '');
               setAgentStatus('');
               break;
             }

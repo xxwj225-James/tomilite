@@ -3,6 +3,7 @@ import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { t as tt2, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
+import { track as telTrack } from '@/lib/telemetry';
 
 // ═══ Notes Editor View — title, category, MarkdownEditor, AI actions, save/delete ═══
 
@@ -54,6 +55,7 @@ export function NotesEditor(p: Props) {
         if (!savePath) return;
         await (window as any).electronAPI?.saveFile(savePath, mdContent);
         setExportResult(tt2('export.success', lang).replace('{path}', savePath));
+        telTrack('export.' + format);
       } catch (e) {
         console.error('[Export] failed:', e);
       }
@@ -77,6 +79,7 @@ export function NotesEditor(p: Props) {
         if (!savePath) return;
         await (window as any).electronAPI?.copyFile(savePath, printRes.filePath);
         setExportResult(tt2('export.success', lang).replace('{path}', savePath));
+        telTrack('export.' + format);
       } catch (e) {
         console.error('[Export] failed:', e);
       }
@@ -98,6 +101,7 @@ export function NotesEditor(p: Props) {
       if (!savePath) return;
       await (window as any).electronAPI?.copyFile(savePath, filePath);
       setExportResult(tt2('export.success', lang).replace('{path}', savePath));
+      telTrack('export.' + format);
     } catch (e) {
       console.error('[Export] failed:', e);
     }

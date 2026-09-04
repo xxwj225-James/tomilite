@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { t as tt2, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
+import { track as telTrack } from '@/lib/telemetry';
 
 // ═══ Reports Editor View — top bar + content + send dialog ═══
 
@@ -46,6 +47,7 @@ export function ReportsEditor(p: Record<string, unknown>) {
         if (!savePath) return;
         await (window as any).electronAPI?.copyFile(savePath, printRes.filePath);
         setExportResult(tt2('export.success', lang).replace('{path}', savePath));
+        telTrack('export.' + format);
         return;
       }
       const endpoint =
@@ -70,6 +72,7 @@ export function ReportsEditor(p: Record<string, unknown>) {
       if (!savePath) return;
       await (window as any).electronAPI?.copyFile(savePath, filePath);
       setExportResult(tt2('export.success', lang).replace('{path}', savePath));
+      telTrack('export.' + format);
     } catch (e) {
       console.error('[Export] failed:', e);
     }

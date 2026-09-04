@@ -11,16 +11,74 @@ import { McpPanel } from '@/panels/mcp/McpPanel';
 import { FeedbackPanel } from '@/panels/feedback/FeedbackPanel';
 import { SettingsPanel } from '@/panels/settings/SettingsPanel';
 import { AboutPanel } from '@/panels/AboutPanel';
+import { track as telTrack } from '@/lib/telemetry';
 
 // ═══ Content Panel — keep-alive routing (lazy-mount on first visit, then hide/show) ═══
 
 const MENU_TEXTS: Record<string, Record<string, string>> = {
-  en: { home: 'Home', tasks: 'Tasks', notes: 'Notes', email: 'Email', mcp: 'MCP Approve', reports: 'Reports', feedback: 'Feedback', settings: 'Settings', about: 'About' },
-  zh: { home: '首页', tasks: '任务', notes: '笔记', email: '邮件', mcp: 'MCP审批', reports: '报告', feedback: '反馈', settings: '设置', about: '关于' },
-  ja: { home: 'ホーム', tasks: 'タスク', notes: 'ノート', email: 'メール', mcp: 'MCP 承認', reports: 'レポート', feedback: 'フィードバック', settings: '設定', about: 'About' },
-  th: { home: 'หน้าแรก', tasks: 'งาน', notes: 'บันทึก', email: 'อีเมล', mcp: 'ตรวจสอบ MCP', reports: 'รายงาน', feedback: 'ข้อเสนอแนะ', settings: 'การตั้งค่า' },
-  mi: { home: 'Kāinga', tasks: 'Mahi', notes: 'Tuhipoka', email: 'Īmēra', mcp: 'Arotake MCP', reports: 'Pūrongo', feedback: 'Urupare', settings: 'Tautuhinga' },
-  ru: { home: 'Главная', tasks: 'Задачи', notes: 'Заметки', email: 'Почта', mcp: 'Аудит MCP', reports: 'Отчёты', feedback: 'Отзывы', settings: 'Настройки' },
+  en: {
+    home: 'Home',
+    tasks: 'Tasks',
+    notes: 'Notes',
+    email: 'Email',
+    mcp: 'MCP Approve',
+    reports: 'Reports',
+    feedback: 'Feedback',
+    settings: 'Settings',
+    about: 'About',
+  },
+  zh: {
+    home: '首页',
+    tasks: '任务',
+    notes: '笔记',
+    email: '邮件',
+    mcp: 'MCP审批',
+    reports: '报告',
+    feedback: '反馈',
+    settings: '设置',
+    about: '关于',
+  },
+  ja: {
+    home: 'ホーム',
+    tasks: 'タスク',
+    notes: 'ノート',
+    email: 'メール',
+    mcp: 'MCP 承認',
+    reports: 'レポート',
+    feedback: 'フィードバック',
+    settings: '設定',
+    about: 'About',
+  },
+  th: {
+    home: 'หน้าแรก',
+    tasks: 'งาน',
+    notes: 'บันทึก',
+    email: 'อีเมล',
+    mcp: 'ตรวจสอบ MCP',
+    reports: 'รายงาน',
+    feedback: 'ข้อเสนอแนะ',
+    settings: 'การตั้งค่า',
+  },
+  mi: {
+    home: 'Kāinga',
+    tasks: 'Mahi',
+    notes: 'Tuhipoka',
+    email: 'Īmēra',
+    mcp: 'Arotake MCP',
+    reports: 'Pūrongo',
+    feedback: 'Urupare',
+    settings: 'Tautuhinga',
+  },
+  ru: {
+    home: 'Главная',
+    tasks: 'Задачи',
+    notes: 'Заметки',
+    email: 'Почта',
+    mcp: 'Аудит MCP',
+    reports: 'Отчёты',
+    feedback: 'Отзывы',
+    settings: 'Настройки',
+  },
 };
 
 function tMenu(key: string, lang: string) {
@@ -31,7 +89,17 @@ interface Props {
   panel: string | null;
   onClose: () => void;
   onEditingNote?: (note: { id?: string; title: string; content: string; category: string } | null) => void;
-  onEditingTask?: (task: { issueNumber?: number; id?: string; title: string; description: string; status: string; priority: string; storyPoints?: number } | null) => void;
+  onEditingTask?: (
+    task: {
+      issueNumber?: number;
+      id?: string;
+      title: string;
+      description: string;
+      status: string;
+      priority: string;
+      storyPoints?: number;
+    } | null,
+  ) => void;
   onEditingReport?: (report: { title: string; content: string; id?: string } | null) => void;
   onNoteAction?: (action: string) => void;
   onReportAction?: (action: string) => void;
@@ -45,21 +113,32 @@ interface Props {
 }
 
 function PanelBody({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return (
-    <div style={{ display: active ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-      {children}
-    </div>
-  );
+  return <div style={{ display: active ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>{children}</div>;
 }
 
-export function ContentPanel({ panel, onClose, onEditingNote, onEditingTask, onEditingReport, onNoteAction, onReportAction, noteRefresh, taskRefresh, reportRefresh, emailRefresh, appliedEdit, appliedTaskEdit, appliedReport }: Props) {
+export function ContentPanel({
+  panel,
+  onClose,
+  onEditingNote,
+  onEditingTask,
+  onEditingReport,
+  onNoteAction,
+  onReportAction,
+  noteRefresh,
+  taskRefresh,
+  reportRefresh,
+  emailRefresh,
+  appliedEdit,
+  appliedTaskEdit,
+  appliedReport,
+}: Props) {
   const lang = useLang();
   const { queue, clearType } = useUICommandStore();
   const mountedRef = useRef<Set<string>>(new Set());
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
-    const cmd = queue.find(c => c.type === 'navigate');
+    const cmd = queue.find((c) => c.type === 'navigate');
     if (cmd) {
       clearType('navigate');
       const targetPanel = cmd.payload.panel;
@@ -73,8 +152,13 @@ export function ContentPanel({ panel, onClose, onEditingNote, onEditingTask, onE
   useEffect(() => {
     if (panel && !mountedRef.current.has(panel)) {
       mountedRef.current.add(panel);
-      forceUpdate(n => n + 1); // trigger render to include new panel
+      forceUpdate((n) => n + 1); // trigger render to include new panel
     }
+  }, [panel]);
+
+  // Anonymous feature-usage: which panel the user opens (no-op unless opted in)
+  useEffect(() => {
+    if (panel && panel !== 'feedback') telTrack('view.' + panel);
   }, [panel]);
 
   const mounted = mountedRef.current;
@@ -83,7 +167,9 @@ export function ContentPanel({ panel, onClose, onEditingNote, onEditingTask, onE
     <div className={cn('panel', panel ? 'panel--open' : '')}>
       <div className="panel-header">
         <h3 className="panel-title">{panel === 'about' ? '' : tMenu(panel || '', lang)}</h3>
-        <button className="panel-close" onClick={onClose}>✕</button>
+        <button className="panel-close" onClick={onClose}>
+          ✕
+        </button>
       </div>
       <div className="panel-body">
         {mounted.has('home') && (
@@ -93,7 +179,12 @@ export function ContentPanel({ panel, onClose, onEditingNote, onEditingTask, onE
         )}
         {mounted.has('tasks') && (
           <PanelBody active={panel === 'tasks'}>
-            <TasksPanel onEditingTask={onEditingTask} appliedTaskEdit={appliedTaskEdit} taskRefresh={taskRefresh} active={panel === 'tasks'} />
+            <TasksPanel
+              onEditingTask={onEditingTask}
+              appliedTaskEdit={appliedTaskEdit}
+              taskRefresh={taskRefresh}
+              active={panel === 'tasks'}
+            />
           </PanelBody>
         )}
         {mounted.has('email') && (
@@ -103,12 +194,24 @@ export function ContentPanel({ panel, onClose, onEditingNote, onEditingTask, onE
         )}
         {mounted.has('notes') && (
           <PanelBody active={panel === 'notes'}>
-            <NotesPanel onEditingNote={onEditingNote} onNoteAction={onNoteAction} noteRefresh={noteRefresh} appliedEdit={appliedEdit} active={panel === 'notes'} />
+            <NotesPanel
+              onEditingNote={onEditingNote}
+              onNoteAction={onNoteAction}
+              noteRefresh={noteRefresh}
+              appliedEdit={appliedEdit}
+              active={panel === 'notes'}
+            />
           </PanelBody>
         )}
         {mounted.has('reports') && (
           <PanelBody active={panel === 'reports'}>
-            <ReportsPanel onEditingReport={onEditingReport} onReportAction={onReportAction} appliedReport={appliedReport} reportRefresh={reportRefresh} active={panel === 'reports'} />
+            <ReportsPanel
+              onEditingReport={onEditingReport}
+              onReportAction={onReportAction}
+              appliedReport={appliedReport}
+              reportRefresh={reportRefresh}
+              active={panel === 'reports'}
+            />
           </PanelBody>
         )}
         {mounted.has('mcp') && (

@@ -36,15 +36,17 @@ export async function classifyEmail(
       { role: 'user', content: CLASSIFY_PROMPT },
       { role: 'user', content: userContent },
     ],
-    max_tokens: 350, temperature: 0,
+    max_tokens: 350,
+    temperature: 0,
     response_format: { type: 'json_object' },
   };
-  if (baseUrl.includes('moonshot') || baseUrl.includes('deepseek')) body.thinking = { type: 'disabled' };
+  if (baseUrl.includes('moonshot') || baseUrl.includes('deepseek') || baseUrl.includes('/api/llm/'))
+    body.thinking = { type: 'disabled' };
   else if (baseUrl.includes('dashscope')) body.enable_thinking = false;
 
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(10000),
   });
@@ -54,7 +56,10 @@ export async function classifyEmail(
   const d = await resp.json();
   const raw = d.choices?.[0]?.message?.content || '{}';
   // Strip markdown code fences if present
-  const json = raw.replace(/^```json?\s*/, '').replace(/\s*```$/, '').trim();
+  const json = raw
+    .replace(/^```json?\s*/, '')
+    .replace(/\s*```$/, '')
+    .trim();
   let parsed: any = {};
   try {
     parsed = JSON.parse(json);
@@ -62,7 +67,10 @@ export async function classifyEmail(
     console.error('[EmailClassifier] JSON parse failed:', e.message, 'Raw:', raw.substring(0, 200));
     // Try to extract JSON object from the raw text as fallback
     const m = raw.match(/\{[\s\S]*\}/);
-    if (m) try { parsed = JSON.parse(m[0]); } catch {}
+    if (m)
+      try {
+        parsed = JSON.parse(m[0]);
+      } catch {}
   }
 
   return {
@@ -88,9 +96,12 @@ export function heuristicClassify(msg: NormalizedMessage): ClassificationResult 
   const hasQuestion = /\?|？/.test(subject);
 
   // ── Body signals (check both subject and body) ──
-  const isUrgent = /urgent|alert|critical|security|breach|incident|crash|down|outage|⚠|🚨/i.test(subject)
-    || /urgent|alert|critical|security|breach|incident|crash|down|outage/i.test(body);
-  const isAutomated = /unsubscribe|view in browser|privacy policy|opt.out|mailing list|if you no longer wish/i.test(body);
+  const isUrgent =
+    /urgent|alert|critical|security|breach|incident|crash|down|outage|⚠|🚨/i.test(subject) ||
+    /urgent|alert|critical|security|breach|incident|crash|down|outage/i.test(body);
+  const isAutomated = /unsubscribe|view in browser|privacy policy|opt.out|mailing list|if you no longer wish/i.test(
+    body,
+  );
   const isPromo = /offer|discount|sale|promo|newsletter|digest|weekly roundup/i.test(body);
 
   // ── Classify ──

@@ -5,6 +5,52 @@
 // When adding th/mi/ru UI support in the future, just add translations to the relevant keys below.
 
 const I18N = {
+  // ═══ Telemetry (anonymous usage stats — opt-in) ═══
+  'telemetry.dialogTitle': {
+    en: 'Help improve TomiLite (optional)',
+    zh: '帮助改进 TomiLite(可选)',
+    ja: 'TomiLite の改善にご協力(任意)',
+  },
+  'telemetry.dialogLead': {
+    en: 'May we collect anonymous usage statistics? We want to know how many real users TomiLite has and which features they actually use, so we can make it better.',
+    zh: '是否允许我们收集匿名的使用统计?我们想知道有多少真实用户在用自己的 TomiLite、主要用了哪些功能,以便把它做得更好。',
+    ja: '匿名の利用統計を収集してもよろしいですか?実際のユーザー数と、どの機能が使われているかを知ることで改善に役立てたいと考えています。',
+  },
+  'telemetry.collectedTitle': { en: 'We collect', zh: '会收集', ja: '収集するもの' },
+  'telemetry.collected': {
+    en: 'Which panels you open (Tasks / Notes / Email / Reports / Home / MCP / Settings / About)\nAggregate counts of tasks, notes, reports, emails, chat sessions and focus time you create\nWhich AI tools you run and which export formats you use\nApp version, operating system, interface language',
+    zh: '打开过的功能(任务 / 笔记 / 邮件 / 报告 / 首页 / MCP / 设置 / 关于)\n创建的任务、笔记、报告、邮件、对话、专注时长等汇总计数\n使用过的 AI 工具、手动导出的文件格式\n应用版本、操作系统、界面语言',
+    ja: '開いた機能(タスク / ノート / メール / レポート / ホーム / MCP / 設定 / 詳細)\n作成したタスク・ノート・レポート・メール・会話・集中時間などの集計\n使用した AI ツールと書き出したファイル形式\nアプリバージョン、OS、表示言語',
+  },
+  'telemetry.neverTitle': { en: 'We never collect', zh: '绝不收集', ja: '絶対に収集しないもの' },
+  'telemetry.never': {
+    en: 'Chat content, file or note contents, email bodies, code, file names, API keys — no personal data of any kind.',
+    zh: '聊天内容、文件与笔记正文、邮件正文与标题、代码、文件名、API Key 等任何个人信息,一概不采集。',
+    ja: 'チャット内容、ファイル・ノート本文、メール本文、コード、ファイル名、APIキーなど、個人情報は一切収集しません。',
+  },
+  'telemetry.dest': {
+    en: 'Aggregates are sent to tomatovector.com (viewable only by the author) to improve the product. Never sold or shared.',
+    zh: '汇总数据仅发送至 tomatovector.com(仅作者本人查看),用于改进产品,绝不出售或共享。',
+    ja: '集計データは tomatovector.com に送信され(作者のみ閲覧)、製品改善にのみ使用されます。販売・共有は一切しません。',
+  },
+  'telemetry.manage': {
+    en: 'You can turn this off anytime in About → Privacy & Usage Statistics. Turning it off clears the locally staged data.',
+    zh: '可在「关于 → 隐私与匿名使用统计」随时关闭;关闭会同时清除本机已暂存的数据。',
+    ja: '「詳細 → プライバシーと利用統計」でいつでもオフにできます。オフにすると端末に保存されたデータも削除されます。',
+  },
+  'telemetry.agree': { en: 'Agree & start using', zh: '同意并开始使用', ja: '同意して利用開始' },
+  'telemetry.decline': { en: 'No, thanks', zh: '暂不参与', ja: '参加しない' },
+  'telemetry.aboutTitle': { en: 'Privacy & Usage Statistics', zh: '隐私与匿名使用统计', ja: 'プライバシーと利用統計' },
+  'telemetry.aboutLabel': {
+    en: 'Share anonymous usage statistics to help improve TomiLite',
+    zh: '匿名分享使用数据,帮助改进 TomiLite',
+    ja: 'TomiLite 改善のため匿名の利用統計を共有する',
+  },
+  'telemetry.aboutDesc': {
+    en: 'Aggregates only: panels opened, item counts, AI tools used, app version/OS/language. No chat, file, email, code or key content. Turning this off clears locally staged data.',
+    zh: '仅统计匿名使用情况(打开的功能、创建数量、使用的 AI 工具、应用版本/系统/语言),不含任何内容或密钥;关闭会清除本机暂存数据。',
+    ja: '匿名の利用状況のみ(開いた機能、作成数、使用 AI ツール、バージョン/OS/言語)。コンテンツやキーは含みません。オフで端末の保存データも削除されます。',
+  },
   // ═══ Chat Area ═══
   'chat.placeholder': {
     en: 'Ask me anything...',
@@ -1261,6 +1307,109 @@ const I18N = {
     en: '✅ API key already configured. Enter a new key to replace.',
     zh: '✅ API Key 已配置，输入新 Key 替换。',
     ja: '✅ APIキー設定済み。新しいキーを入力すると置き換えます。',
+  },
+
+  // ═══ Hosted LLM (Settings → LLM: 免费托管试用 / Pro) ═══
+  'hosted.segmentByok': { en: 'My API Key', zh: '自带 API Key', ja: '自分の APIキー' },
+  'hosted.segmentHosted': { en: 'Hosted quota', zh: '托管试用', ja: 'ホステッド枠' },
+  'hosted.signedInBanner': {
+    en: 'Logged in as {email} — hosted quota currently OFF (using your own key).',
+    zh: '已登录 {email},当前未使用托管试用(使用自带 Key)。',
+    ja: '{email} でログイン中 — 現在は自分のキーを使用中です。',
+  },
+  'hosted.useHosted': { en: 'Use hosted quota', zh: '启用托管试用', ja: 'ホステッド枠を使う' },
+  'hosted.switchToByok': { en: 'Use my own key', zh: '切回自带 Key', ja: '自分のキーに戻す' },
+  'hosted.logout': { en: 'Log out', zh: '退出登录', ja: 'ログアウト' },
+  'hosted.loginTitle': { en: 'Free hosted trial', zh: '免费托管试用', ja: '無料ホステッド試用' },
+  'hosted.loginDesc': {
+    en: 'No API key needed. Route all AI features through the official gateway with an optional free trial credit and affordable Pro plans. Your provider keys never leave this device.',
+    zh: '无需配置 Key。把全部 AI 功能接入官方网关,可免费试用小额额度,也能按量购买 Pro。你自带的 Key 不会离开本机。',
+    ja: 'APIキー不要。全 AI 機能を公式ゲートウェイ経由に。無料トライアル枠と Pro プランが使えます。',
+  },
+  'hosted.trialCredit': { en: 'Free trial credit: ¥{n}', zh: '免费试用额度: ¥{n}', ja: '無料トライアル: ¥{n}' },
+  'hosted.emailLabel': { en: 'Email', zh: '邮箱', ja: 'メール' },
+  'hosted.codeLabel': { en: 'Verification code', zh: '验证码', ja: '認証コード' },
+  'hosted.emailPlaceholder': { en: 'you@example.com', zh: 'you@example.com', ja: 'you@example.com' },
+  'hosted.sendCode': { en: 'Send code', zh: '发送验证码', ja: '認証コード送信' },
+  'hosted.resendIn': { en: 'Resend in {n}s', zh: '{n}s 后可重发', ja: '{n}秒後に再送信' },
+  'hosted.codePlaceholder': { en: '6-digit code', zh: '6 位验证码', ja: '6桁のコード' },
+  'hosted.login': { en: 'Verify & log in', zh: '登录', ja: 'ログイン' },
+  'hosted.activeTitle': { en: 'Hosted account', zh: '托管账号', ja: 'ホステッドアカウント' },
+  'hosted.planTrial': { en: 'Trial', zh: '试用', ja: 'トライアル' },
+  'hosted.planPro': { en: 'Pro', zh: 'Pro', ja: 'Pro' },
+  'hosted.planLabel': { en: 'Plan', zh: '套餐', ja: 'プラン' },
+  'hosted.balance': { en: 'Balance', zh: '剩余额度', ja: '残高' },
+  'hosted.used': { en: 'Used', zh: '已用', ja: '使用済み' },
+  'hosted.totalCost': { en: 'Total cost', zh: '累计费用', ja: '累計費用' },
+  'hosted.requests': { en: 'Requests', zh: '请求数', ja: 'リクエスト数' },
+  'hosted.tokens': { en: 'Tokens', zh: 'Tokens', ja: 'トークン' },
+  'hosted.refresh': { en: 'Refresh', zh: '刷新', ja: '更新' },
+  'hosted.intentTitle': {
+    en: 'If a paid Pro version launches later, would you consider subscribing?',
+    zh: '若未来推出付费 Pro 版,你会考虑订阅吗?',
+    ja: '将来、有料の Pro 版が出るとしたら、購読しますか?',
+  },
+  'hosted.intentDesc': {
+    en: 'No API key or payment needed right now — we just want to hear from you.',
+    zh: '现在无需申请 API key、也无需付款,只是想听听你的想法。',
+    ja: '今は API キーも支払いも不要です。あなたの考えを教えてください。',
+  },
+  'hosted.intentYes': { en: 'Yes, I would', zh: '会订阅', ja: '購読する' },
+  'hosted.intentPrice': { en: 'Depends on price', zh: '看价格', ja: '価格次第' },
+  'hosted.intentUndecided': { en: 'Not sure yet', zh: '还不确定', ja: 'まだ分からない' },
+  'hosted.intentNo': { en: 'No / free is enough', zh: '不会,免费够用', ja: '購読しない' },
+  'hosted.intentDone': {
+    en: 'Recorded — thanks for the feedback!',
+    zh: '已记录,谢谢反馈!',
+    ja: '記録しました — フィードバックありがとうございます!',
+  },
+  'hosted.quotaExhausted': {
+    en: 'Free trial quota is used up — if a subscription launches later, tell us your intention at Settings → LLM → Hosted Trial.',
+    zh: '免费试用额度已用完 — 若未来推出订阅版,欢迎到 设置 → LLM → 托管试用 告诉我们你的意愿。',
+    ja: '無料トライアル枠を使い切りました — 将来サブスクリプションが出る場合は、設定 → LLM → ホステッド試用 からご意見をお聞かせください。',
+  },
+  'hosted.expired': {
+    en: 'Session expired — please log in again.',
+    zh: '会话已过期 — 请重新登录。',
+    ja: 'セッションの有効期限が切れました。再ログインしてください。',
+  },
+  'hosted.networkError': {
+    en: 'Unable to reach the hosted gateway. Check your network.',
+    zh: '无法连接托管网关,请检查网络。',
+    ja: 'ホステッドゲートウェイに接続できません。ネットワークを確認してください。',
+  },
+  'hosted.accountState': { en: 'Hosted: {state}', zh: '托管: {state}', ja: 'ホステッド: {state}' },
+  'hosted.stateTrial': { en: 'trial ¥{n} left', zh: '试用中,剩 ¥{n}', ja: 'トライアル残 ¥{n}' },
+  'hosted.statePro': { en: 'Pro', zh: 'Pro', ja: 'Pro' },
+  'hosted.closedBanner': {
+    en: 'Hosted gateway is currently closed (trial disabled). Requests will fail — switch to My API Key in Settings → LLM to keep chatting.',
+    zh: '托管试用已关闭 — 当前请求会失败。可到 设置 → LLM 切回「自带 API Key」继续使用。',
+    ja: 'ホステッド試用は現在閉鎖されています — 送信は失敗します。設定 → LLM で「自分の APIキー」に切り替えてください。',
+  },
+  'hosted.closedSettings': {
+    en: 'Hosted gateway is closed right now — you cannot send messages or request new codes.',
+    zh: '托管试用已关闭 — 暂无法发送消息或获取验证码。',
+    ja: 'ホステッド試用は閉鎖中です — メッセージ送信と認証コード取得はできません。',
+  },
+  'hosted.errFeatureClosed': {
+    en: 'Hosted trial is closed right now — switch to My API Key in Settings → LLM, or try again later.',
+    zh: '托管试用已关闭 — 请到 设置 → LLM 切回「自带 API Key」，或稍后再试。',
+    ja: 'ホステッド試用は現在閉鎖中です — 設定 → LLM で「自分の APIキー」に切り替えるか、後でもう一度お試しください。',
+  },
+  'hosted.errAccountDisabled': {
+    en: 'This hosted account has been disabled — please contact support.',
+    zh: '该托管账号已被停用 — 请联系管理员。',
+    ja: 'このホステッドアカウントは無効化されています — 管理者にお問い合わせください。',
+  },
+  'hosted.errModelNotAllowed': {
+    en: 'This model is not available on the hosted gateway.',
+    zh: '该模型在托管网关上不可用。',
+    ja: 'このモデルはホステッドゲートウェイでは利用できません。',
+  },
+  'hosted.errNotConfigured': {
+    en: 'Hosted gateway is not configured yet — try again later.',
+    zh: '托管网关尚未配置完成 — 请稍后再试。',
+    ja: 'ホステッドゲートウェイがまだ設定されていません — 後でもう一度お試しください。',
   },
 
   // ═══ App (welcome screen, menu labels, entity labels) ═══

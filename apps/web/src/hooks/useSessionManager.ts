@@ -37,6 +37,11 @@ export function useSessionManager({
           api.chat.createSession('Chat 1').then((s: any) => {
             setSessions([{ id: s.id, title: s.title, tokenPercent: 0 }]);
             setCurrentSessionId(s.id);
+            // Register + select the freshly created session, or activeSessionId stays ''
+            // and every UI write from the first message is dropped (setMessages no-op),
+            // while the backend still streams and bills. Mirrors deleteSession's empty branch.
+            chatHook.switchSession(s.id);
+            chatHook.loadSession(s.id);
           });
         }
       })

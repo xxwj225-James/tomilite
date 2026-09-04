@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { prisma } from '@tomilite/database';
-import { decrypt } from '../lib/crypto.js';
 
 import { createSSESender, sendToken, sendDone, sendError } from './utils/sse.js';
+import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
 import { getProxyUrl } from './utils/proxy.js';
 import { getWorkspaceRoots } from './utils/shell.js';
 
@@ -26,7 +25,14 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
   for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString();
   let body: any;
-  try { body = JSON.parse(raw); } catch (e: any) { console.error('[AgentStream] JSON parse failed, raw length:', raw.length, 'error:', e.message); res.writeHead(400); res.end('Invalid JSON: ' + e.message); return; }
+  try {
+    body = JSON.parse(raw);
+  } catch (e: any) {
+    console.error('[AgentStream] JSON parse failed, raw length:', raw.length, 'error:', e.message);
+    res.writeHead(400);
+    res.end('Invalid JSON: ' + e.message);
+    return;
+  }
   const { message, history = [], panelContext = null, remainingTokens = 8000, lang = 'en' } = body;
 
   // ─── Context detection from message prefix ───
@@ -43,7 +49,7 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
     'Access-Control-Allow-Origin': '*',
   });
 
@@ -55,13 +61,13 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
       const jsonStart = message.indexOf('{');
       if (jsonStart < 0) throw new Error('No JSON found in force-create message');
       const args = JSON.parse(message.slice(jsonStart));
-      // Load config for force-create (no Guard or self-learning needed)
-      const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-      if (!provider?.apiKey) { sendError(send, 'No API key configured.'); res.end(); return; }
-      const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
-      const apiKey = await decrypt(provider.apiKey);
-      const baseUrl = master?.apiBaseUrl || '';
-      if (!baseUrl || !apiKey) { sendError(send, 'LLM not configured.'); res.end(); return; }
+      // Load config for force-create (no Guard or self-learning needed) — BYOK or hosted both OK
+      const llm = await resolveLLM();
+      if (!llm) {
+        sendError(send, 'No API key configured.');
+        res.end();
+        return;
+      }
       sendToken(send, 'Creating...');
       // Force-create: call the right tool directly (skipping dedup)
       const cardType = args._type || args.type;
@@ -91,30 +97,45 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
   }
 
   try {
-    // ─── Load LLM config from DB ───
-    const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-    if (!provider?.apiKey) { sendError(send, 'No API key configured. Go to Settings → 🤖 LLM.'); res.end(); return; }
-    const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
-    const cfg = await prisma.llmConfig.findFirst();
-    const baseUrl = master?.apiBaseUrl || '';
-    const model = cfg?.proModel || cfg?.flashModel || '';
-    const flashModel = cfg?.flashModel || model;
-    if (!baseUrl || !model) { sendError(send, 'LLM not fully configured. Check Settings → 🤖 LLM.'); res.end(); return; }
+    // ─── Load LLM config (BYOK or hosted gateway) ───
+    const llm = await resolveLLM();
+    if (!llm) {
+      sendError(send, 'No API key configured. Go to Settings → 🤖 LLM.');
+      res.end();
+      return;
+    }
+    const baseUrl = llm.baseUrl;
+    const model = llm.proModel || llm.flashModel;
+    const flashModel = llm.flashModel || model;
+    if (!baseUrl || !model) {
+      sendError(send, 'LLM not fully configured. Check Settings → 🤖 LLM.');
+      res.end();
+      return;
+    }
 
     // Send thinking indicator immediately — user sees activity during Guard/Self-learning
     // Spinner in UI already indicates activity — no need to send text
 
     const config: LLMConfig = {
       baseUrl,
-      apiKey: await decrypt(provider.apiKey),
+      apiKey: llm.apiKey,
       model,
       flashModel,
       remainingTokens,
-      maxOutputTokens: cfg?.maxOutputTokens || undefined,
       proxy: getProxyUrl() || undefined,
     };
 
-    const context = { lang, unsavedNote, noteEditorOpen, taskEditorOpen, newTaskFormOpen, reportEditorOpen, notesPanelOpen, tasksPanelOpen, reportsPanelOpen };
+    const context = {
+      lang,
+      unsavedNote,
+      noteEditorOpen,
+      taskEditorOpen,
+      newTaskFormOpen,
+      reportEditorOpen,
+      notesPanelOpen,
+      tasksPanelOpen,
+      reportsPanelOpen,
+    };
 
     // ─── Guard: intent classification ───
     const guardResult = await classifyGuard(config, message, context, send);
@@ -135,7 +156,10 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
 
     // ─── Build tools (with pruning) ───
     const pruningCtx: PruningContext = {
-      noteEditorOpen, taskEditorOpen, newTaskFormOpen, reportEditorOpen,
+      noteEditorOpen,
+      taskEditorOpen,
+      newTaskFormOpen,
+      reportEditorOpen,
       isQwen: isQwenProvider(config.baseUrl),
     };
     const activeTools = getActiveTools(ALL_TOOLS, pruningCtx);
@@ -147,7 +171,11 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
     const messages: any[] = [
       { role: 'system', content: systemPrompt },
       ...history.map((h: any) => {
-        if (h.role === 'assistant' && h.reasoning_content && (!config.baseUrl?.includes('deepseek') || !h.tool_calls || h.tool_calls.length === 0)) {
+        if (
+          h.role === 'assistant' &&
+          h.reasoning_content &&
+          (!isDeepseekEndpoint(config.baseUrl) || !h.tool_calls || h.tool_calls.length === 0)
+        ) {
           const rest = { ...h };
           delete rest.reasoning_content;
           return rest;
@@ -162,7 +190,9 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
     sendDone(send, result.content, result.iterations, remainingTokens);
   } catch (e: any) {
     console.error('[AgentStream] Error:', e.message);
-    sendError(send, e.message);
+    // Forward the gateway code (feature_closed / quota_exhausted / ...) so the
+    // renderer can localize the message; undefined otherwise keeps old behavior.
+    sendError(send, e.message, undefined, undefined, e?.code);
   }
   res.end();
 }

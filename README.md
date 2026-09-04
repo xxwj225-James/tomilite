@@ -45,6 +45,14 @@ Chat with Tomi in plain language — the agent turns your words into actions, an
 
 > Tip: the welcome guide inside the app also offers one-click example prompts. New sessions start empty — ask Tomi anything, or use one of the suggestions above.
 
+## 🔒 Privacy & Telemetry
+
+TomiLite is **local-first**: tasks, notes, emails, reports, chats, API keys and git data stay in your own SQLite database under `~/.tomilite/` and are never uploaded.
+
+The only outbound traffic is **optional, opt-in anonymous usage statistics** — shown on first run and changeable any time in **About → Privacy & Usage Statistics**. When enabled, only aggregate counts, feature/panel names, export formats and app version/OS/language are batched to the author's server (`tomatovector.com`) to improve the product. **No chat content, no file/note/email bodies or titles, no filenames, no code, no API keys, no personal data.** Turning it off clears the local staging buffer.
+
+📄 See [docs/telemetry.md](docs/telemetry.md) for the full collection scope, the endpoint contract, and how to self-host your own receiver.
+
 ## Getting Started
 
 ### Install (Windows)
@@ -109,6 +117,7 @@ Key design points:
 - [Tasks Panel](docs/tasks-panel.md) — kanban board, drag-to-status, task editor
 - [UI Design System](docs/ui-design-system.md) — design tokens, themes, components
 - [Security](docs/SECURITY.md) — local-first security model
+- [Privacy & Telemetry](docs/telemetry.md) — opt-in anonymous usage statistics
 - [Release Notes](docs/release-notes/)
 
 ## 🧩 Ecosystem

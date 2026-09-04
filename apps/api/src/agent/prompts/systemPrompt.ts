@@ -1,3 +1,5 @@
+import { isDeepseekEndpoint } from '../../lib/gateway.js';
+
 export interface AgentContext {
   lang: string;
   unsavedNote: boolean;
@@ -58,7 +60,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   // Skip <thinking> text injection for native-thinking models
   const hasNativeThinking =
-    baseUrl?.includes('deepseek') ||
+    isDeepseekEndpoint(baseUrl) ||
     baseUrl?.includes('dashscope') ||
     (baseUrl?.includes('moonshot') && model?.includes('kimi-k3'));
   const thinkingFormat = !hasNativeThinking

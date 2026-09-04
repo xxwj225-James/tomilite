@@ -57,6 +57,7 @@ const isDev = process.env.NODE_ENV === 'development';
 const IS_STORE_BUILD = process.execPath.includes('\\WindowsApps\\');
 
 let mainWindow = null;
+let splashWindow = null;
 let tray = null;
 let apiProcess = null;
 let apiErrors = '';
@@ -177,6 +178,19 @@ function startApiServer() {
       }
     } catch (e) {}
   }
+  // Older builds pointed the API's data dir (TL_USER_DATA) at the Electron
+  // userData folder, so server dot-files may only exist there. The canonical
+  // location is ~/.tomilite (homeDir) — copy any missing dot-files over once.
+  ['.encryption_key', '.api_token'].forEach(function (f) {
+    var src = path.join(dataDir, f);
+    var dst = path.join(homeDir, f);
+    if (!fs.existsSync(dst) && fs.existsSync(src)) {
+      try {
+        fs.copyFileSync(src, dst);
+        console.log('[migrate] ' + dst + ' ← ' + src);
+      } catch (e) {}
+    }
+  });
   var dbPath = newDb;
 
   var serverPath = path.join(rootDir, 'apps', 'api', 'dist', 'server.cjs');
@@ -186,7 +200,8 @@ function startApiServer() {
     env: Object.assign({}, process.env, {
       API_PORT: String(API_PORT),
       DATABASE_URL: 'file:' + dbPath,
-      TL_USER_DATA: dataDir,
+      TL_USER_DATA: homeDir,
+      TL_APP_VERSION: app.getVersion(),
       ELECTRON_RUN_AS_NODE: '1',
     }),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -239,7 +254,7 @@ function waitForApi(url, retries) {
   });
 }
 
-// ─── Loading screen HTML — brand icon + fixed pipeline theme ───
+// ─── Transparent splash HTML — brand icon floating on a clear (window-transparent) background ───
 // The splash is a data: URL, so the real icon.png is embedded as a data URI at
 // runtime — keeps the splash in sync with whatever icon.png is shipped.
 var loadingIcon = '';
@@ -250,25 +265,20 @@ try {
 }
 var loadingHtml =
   '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
-  'body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8f9fb;font-family:sans-serif;overflow:hidden}' +
-  '.wrap{text-align:center}' +
-  '.icon{width:88px;height:88px;object-fit:contain;animation:pulse 2s ease-in-out infinite}' +
-  '@keyframes pulse{0%,100%{opacity:.4;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}' +
-  '.title{font-size:18px;font-weight:600;color:#1c1c1e;margin-top:20px}' +
-  '.bar{width:200px;height:3px;background:#e8eaef;border-radius:2px;margin:16px auto 0;overflow:hidden}' +
-  '.bar-fill{width:30%;height:100%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:2px;animation:slide 1.5s ease-in-out infinite}' +
-  '@keyframes slide{0%{transform:translateX(-30%)}100%{transform:translateX(330%)}}' +
+  'html,body{margin:0;height:100%;background:transparent;overflow:hidden}' +
+  'body{display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}' +
+  '.icon{width:96px;height:96px;object-fit:contain;animation:pulse 2s ease-in-out infinite}' +
+  '@keyframes pulse{0%,100%{opacity:.45;transform:scale(.92)}50%{opacity:1;transform:scale(1.05)}}' +
   '</style></head><body>' +
-  '<div class="wrap">' +
-  '<img class="icon" alt="TomiLite" src="' +
+  '<img class="icon" alt="" src="' +
   loadingIcon +
   '"/>' +
-  '<div class="title">TomiLite</div>' +
-  '<div class="bar"><div class="bar-fill"></div></div>' +
-  '</div></body></html>';
+  '</body></html>';
 const LOADING_HTML = 'data:text/html;base64,' + Buffer.from(loadingHtml).toString('base64');
 
 // ─── Create window ───
+// The main window stays hidden until the real app page has painted; a
+// transparent floating-logo splash (showSplash) covers the startup gap.
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -280,7 +290,7 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     title: 'TomiLite',
     icon: path.join(__dirname, 'icon.png'),
-    show: true, // show immediately with loading screen (Microsoft Store review requires visible content)
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -311,11 +321,50 @@ function createWindow() {
     isQuitting = true;
   });
 
-  // Show loading screen when ready (avoids white flash)
-  mainWindow.once('ready-to-show', function () {
-    mainWindow.show();
+  // First real paint → show the app and drop the floating splash
+  mainWindow.once('ready-to-show', showMainAndCloseSplash);
+}
+
+// ─── Transparent splash helpers ───
+function showSplash() {
+  if (!loadingIcon) return; // no icon shipped — skip straight to the main window
+  if (splashWindow && !splashWindow.isDestroyed()) return;
+  splashWindow = new BrowserWindow({
+    width: 176,
+    height: 176,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    backgroundColor: '#00000000',
   });
-  mainWindow.loadURL(LOADING_HTML);
+  splashWindow.setAlwaysOnTop(true, 'screen-saver');
+  splashWindow.loadURL(LOADING_HTML);
+  splashWindow.once('ready-to-show', function () {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.show();
+      splashWindow.center();
+    }
+  });
+  splashWindow.on('closed', function () {
+    splashWindow = null;
+  });
+  // Never let a broken splash hold the app hostage — bail to the main window
+  splashWindow.webContents.on('render-process-gone', closeSplash);
+}
+
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+  splashWindow = null;
+}
+
+function showMainAndCloseSplash() {
+  closeSplash();
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
 }
 
 // ─── Tray ───
@@ -361,8 +410,9 @@ function createTray() {
 app.whenReady().then(function () {
   console.log('Starting TomiLite...');
 
-  // Show window with loading screen immediately
+  // Main window is created hidden; a transparent floating-logo splash shows first.
   createWindow();
+  showSplash();
   createTray();
 
   // Start API server
@@ -563,13 +613,18 @@ app.whenReady().then(function () {
             ),
         );
       } else {
+        closeSplash();
         dialog.showErrorBox('Startup Error', 'API server failed to start.\n' + detail);
       }
     });
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    else if (mainWindow) mainWindow.show();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+      if (mainWindow) mainWindow.loadURL('http://localhost:' + API_PORT + '/');
+    } else if (mainWindow) {
+      mainWindow.show();
+    }
   });
 });
 
@@ -579,6 +634,7 @@ app.on('window-all-closed', function () {
 
 app.on('before-quit', function () {
   isQuitting = true;
+  closeSplash();
   // Close HTTP notify server so port is released immediately
   notifyServer.close(function () {
     /* ignore close errors */

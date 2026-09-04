@@ -24,6 +24,9 @@ import { feedbackRouter } from './routers/feedback';
 import { chatRouter } from './routers/chat';
 import { standupRouter, checkAndGenerateEvening, checkAndGenerateMorning } from './routers/standup';
 import { mcpServerRouter } from './routers/mcpServer';
+import { hostedRouter } from './routers/hosted';
+import { resolveLLM } from './lib/gateway.js';
+import * as telemetry from './lib/telemetry.js';
 
 // ─── Compose all routers ───
 const appRouter = router({
@@ -47,6 +50,7 @@ const appRouter = router({
   feedback: feedbackRouter,
   chat: chatRouter,
   standup: standupRouter,
+  hosted: hostedRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -58,18 +62,21 @@ import { randomBytes } from 'node:crypto';
 import { join, extname } from 'node:path';
 
 const MIME: Record<string, string> = {
-  '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-  '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff',
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
 };
 
 // Path to built frontend (relative to project root)
 // In CJS (bundled), __dirname is the Node.js global pointing to this file's directory.
 // In ESM (tsx dev), static serving is handled by Vite; this path won't be used.
-const WEB_DIST = join(
-  typeof __dirname !== 'undefined' ? __dirname : process.cwd(),
-  '..', '..', 'web', 'dist'
-);
+const WEB_DIST = join(typeof __dirname !== 'undefined' ? __dirname : process.cwd(), '..', '..', 'web', 'dist');
 
 function serveStatic(reqUrl: string, res: any) {
   try {
@@ -78,13 +85,19 @@ function serveStatic(reqUrl: string, res: any) {
     if (!existsSync(filePath) || !extname(filePath)) {
       filePath = join(WEB_DIST, 'index.html');
     }
-    if (!existsSync(filePath)) { console.error('[Static] Not found: ' + filePath); return false; }
+    if (!existsSync(filePath)) {
+      console.error('[Static] Not found: ' + filePath);
+      return false;
+    }
     const ext = extname(filePath);
     res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
     res.writeHead(200);
     res.end(readFileSync(filePath));
     return true;
-  } catch (e: any) { console.error('[Static] Error serving ' + reqUrl + ': ' + (e?.message || e)); return false; }
+  } catch (e: any) {
+    console.error('[Static] Error serving ' + reqUrl + ': ' + (e?.message || e));
+    return false;
+  }
 }
 
 const handler = (req: Request) =>
@@ -176,7 +189,37 @@ const server = createServer(async (req, res) => {
 
   // ─── SSE stream handler (before tRPC) ───
   if (req.url?.startsWith('/api/agent/stream') && req.method === 'POST') {
-    try { await handleAgentStream(req, res); } catch(e: any) { console.error('[AgentStream] 500:', e.message); if (!res.headersSent) { res.writeHead(500); res.end(e.message); } }
+    try {
+      await handleAgentStream(req, res);
+    } catch (e: any) {
+      console.error('[AgentStream] 500:', e.message);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end(e.message);
+      }
+    }
+    return;
+  }
+
+  // ─── Anonymous usage telemetry (renderer → local buffer). Consent-gated at
+  // both ends: the renderer client only calls this when opted in, and this
+  // route drops anything when consent is off (204 no-op) as defense in depth.
+  if (req.url === '/api/telemetry/event' && req.method === 'POST') {
+    try {
+      if (await telemetry.getConsent()) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}');
+        if (body && typeof body.name === 'string') {
+          telemetry.track(body.name, body.p).catch(() => {});
+        }
+      }
+      res.writeHead(204);
+      res.end();
+    } catch {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
     return;
   }
 
@@ -185,8 +228,7 @@ const server = createServer(async (req, res) => {
   const request = new Request(url, {
     method: req.method,
     headers: req.headers as HeadersInit,
-    body: req.method !== 'GET' && req.method !== 'HEAD'
-      ? (req as unknown as ReadableStream<Uint8Array>) : null,
+    body: req.method !== 'GET' && req.method !== 'HEAD' ? (req as unknown as ReadableStream<Uint8Array>) : null,
     ...(req.method !== 'GET' && req.method !== 'HEAD' ? { duplex: 'half' as const } : {}),
   });
 
@@ -195,11 +237,15 @@ const server = createServer(async (req, res) => {
       res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
       if (response.body) {
         const reader = response.body.getReader();
-        const pump = () => reader.read().then(({ done, value }) => {
-          if (done) { res.end(); return; }
-          res.write(value);
-          pump();
-        });
+        const pump = () =>
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              res.end();
+              return;
+            }
+            res.write(value);
+            pump();
+          });
         pump();
       } else {
         res.end();
@@ -265,16 +311,18 @@ emailManager.onMessage(async (msg) => {
     const existing = await prisma.smartEmail.findUnique({ where: { messageId: msg.externalId } });
     if (existing) return;
 
-    // Run AI classifier (fallback to heuristic if LLM unavailable)
+    // Run AI classifier (fallback to heuristic if LLM unavailable).
+    // BYOK or hosted gateway both work — resolveLLM supplies a decrypted key.
     let classification;
     try {
-      const cfg = await import('@tomilite/database').then(m => m.prisma.llmConfig.findFirst());
-      const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-      if (provider?.apiKey && cfg) {
-        const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
-        const baseUrl = master?.apiBaseUrl || 'https://api.deepseek.com';
-        const { decrypt } = await import('./lib/crypto.js');
-        classification = await classifyEmail(msg, await decrypt(provider.apiKey), baseUrl, cfg.flashModel || 'deepseek-v4-pro');
+      const llm = await resolveLLM();
+      if (llm) {
+        classification = await classifyEmail(
+          msg,
+          llm.apiKey,
+          llm.baseUrl,
+          llm.flashModel || llm.proModel || 'deepseek-v4-flash',
+        );
       } else {
         classification = heuristicClassify(msg);
       }
@@ -293,7 +341,10 @@ emailManager.onMessage(async (msg) => {
         toAddr: msg.to,
         cc: msg.cc || null,
         subject: msg.subject,
-        date: msg.receivedAt instanceof Date ? msg.receivedAt.toISOString().replace('T', ' ').substring(0, 19) : String(msg.receivedAt),
+        date:
+          msg.receivedAt instanceof Date
+            ? msg.receivedAt.toISOString().replace('T', ' ').substring(0, 19)
+            : String(msg.receivedAt),
         category: classification.category,
         summary: classification.summary,
         replyDraft: classification.replyDraft || null,
@@ -324,49 +375,71 @@ emailManager.onMessage(async (msg) => {
 
 // ─── Background tasks (started by startBackgroundTasks() after server is ready) ───
 function startBackgroundTasks() {
+  // Anonymous usage telemetry — flush shortly after boot, then every 6h
+  setTimeout(() => {
+    telemetry.flush().catch(() => {});
+  }, 60_000);
+  setInterval(() => {
+    telemetry.flush().catch(() => {});
+  }, 6 * 3600_000);
+
   // Hourly cleanup of processed emails older than 12h
   setInterval(cleanupOldEmails, 60 * 60 * 1000);
 
   // Git work directory scanner — every 10 minutes
-  setInterval(() => { scanGitWorkDirs().catch(() => {}); }, 10 * 60 * 1000);
-  setTimeout(() => { scanGitWorkDirs().catch(() => {}); }, 15_000);
+  setInterval(
+    () => {
+      scanGitWorkDirs().catch(() => {});
+    },
+    10 * 60 * 1000,
+  );
+  setTimeout(() => {
+    scanGitWorkDirs().catch(() => {});
+  }, 15_000);
 
   // Report archiver (hourly)
   startReportArchiver();
 
   // Morning & Evening standup — check every 60 seconds
-  setInterval(() => { checkAndGenerateMorning().catch(() => {}); }, 60_000);
+  setInterval(() => {
+    checkAndGenerateMorning().catch(() => {});
+  }, 60_000);
   setInterval(async () => {
     try {
       const cfg = await prisma.systemConfig.findUnique({ where: { key: 'uiLanguage' } });
       checkAndGenerateEvening(cfg?.value || 'en');
-    } catch { /* non-critical */ }
+    } catch {
+      /* non-critical */
+    }
   }, 60_000);
 
   // Workspace roots refresh (every 5 min)
   initWorkspaceRoots();
 
   // Archive old data (3 months) — hide from UI, never delete
-  setInterval(async () => {
-    try {
-      const cutoffIssue = new Date(Date.now() - 90 * 86400000).toISOString().replace('T', ' ').substring(0, 19);
-      const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
-      const a1 = await prisma.issue.deleteMany({
-        where: { status: 'done', updatedAt: { lt: cutoffIssue } },
-      });
-      const a2 = await prisma.gitCommit.updateMany({
-        where: { timestamp: { lt: cutoff }, archived: false },
-        data: { archived: true },
-      });
-      const a3 = await prisma.smartEmail.updateMany({
-        where: { date: { lt: cutoffIssue }, archived: false },
-        data: { archived: true },
-      });
-      if (a1.count + a2.count + a3.count > 0) {
-        console.warn(`[Archive] Issues:${a1.count} Git:${a2.count} Emails:${a3.count}`);
-      }
-    } catch {}
-  }, 60 * 60 * 1000);
+  setInterval(
+    async () => {
+      try {
+        const cutoffIssue = new Date(Date.now() - 90 * 86400000).toISOString().replace('T', ' ').substring(0, 19);
+        const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+        const a1 = await prisma.issue.deleteMany({
+          where: { status: 'done', updatedAt: { lt: cutoffIssue } },
+        });
+        const a2 = await prisma.gitCommit.updateMany({
+          where: { timestamp: { lt: cutoff }, archived: false },
+          data: { archived: true },
+        });
+        const a3 = await prisma.smartEmail.updateMany({
+          where: { date: { lt: cutoffIssue }, archived: false },
+          data: { archived: true },
+        });
+        if (a1.count + a2.count + a3.count > 0) {
+          console.warn(`[Archive] Issues:${a1.count} Git:${a2.count} Emails:${a3.count}`);
+        }
+      } catch {}
+    },
+    60 * 60 * 1000,
+  );
 
   // Auto-start if there are enabled integrations
   setTimeout(async () => {
@@ -383,7 +456,13 @@ function startBackgroundTasks() {
           } catch (err) {
             const errMsg = (err as Error).message;
             console.error(`[Email] Auto-start failed:`, errMsg);
-            try { await prisma.systemConfig.upsert({ where: { key: 'imapLastError' }, create: { key: 'imapLastError', value: errMsg }, update: { value: errMsg } }); } catch {}
+            try {
+              await prisma.systemConfig.upsert({
+                where: { key: 'imapLastError' },
+                create: { key: 'imapLastError', value: errMsg },
+                update: { value: errMsg },
+              });
+            } catch {}
           }
         }
       }
@@ -425,22 +504,25 @@ async function ensureSchema() {
     // Only update if the user hasn't customized — old default values only
     { version: 13, sql: "UPDATE LlmConfig SET flashModel = 'deepseek-v4-flash' WHERE flashModel = 'deepseek-chat'" },
     { version: 13, sql: "UPDATE LlmConfig SET proModel = 'deepseek-v4-pro' WHERE proModel = 'deepseek-reasoner'" },
-    { version: 13, sql: "UPDATE LlmConfig SET contextWindow = 128000 WHERE contextWindow = 100000" },
+    { version: 13, sql: 'UPDATE LlmConfig SET contextWindow = 128000 WHERE contextWindow = 100000' },
     { version: 14, sql: 'ALTER TABLE Report ADD COLUMN vector TEXT' },
     { version: 14, sql: 'ALTER TABLE KnowledgePage ADD COLUMN vector TEXT' },
     { version: 15, sql: 'ALTER TABLE LlmConfig ADD COLUMN maxOutputTokens INTEGER DEFAULT 16000' },
-    { version: 16, sql: 'CREATE TABLE IF NOT EXISTS DailyMotto (id TEXT PRIMARY KEY, text TEXT NOT NULL, date TEXT NOT NULL, lang TEXT NOT NULL DEFAULT \'en\', createdAt TEXT DEFAULT (datetime(\'now\',\'localtime\')), UNIQUE(date, lang))' },
-    { version: 17, sql: 'ALTER TABLE DailyMotto ADD COLUMN lang TEXT DEFAULT \'en\'' },
+    {
+      version: 16,
+      sql: "CREATE TABLE IF NOT EXISTS DailyMotto (id TEXT PRIMARY KEY, text TEXT NOT NULL, date TEXT NOT NULL, lang TEXT NOT NULL DEFAULT 'en', createdAt TEXT DEFAULT (datetime('now','localtime')), UNIQUE(date, lang))",
+    },
+    { version: 17, sql: "ALTER TABLE DailyMotto ADD COLUMN lang TEXT DEFAULT 'en'" },
     { version: 18, sql: 'ALTER TABLE SmartEmail ADD COLUMN topicGroup TEXT' },
     { version: 19, sql: 'ALTER TABLE ChatMessage ADD COLUMN threadId TEXT' },
-    { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN transport TEXT DEFAULT \'http\'' },
+    { version: 20, sql: "ALTER TABLE McpServer ADD COLUMN transport TEXT DEFAULT 'http'" },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN headers TEXT' },
-    { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN status TEXT DEFAULT \'unknown\'' },
+    { version: 20, sql: "ALTER TABLE McpServer ADD COLUMN status TEXT DEFAULT 'unknown'" },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN lastError TEXT' },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN lastConnectedAt TEXT' },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN toolsJson TEXT' },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN toolCount INTEGER DEFAULT 0' },
-    { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN hitlMode TEXT DEFAULT \'none\'' },
+    { version: 20, sql: "ALTER TABLE McpServer ADD COLUMN hitlMode TEXT DEFAULT 'none'" },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN hitlConfirmUrl TEXT' },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN updatedAt TEXT' },
   ];
@@ -465,11 +547,11 @@ async function ensureSchema() {
   const root = typeof __dirname !== 'undefined' ? join(__dirname, '..', '..', '..') : process.cwd();
   const prismaCli = join(root, 'node_modules', 'prisma', 'build', 'index.js');
   const candidates = [
-    join(root, '..', 'prisma', 'schema.prisma'),          // packaged (extraResources)
+    join(root, '..', 'prisma', 'schema.prisma'), // packaged (extraResources)
     join(root, 'packages', 'database', 'prisma', 'schema.prisma'), // dev
-    join(root, 'prisma', 'schema.prisma'),                 // fallback
+    join(root, 'prisma', 'schema.prisma'), // fallback
   ];
-  const schemaPath = candidates.find(p => existsSync(p)) || candidates[0];
+  const schemaPath = candidates.find((p) => existsSync(p)) || candidates[0];
   try {
     // Use Electron's bundled Node.js (or system node in dev)
     const nodeBin = process.env.ELECTRON_RUN_AS_NODE === '1' ? process.execPath : 'node';
@@ -481,7 +563,9 @@ async function ensureSchema() {
     const schemaEngine = join(engineDir, 'schema-engine-windows.exe');
     // OTA: additive-only migrations. Remove --accept-data-loss — never silently drop user data.
     (execSync as any)(`"${nodeBin}" "${prismaCli}" db push --schema="${schemaPath}" --skip-generate`, {
-      stdio: 'pipe', timeout: 60000, shell: true,
+      stdio: 'pipe',
+      timeout: 60000,
+      shell: true,
       env: Object.assign({}, process.env, {
         ELECTRON_RUN_AS_NODE: '1',
         npm_config_cache: join(DATA_DIR, 'npm-cache'),
@@ -508,7 +592,9 @@ async function ensureSchema() {
         create: { key: 'schemaVersion', value: String(SCHEMA_VERSION) },
         update: { value: String(SCHEMA_VERSION) },
       });
-    } catch { /* non-critical */ }
+    } catch {
+      /* non-critical */
+    }
     return false;
   }
 }
@@ -553,23 +639,44 @@ async function ensureSeed() {
     await prisma.llmProviderMaster.upsert({
       where: { name: 'anthropic' },
       update: {},
-      create: { name: 'anthropic', displayName: 'Anthropic', apiBaseUrl: 'https://api.anthropic.com/v1', requiresKey: true },
+      create: {
+        name: 'anthropic',
+        displayName: 'Anthropic',
+        apiBaseUrl: 'https://api.anthropic.com/v1',
+        requiresKey: true,
+      },
     });
     await prisma.llmProviderMaster.upsert({
       where: { name: 'qwen' },
       update: {},
-      create: { name: 'qwen', displayName: 'Qwen (通义千问)', apiBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', requiresKey: true },
+      create: {
+        name: 'qwen',
+        displayName: 'Qwen (通义千问)',
+        apiBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        requiresKey: true,
+      },
     });
     await prisma.llmProviderMaster.upsert({
       where: { name: 'kimi' },
       update: {},
-      create: { name: 'kimi', displayName: 'Kimi (Moonshot)', apiBaseUrl: 'https://api.moonshot.cn/v1', requiresKey: true },
+      create: {
+        name: 'kimi',
+        displayName: 'Kimi (Moonshot)',
+        apiBaseUrl: 'https://api.moonshot.cn/v1',
+        requiresKey: true,
+      },
     });
     // Ensure LlmConfig exists (needed for model selection; standalone seed.ts also does this)
     await prisma.llmConfig.upsert({
       where: { id: 'llm-default' },
       update: {},
-      create: { id: 'llm-default', flashModel: 'deepseek-v4-flash', proModel: 'deepseek-v4-pro', contextWindow: 128000, maxOutputTokens: 16000 },
+      create: {
+        id: 'llm-default',
+        flashModel: 'deepseek-v4-flash',
+        proModel: 'deepseek-v4-pro',
+        contextWindow: 128000,
+        maxOutputTokens: 16000,
+      },
     });
   } catch (e: any) {
     console.error('[Seed] Error:', e.message);
@@ -579,7 +686,9 @@ async function ensureSeed() {
 // Initialize FTS5 full-text search
 async function initFTS5() {
   try {
-    await prisma.$executeRawUnsafe(`CREATE VIRTUAL TABLE IF NOT EXISTS global_fts USING fts5(type, title, body, ref_id, tokenize='porter unicode61')`);
+    await prisma.$executeRawUnsafe(
+      `CREATE VIRTUAL TABLE IF NOT EXISTS global_fts USING fts5(type, title, body, ref_id, tokenize='porter unicode61')`,
+    );
     // Sync triggers for real-time indexing
     const triggers = [
       `CREATE TRIGGER IF NOT EXISTS fts_issue_i AFTER INSERT ON Issue BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('issue',new.title,new.description,new.id); END`,
@@ -599,14 +708,26 @@ async function initFTS5() {
       `CREATE TRIGGER IF NOT EXISTS fts_report_d AFTER DELETE ON Report BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='report'; END`,
     ];
     for (const sql of triggers) {
-      try { await prisma.$executeRawUnsafe(sql); } catch {}
+      try {
+        await prisma.$executeRawUnsafe(sql);
+      } catch {}
     }
     // Initial population (INSERT OR IGNORE to skip duplicates)
-    await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'issue',title,COALESCE(description,''),id FROM Issue`);
-    await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'note',title,COALESCE(content,''),id FROM KnowledgePage`);
-    await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'email',subject,COALESCE(bodySnapshot,summary,''),id FROM SmartEmail`);
-    await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'git',message,author,id FROM GitCommit`);
-    await prisma.$executeRawUnsafe(`INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'report',title,COALESCE(content,''),id FROM Report`);
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'issue',title,COALESCE(description,''),id FROM Issue`,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'note',title,COALESCE(content,''),id FROM KnowledgePage`,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'email',subject,COALESCE(bodySnapshot,summary,''),id FROM SmartEmail`,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'git',message,author,id FROM GitCommit`,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'report',title,COALESCE(content,''),id FROM Report`,
+    );
     console.warn('[Init] FTS5 search index ready');
   } catch (e: any) {
     console.error('[Init] FTS5 setup failed:', e.message);
@@ -616,14 +737,21 @@ async function initFTS5() {
 // Run DB migration FIRST, then start server (avoids race: query before column exists)
 const PORT = parseInt(process.env.API_PORT || '3091', 10);
 
-ensureSchema().then((schemaOk) => {
-  if (!schemaOk) { console.error('[Init] Schema push failed'); }
-  return ensureSeed();
-}).then(initFTS5).then(() => {
-  console.warn('[Init] Database ready');
-  startBackgroundTasks();
-  // Start HTTP server only after DB is fully ready
-  server.listen(PORT, () => {
-    console.warn(`TomiLite API running on http://localhost:${PORT}/api`);
+ensureSchema()
+  .then((schemaOk) => {
+    if (!schemaOk) {
+      console.error('[Init] Schema push failed');
+    }
+    return ensureSeed();
+  })
+  .then(initFTS5)
+  .then(() => {
+    console.warn('[Init] Database ready');
+    startBackgroundTasks();
+    // Telemetry boot hook (install id + app_launch if opted in) — DB is ready here
+    telemetry.init().catch(() => {});
+    // Start HTTP server only after DB is fully ready
+    server.listen(PORT, () => {
+      console.warn(`TomiLite API running on http://localhost:${PORT}/api`);
+    });
   });
-});

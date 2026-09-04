@@ -29,9 +29,10 @@ import { createMCPClient } from '../mcp/client.js';
 import { decrypt } from '../../lib/crypto.js';
 import { prisma } from '@tomilite/database';
 import { executeEmailTool } from '../../routers/emailTools.js';
+import { track as telTrack } from '../../lib/telemetry.js';
 
 /** Central dispatcher: routes tool name → handler function, with email fallback */
-export async function executeAgentTool(tool: string, args: Record<string, any>): Promise<any> {
+async function dispatchTool(tool: string, args: Record<string, any>): Promise<any> {
   switch (tool) {
     case 'create_issue':
     case 'force_create_issue':
@@ -183,4 +184,12 @@ export async function executeAgentTool(tool: string, args: Record<string, any>):
       return { error: `Unknown tool: ${tool}` };
     }
   }
+}
+
+/** Public entry — records which agent tool actually ran (name only, no args). */
+export async function executeAgentTool(tool: string, args: Record<string, any>): Promise<any> {
+  const res = await dispatchTool(tool, args);
+  const failed = res && typeof res === 'object' && 'error' in res ? (res as Record<string, unknown>).error : null;
+  if (!failed) telTrack('tool.' + tool).catch(() => {});
+  return res;
 }

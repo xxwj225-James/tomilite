@@ -75,11 +75,15 @@ export const api = {
     heartbeat: (data: any) => trpcMutate('focus.heartbeat', data),
   },
   system: {
-    checkUpdate: () => trpcCall('system.checkUpdate') as Promise<{ latest?: { isNewer?: boolean; version?: string; releaseNotes?: string; downloadUrl?: string } }>,
+    checkUpdate: () =>
+      trpcCall('system.checkUpdate') as Promise<{
+        latest?: { isNewer?: boolean; version?: string; releaseNotes?: string; downloadUrl?: string };
+      }>,
     currentVersion: () => trpcCall('system.currentVersion') as Promise<{ version: string }>,
     notifyCount: () => trpcCall('system.notifyCount') as Promise<{ count: number }>,
     clearNotifications: () => trpcMutate('system.clearNotifications', {}),
     getConfig: (key: string) => trpcCall('system.getConfig', { key }),
+    setConfig: (data: { key: string; value: string }) => trpcMutate('system.setConfig', data),
     isSetupCompleted: () => trpcCall('system.isSetupCompleted'),
     markSetupCompleted: () => trpcMutate('system.markSetupCompleted', {}),
   },
@@ -93,13 +97,53 @@ export const api = {
     getEveningReport: (lang: string) => trpcMutate('standup.getEveningReport', { lang }),
     getEveningStatus: () => trpcCall('standup.getEveningStatus'),
     getSettings: () => trpcCall('standup.getSettings'),
-    saveSettings: (data: { morning: boolean; morningTime?: string; evening: boolean; eveningTime?: string }) => trpcMutate('standup.saveSettings', data),
+    saveSettings: (data: { morning: boolean; morningTime?: string; evening: boolean; eveningTime?: string }) =>
+      trpcMutate('standup.saveSettings', data),
   },
   llm: {
     getConfig: () => trpcCall('llm.getConfig'),
     saveConfig: (data: any) => trpcMutate('llm.saveConfig', data),
     saveProvider: (data: any) => trpcMutate('llm.saveProvider', data),
     testConnection: (data: any) => trpcMutate('llm.testConnection', data),
+  },
+  hosted: {
+    status: () =>
+      trpcCall('hosted.status') as Promise<{ active: boolean; loggedIn: boolean; email: string; enabled: boolean }>,
+    config: () => trpcCall('hosted.config') as Promise<{ ok: boolean; data?: any; error?: string }>,
+    sendCode: (email: string) =>
+      trpcMutate('hosted.sendCode', { email }) as Promise<{
+        ok: boolean;
+        code?: string;
+        error?: string;
+        resendAfterSec?: number;
+      }>,
+    verify: (email: string, code: string) =>
+      trpcMutate('hosted.verify', { email, code }) as Promise<{
+        ok: boolean;
+        code?: string;
+        error?: string;
+        plan?: string;
+        creditCny?: number;
+        models?: any[];
+      }>,
+    usage: () =>
+      trpcCall('hosted.usage') as Promise<{
+        ok: boolean;
+        data?: any;
+        error?: string;
+        expired?: boolean;
+        code?: string;
+      }>,
+    enable: () => trpcMutate('hosted.enableHosted', {}),
+    disable: () => trpcMutate('hosted.disableHosted', {}),
+    logout: () => trpcMutate('hosted.logout', {}),
+    submitIntent: (answer: 'yes' | 'price' | 'undecided' | 'no') =>
+      trpcMutate('hosted.submitIntent', { answer }) as Promise<{
+        ok: boolean;
+        answer?: string;
+        code?: string;
+        error?: string;
+      }>,
   },
   agent: {
     chat: (data: any) => trpcMutate('agent.chat', data),
@@ -120,18 +164,21 @@ export const api = {
     connectIMAP: () => trpcMutate('email.connectIMAP', {}),
     stats: () => trpcCall('email.stats'),
     sendReport: (data: any) => trpcMutate('email.sendReport', data),
-    subGroupByCategory: (emailIds: string[], category: number, lang: string) => trpcMutate('email.subGroupByCategory', { emailIds, category, lang }),
+    subGroupByCategory: (emailIds: string[], category: number, lang: string) =>
+      trpcMutate('email.subGroupByCategory', { emailIds, category, lang }),
   },
   report: {
     list: (limit?: number) => trpcCall('report.list', { limit: limit || 50 }),
-    save: (data: { reportType: string; title: string; content: string; id?: string }) => trpcMutate('report.save', data),
+    save: (data: { reportType: string; title: string; content: string; id?: string }) =>
+      trpcMutate('report.save', data),
     delete: (id: string) => trpcMutate('report.delete', { id }),
     byId: (id: string) => trpcCall('report.byId', { id }),
     markSent: (id: string) => trpcMutate('report.markSent', { id }),
   },
   feedback: {
     list: () => trpcCall('feedback.list'),
-    create: (data: { type: string; title: string; body: string; email?: string }) => trpcMutate('feedback.create', data),
+    create: (data: { type: string; title: string; body: string; email?: string }) =>
+      trpcMutate('feedback.create', data),
     updateStatus: (id: string, status: string) => trpcMutate('feedback.updateStatus', { id, status }),
     delete: (id: string) => trpcMutate('feedback.delete', { id }),
   },
@@ -145,9 +192,22 @@ export const api = {
       if (threadId !== undefined) params.threadId = threadId ?? null;
       return trpcCall('chat.getMessages', params);
     },
-    addMessage: (data: { id?: string; sessionId: string; role: 'user' | 'assistant'; text: string; tool?: string; staged?: string; card?: string; reasoningContent?: string; pinnable?: boolean; threadId?: string | null }) => trpcMutate('chat.addMessage', data),
-    updateMessage: (data: { id: string; card?: string; staged?: string; text?: string }) => trpcMutate('chat.updateMessage', data),
-    clearMessages: (sessionId: string, threadId?: string | null) => trpcMutate('chat.clearMessages', { sessionId, threadId: threadId ?? null }),
+    addMessage: (data: {
+      id?: string;
+      sessionId: string;
+      role: 'user' | 'assistant';
+      text: string;
+      tool?: string;
+      staged?: string;
+      card?: string;
+      reasoningContent?: string;
+      pinnable?: boolean;
+      threadId?: string | null;
+    }) => trpcMutate('chat.addMessage', data),
+    updateMessage: (data: { id: string; card?: string; staged?: string; text?: string }) =>
+      trpcMutate('chat.updateMessage', data),
+    clearMessages: (sessionId: string, threadId?: string | null) =>
+      trpcMutate('chat.clearMessages', { sessionId, threadId: threadId ?? null }),
     listThreads: (sessionId: string) => trpcCall('chat.listThreads', { sessionId }),
   },
 };

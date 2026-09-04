@@ -1,6 +1,6 @@
 import { router, publicProcedure, z } from '../../trpc.js';
 import { prisma } from '@tomilite/database';
-import { decrypt } from '../../lib/crypto.js';
+import { resolveLLM } from '../../lib/gateway.js';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
 /** Non-streaming chat, board stats, project stats, LLM config status, intent classification */
@@ -10,47 +10,42 @@ export const agentRouter = router({
    * No tools, no Guard — just sends history to LLM and returns the response.
    */
   chat: publicProcedure
-    .input(z.object({
-      message: z.string(),
-      history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string(), reasoning_content: z.string().optional(), tool_calls: z.any().optional() })).default([]),
-    }))
+    .input(
+      z.object({
+        message: z.string(),
+        history: z
+          .array(
+            z.object({
+              role: z.enum(['user', 'assistant']),
+              content: z.string(),
+              reasoning_content: z.string().optional(),
+              tool_calls: z.any().optional(),
+            }),
+          )
+          .default([]),
+      }),
+    )
     .mutation(async ({ input }) => {
-      const cfg = await prisma.llmConfig.findFirst({ include: { flashProvider: true, proProvider: true } });
-
-      let baseUrl = '';
-      let apiKey = '';
-      let model = '';
-
-      if (cfg) {
-        const activeProvider = cfg.proProvider || cfg.flashProvider;
-        if (activeProvider) {
-          const master = await prisma.llmProviderMaster.findUnique({ where: { id: activeProvider.providerId } });
-          if (master) baseUrl = master.apiBaseUrl;
-          apiKey = activeProvider.apiKey || '';
-        }
-        model = cfg.proModel || cfg.flashModel;
+      // BYOK or hosted gateway — resolveLLM decrypts the key and returns the endpoint.
+      const llm = await resolveLLM();
+      if (!llm) {
+        return {
+          content: '⚠️ No API key configured. Go to Settings → 🤖 LLM to set up your DeepSeek API key.',
+          tool: null,
+        };
       }
-
-      if (!apiKey) {
-        const standaloneProvider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-        if (standaloneProvider) {
-          apiKey = standaloneProvider.apiKey || '';
-          const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: standaloneProvider.id } } } });
-          baseUrl = master?.apiBaseUrl || baseUrl;
-        }
-      }
-
-      if (!apiKey) {
-        return { content: '⚠️ No API key configured. Go to Settings → 🤖 LLM to set up your DeepSeek API key.', tool: null };
-      }
+      const baseUrl = llm.baseUrl;
+      const apiKey = llm.apiKey;
+      const model = llm.proModel || llm.flashModel;
 
       const systemPrompt = `You are Tomi, the AI inside TomiLite. Never say you are Kimi, Moonshot, or any other AI — you are Tomi. Be encouraging, use emojis naturally. End every response with one short suggestion. Current project: My Project (key: TL). Use tools when asked. Keep 2-4 sentences + suggestion.`;
 
       const messages: any[] = [
         { role: 'system', content: systemPrompt },
-        ...input.history.map(h => {
+        ...input.history.map((h) => {
           const entry: any = { role: h.role, content: h.content };
-          if (h.reasoning_content && h.tool_calls && h.tool_calls.length > 0) entry.reasoning_content = h.reasoning_content;
+          if (h.reasoning_content && h.tool_calls && h.tool_calls.length > 0)
+            entry.reasoning_content = h.reasoning_content;
           return entry;
         }),
         { role: 'user', content: input.message },
@@ -59,14 +54,15 @@ export const agentRouter = router({
       try {
         const resp = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({ model, messages, max_tokens: 2000 }),
           signal: AbortSignal.timeout(60000),
         });
 
         if (!resp.ok) {
           const errText = await resp.text().catch(() => '');
-          if (resp.status === 401) return { content: '❌ Invalid API key. Check your DeepSeek API key in Settings → 🤖 LLM.', tool: null };
+          if (resp.status === 401)
+            return { content: '❌ Invalid API key. Check your DeepSeek API key in Settings → 🤖 LLM.', tool: null };
           return { content: `❌ API error (${resp.status}). ${errText.substring(0, 200)}`, tool: null };
         }
 
@@ -90,10 +86,10 @@ export const agentRouter = router({
     });
     if (!board) return { columns: [] };
     return {
-      columns: board.columns.map(col => ({
+      columns: board.columns.map((col) => ({
         name: col.name,
         count: col.cards.length,
-        issues: col.cards.map(c => ({
+        issues: col.cards.map((c) => ({
           key: `TL-${c.issue?.issueNumber || '?'}`,
           title: c.issue?.title || '',
           priority: c.issue?.priority || 'medium',
@@ -110,40 +106,49 @@ export const agentRouter = router({
     const issues = await prisma.issue.findMany({ where: { projectId: DEFAULT_PROJECT_ID } });
     return {
       total: issues.length,
-      todo: issues.filter(i => i.status === 'todo').length,
-      inProgress: issues.filter(i => ['in_progress', 'in_review'].includes(i.status)).length,
-      done: issues.filter(i => i.status === 'done').length,
-      issues: issues.slice(0, 10).map(i => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority })),
+      todo: issues.filter((i) => i.status === 'todo').length,
+      inProgress: issues.filter((i) => ['in_progress', 'in_review'].includes(i.status)).length,
+      done: issues.filter((i) => i.status === 'done').length,
+      issues: issues
+        .slice(0, 10)
+        .map((i) => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority })),
     };
   }),
 
   status: publicProcedure.query(async () => {
-    const standaloneProvider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
+    const llm = await resolveLLM();
     const cfg = await prisma.llmConfig.findFirst();
-    const hasCloudKey = !!(standaloneProvider?.apiKey);
+    const hasHosted = llm?.mode === 'hosted';
+    const hasCloudKey = llm?.mode === 'byok';
     const hasOllama = cfg?.ollamaEnabled && cfg?.ollamaUrl;
     let displayName = 'DeepSeek';
-    if (standaloneProvider?.providerId) {
-      const master = await prisma.llmProviderMaster.findUnique({ where: { id: standaloneProvider.providerId } });
-      if (master?.displayName) displayName = master.displayName;
+    let model = cfg?.proModel || cfg?.flashModel || undefined;
+    if (llm?.mode === 'byok') {
+      const standaloneProvider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
+      if (standaloneProvider?.providerId) {
+        const master = await prisma.llmProviderMaster.findUnique({ where: { id: standaloneProvider.providerId } });
+        if (master?.displayName) displayName = master.displayName;
+      }
+      model = llm.proModel || llm.flashModel || model;
+    } else if (hasHosted) {
+      displayName = 'Hosted gateway';
+      model = llm?.proModel || llm?.flashModel || model;
     }
     return {
-      configured: hasCloudKey || hasOllama,
+      configured: hasCloudKey || hasHosted || hasOllama,
       provider: displayName,
-      model: cfg?.proModel || cfg?.flashModel,
+      model,
     };
   }),
 
   classifyIntent: publicProcedure
     .input(z.object({ message: z.string(), cardType: z.string(), blockedTitle: z.string() }))
     .mutation(async ({ input }) => {
-      const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-      if (!provider?.apiKey) return { intent: 'other' };
-      const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
-      const cfg = await prisma.llmConfig.findFirst();
-      const baseUrl = master?.apiBaseUrl;
-      const model = cfg?.flashModel;
-      const apiKey = await decrypt(provider.apiKey);
+      const llm = await resolveLLM();
+      if (!llm) return { intent: 'other' };
+      const baseUrl = llm.baseUrl;
+      const model = llm.flashModel || llm.proModel;
+      const apiKey = llm.apiKey;
 
       const prompt = `CONTEXT: The user asked to create a ${input.cardType} titled "${input.blockedTitle}". The system blocked it as a duplicate and showed a card with buttons: [强行创建 / Force Create] and [取消 / Cancel]. The user is now responding to this blocked card.
 
@@ -159,8 +164,16 @@ JSON:`;
 
       try {
         const resp = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 50, temperature: 0, response_format: { type: 'json_object' }, thinking: { type: 'disabled' } }),
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 50,
+            temperature: 0,
+            response_format: { type: 'json_object' },
+            thinking: { type: 'disabled' },
+          }),
           signal: AbortSignal.timeout(4000),
         });
         if (resp.ok) {
@@ -170,9 +183,13 @@ JSON:`;
             const intent = parsed.intent || '';
             if (intent.includes('force') || intent.includes('proceed')) return { intent: 'confirm' };
             if (intent.includes('stop') || intent.includes('cancel')) return { intent: 'cancel' };
-          } catch { /* malformed JSON, fall through */ }
+          } catch {
+            /* malformed JSON, fall through */
+          }
         }
-      } catch { /* timeout or network error */ }
+      } catch {
+        /* timeout or network error */
+      }
       return { intent: 'other' };
     }),
 });

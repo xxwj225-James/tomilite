@@ -16,21 +16,43 @@ export function useSetupChecks() {
   useEffect(() => {
     // Check all setup statuses, then decide whether to show welcome guide
     Promise.all([
-      api.llm.getConfig().then((d: any) => !!d?.activeProvider?.hasKey).catch(() => false),
-      fetch('/api/email.getConfig').then(r => r.json()).then(d => (d.result?.data || []).some((c: any) => c.type === 'imap')).catch(() => false),
-      fetch('/api/git.listWorkDirs').then(r => r.json()).then(d => (d.result?.data || []).length > 0).catch(() => false),
-      fetch('/api/apikey.list').then(r => r.json()).then(d => (d.result?.data || []).length > 0).catch(() => false),
-      fetch('/api/standup.getSettings').then(r => r.json()).then(d => !!(d.result?.data?.evening)).catch(() => false),
-      fetch('/api/mcpServer.list').then(r => r.json()).then(d => (d?.result?.data || []).filter((s: any) => s.enabled).length > 0).catch(() => false),
-    ]).then(([hasLLM, hasEmail, hasGit, hasApikey, hasStandup, hasMcp]) => {
-      setLlmConfigured(hasLLM);
+      api.llm
+        .getConfig()
+        .then((d: any) => !!d?.activeProvider?.hasKey)
+        .catch(() => false),
+      api.hosted
+        .status()
+        .then((s: any) => !!s?.active)
+        .catch(() => false),
+      fetch('/api/email.getConfig')
+        .then((r) => r.json())
+        .then((d) => (d.result?.data || []).some((c: any) => c.type === 'imap'))
+        .catch(() => false),
+      fetch('/api/git.listWorkDirs')
+        .then((r) => r.json())
+        .then((d) => (d.result?.data || []).length > 0)
+        .catch(() => false),
+      fetch('/api/apikey.list')
+        .then((r) => r.json())
+        .then((d) => (d.result?.data || []).length > 0)
+        .catch(() => false),
+      fetch('/api/standup.getSettings')
+        .then((r) => r.json())
+        .then((d) => !!d.result?.data?.evening)
+        .catch(() => false),
+      fetch('/api/mcpServer.list')
+        .then((r) => r.json())
+        .then((d) => (d?.result?.data || []).filter((s: any) => s.enabled).length > 0)
+        .catch(() => false),
+    ]).then(([hasLLM, hasHosted, hasEmail, hasGit, hasApikey, hasStandup, hasMcp]) => {
+      setLlmConfigured(hasLLM || hasHosted);
       setEmailConfigured(hasEmail);
       setGitConfigured(hasGit);
       setApikeyConfigured(hasApikey);
       setStandupConfigured(hasStandup);
       setMcpConfigured(hasMcp);
       // If all DB settings are already configured → auto-dismiss (OTA user with everything set up)
-      if (hasLLM && hasEmail && hasGit && hasApikey && hasStandup && hasMcp) {
+      if ((hasLLM || hasHosted) && hasEmail && hasGit && hasApikey && hasStandup && hasMcp) {
         localStorage.setItem('tl-welcome-dismissed', '1');
       }
       // Show welcome guide if not dismissed
@@ -43,20 +65,42 @@ export function useSetupChecks() {
     if (!showWelcome) return;
     const refresh = () => {
       Promise.all([
-        api.llm.getConfig().then((d: any) => !!d?.activeProvider?.hasKey).catch(() => false),
-        fetch('/api/email.getConfig').then(r => r.json()).then(d => (d.result?.data || []).some((c: any) => c.type === 'imap')).catch(() => false),
-        fetch('/api/git.listWorkDirs').then(r => r.json()).then(d => (d.result?.data || []).length > 0).catch(() => false),
-        fetch('/api/apikey.list').then(r => r.json()).then(d => (d.result?.data || []).length > 0).catch(() => false),
-        fetch('/api/standup.getSettings').then(r => r.json()).then(d => !!(d.result?.data?.evening)).catch(() => false),
-        fetch('/api/mcpServer.list').then(r => r.json()).then(d => (d?.result?.data || []).filter((s: any) => s.enabled).length > 0).catch(() => false),
-      ]).then(([hasLLM, hasEmail, hasGit, hasApikey, hasStandup, hasMcp]) => {
-        setLlmConfigured(hasLLM);
+        api.llm
+          .getConfig()
+          .then((d: any) => !!d?.activeProvider?.hasKey)
+          .catch(() => false),
+        api.hosted
+          .status()
+          .then((s: any) => !!s?.active)
+          .catch(() => false),
+        fetch('/api/email.getConfig')
+          .then((r) => r.json())
+          .then((d) => (d.result?.data || []).some((c: any) => c.type === 'imap'))
+          .catch(() => false),
+        fetch('/api/git.listWorkDirs')
+          .then((r) => r.json())
+          .then((d) => (d.result?.data || []).length > 0)
+          .catch(() => false),
+        fetch('/api/apikey.list')
+          .then((r) => r.json())
+          .then((d) => (d.result?.data || []).length > 0)
+          .catch(() => false),
+        fetch('/api/standup.getSettings')
+          .then((r) => r.json())
+          .then((d) => !!d.result?.data?.evening)
+          .catch(() => false),
+        fetch('/api/mcpServer.list')
+          .then((r) => r.json())
+          .then((d) => (d?.result?.data || []).filter((s: any) => s.enabled).length > 0)
+          .catch(() => false),
+      ]).then(([hasLLM, hasHosted, hasEmail, hasGit, hasApikey, hasStandup, hasMcp]) => {
+        setLlmConfigured(hasLLM || hasHosted);
         setEmailConfigured(hasEmail);
         setGitConfigured(hasGit);
         setApikeyConfigured(hasApikey);
         setStandupConfigured(hasStandup);
         setMcpConfigured(hasMcp);
-        if (hasLLM && hasEmail && hasGit && hasApikey && hasStandup && hasMcp) {
+        if ((hasLLM || hasHosted) && hasEmail && hasGit && hasApikey && hasStandup && hasMcp) {
           localStorage.setItem('tl-welcome-dismissed', '1');
           setShowWelcome(false);
         }
@@ -68,9 +112,16 @@ export function useSetupChecks() {
   }, [showWelcome]);
 
   return {
-    showWelcome, setShowWelcome,
-    llmConfigured, setLlmConfigured,
-    emailConfigured, gitConfigured, apikeyConfigured, standupConfigured, mcpConfigured,
-    llmBannerDismissed, setLlmBannerDismissed,
+    showWelcome,
+    setShowWelcome,
+    llmConfigured,
+    setLlmConfigured,
+    emailConfigured,
+    gitConfigured,
+    apikeyConfigured,
+    standupConfigured,
+    mcpConfigured,
+    llmBannerDismissed,
+    setLlmBannerDismissed,
   };
 }

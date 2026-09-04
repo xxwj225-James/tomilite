@@ -1,5 +1,6 @@
 import { sendToken, type SSESender } from '../utils/sse.js';
 import { agentLog } from '../utils/logger.js';
+import { isDeepseekEndpoint } from '../../lib/gateway.js';
 
 // ─── Types ───
 
@@ -28,8 +29,19 @@ export function isQwenProvider(baseUrl: string): boolean {
 
 /** Returns true if the provider supports native thinking mode (DeepSeek only) */
 export function supportsThinking(baseUrl: string): boolean {
-  return baseUrl?.includes('deepseek');
+  return isDeepseekEndpoint(baseUrl);
 }
+
+// Gateway (hosted) chat-proxy errors arrive as {code, error}. Map the known
+// codes to user-facing copy so quota/feature failures surface with guidance
+// instead of a raw HTTP status. Every mapped error is non-retryable.
+const GATEWAY_ERROR_TEXT: Record<string, string> = {
+  quota_exhausted: 'Hosted trial quota exhausted — upgrade to Pro in Settings → LLM to continue.',
+  feature_closed: 'Hosted gateway is temporarily closed — please try again later.',
+  account_disabled: 'This hosted account has been disabled — please contact support.',
+  model_not_allowed: 'This model is not allowed on the hosted gateway.',
+  not_configured: 'Hosted gateway is not configured yet — try again later.',
+};
 
 // ─── Streaming LLM client ───
 
@@ -56,12 +68,22 @@ export async function streamLLM(
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
       const { ProxyAgent } = require('undici');
       fetchOpts.dispatcher = new ProxyAgent(proxy);
-    } catch { /* undici not available */ }
+    } catch {
+      /* undici not available */
+    }
   }
-  const providerMaxTokens = !baseUrl?.includes('deepseek') ? 8192 : 16000;
-  const body: Record<string, unknown> = { model, stream: true, messages, max_tokens: Math.min(remainingTokens, providerMaxTokens) };
-  if (toolsList.length > 0) { body.tools = toolsList; body.tool_choice = 'auto'; }
-  if (baseUrl?.includes('deepseek')) {
+  const providerMaxTokens = !isDeepseekEndpoint(baseUrl) ? 8192 : 16000;
+  const body: Record<string, unknown> = {
+    model,
+    stream: true,
+    messages,
+    max_tokens: Math.min(remainingTokens, providerMaxTokens),
+  };
+  if (toolsList.length > 0) {
+    body.tools = toolsList;
+    body.tool_choice = 'auto';
+  }
+  if (isDeepseekEndpoint(baseUrl)) {
     body.thinking = { type: 'enabled' };
   } else if (baseUrl?.includes('dashscope')) {
     // Qwen3.x: enable thinking + parallel tool calls
@@ -73,16 +95,41 @@ export async function streamLLM(
   // OpenAI/Anthropic: standard params only — no extra fields needed
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
     ...fetchOpts,
   });
   if (!resp.ok) {
-    const errText = await resp.text().catch(()=>'');
-    const msgSummary = messages.map((m: any) =>
-      `${m.role}${m.tool_calls ? '+tc(' + m.tool_calls.length + ')' : ''}${m.tool_call_id ? '(id=' + m.tool_call_id.substring(0,8) + ')' : ''}`
-    ).join(' → ');
-    console.error('[LLM] API error', resp.status, '| messages:', messages.length, '| chain:', msgSummary, '| body:', errText.substring(0, 500));
+    const errText = await resp.text().catch(() => '');
+    const msgSummary = messages
+      .map(
+        (m: any) =>
+          `${m.role}${m.tool_calls ? '+tc(' + m.tool_calls.length + ')' : ''}${m.tool_call_id ? '(id=' + m.tool_call_id.substring(0, 8) + ')' : ''}`,
+      )
+      .join(' → ');
+    console.error(
+      '[LLM] API error',
+      resp.status,
+      '| messages:',
+      messages.length,
+      '| chain:',
+      msgSummary,
+      '| body:',
+      errText.substring(0, 500),
+    );
+    let gwCode = '';
+    try {
+      const j = JSON.parse(errText);
+      if (typeof j?.code === 'string') gwCode = j.code;
+    } catch {
+      /* non-JSON error body */
+    }
+    if (gwCode && GATEWAY_ERROR_TEXT[gwCode]) {
+      const e: any = new Error(GATEWAY_ERROR_TEXT[gwCode] + ' (HTTP ' + resp.status + ')');
+      e.code = gwCode;
+      e.gateway = true;
+      throw e;
+    }
     throw new Error(`API error ${resp.status}: ${errText.substring(0, 100)}`);
   }
 
@@ -94,7 +141,10 @@ export async function streamLLM(
   let inThinkingTag = false; // suppress token output inside <thinking> blocks
   let reasoningBuf = ''; // flushed immediately via flushReasoning()
   const flushReasoning = () => {
-    if (reasoningBuf) { send('reasoning', { text: reasoningBuf }); reasoningBuf = ''; }
+    if (reasoningBuf) {
+      send('reasoning', { text: reasoningBuf });
+      reasoningBuf = '';
+    }
   };
   const tcMap: Record<number, { id?: string; name?: string; args: string }> = {};
   const decoder = new TextDecoder();
@@ -102,7 +152,10 @@ export async function streamLLM(
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) { flushReasoning(); break; }
+    if (done) {
+      flushReasoning();
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
@@ -130,8 +183,15 @@ export async function streamLLM(
           while (chunk.length > 0) {
             if (!inThinkingTag) {
               const openIdx = chunk.toLowerCase().indexOf('<thinking>');
-              if (openIdx < 0) { flushReasoning(); if (streamTokens) sendToken(send, chunk); break; }
-              if (openIdx > 0) { flushReasoning(); if (streamTokens) sendToken(send, chunk.substring(0, openIdx)); }
+              if (openIdx < 0) {
+                flushReasoning();
+                if (streamTokens) sendToken(send, chunk);
+                break;
+              }
+              if (openIdx > 0) {
+                flushReasoning();
+                if (streamTokens) sendToken(send, chunk.substring(0, openIdx));
+              }
               inThinkingTag = true;
               chunk = chunk.substring(openIdx + '<thinking>'.length);
             } else {
@@ -141,7 +201,10 @@ export async function streamLLM(
                 flushReasoning();
                 break;
               }
-              if (closeIdx > 0) { reasoningBuf += chunk.substring(0, closeIdx); flushReasoning(); }
+              if (closeIdx > 0) {
+                reasoningBuf += chunk.substring(0, closeIdx);
+                flushReasoning();
+              }
               inThinkingTag = false;
               chunk = chunk.substring(closeIdx + '</thinking>'.length);
             }
@@ -152,13 +215,19 @@ export async function streamLLM(
           reasoningBuf += delta.reasoning_content;
           flushReasoning(); // immediate — prevent content from appearing before reasoning
         }
-      } catch { /* skip malformed SSE lines */ }
+      } catch {
+        /* skip malformed SSE lines */
+      }
     }
   }
   // Final flush
   flushReasoning();
 
-  let toolCalls = Object.values(tcMap).filter(tc => tc.name && tc.id) as Array<{ id: string; name: string; args: string }>;
+  let toolCalls = Object.values(tcMap).filter((tc) => tc.name && tc.id) as Array<{
+    id: string;
+    name: string;
+    args: string;
+  }>;
 
   // Build alias map: v4-pro drops underscores, apply to ALL tool calls
   const KNOWN_TOOLS = new Set(toolsList.map((t: any) => t.function.name));
@@ -182,10 +251,17 @@ export async function streamLLM(
     while (true) {
       const jsonIdx = content.indexOf('{"', searchFrom);
       if (jsonIdx < 0) break;
-      let depth = 0, endIdx = -1;
+      let depth = 0,
+        endIdx = -1;
       for (let i = jsonIdx; i < content.length; i++) {
         if (content[i] === '{') depth++;
-        if (content[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+        if (content[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            endIdx = i;
+            break;
+          }
+        }
       }
       if (endIdx <= jsonIdx) break;
       const jsonStr = content.substring(jsonIdx, endIdx + 1);
@@ -195,17 +271,22 @@ export async function streamLLM(
         const fnMatch = before.match(/(\w[\w_]*)\s*$/);
         const rawName = fnMatch?.[1] || '';
         const resolvedName = KNOWN_TOOLS.has(rawName) ? rawName : toolAliases[rawName] || '';
-        const validCall = fnMatch && resolvedName && (() => {
-          if (fnMatch.index === undefined) return false;
-          const beforeFn = before.substring(0, fnMatch.index);
-          if (beforeFn.length === 0 || beforeFn.endsWith('\n')) return true;
-          return /(?:Using\s+|🔧\s*)$/.test(beforeFn);
-        })();
+        const validCall =
+          fnMatch &&
+          resolvedName &&
+          (() => {
+            if (fnMatch.index === undefined) return false;
+            const beforeFn = before.substring(0, fnMatch.index);
+            if (beforeFn.length === 0 || beforeFn.endsWith('\n')) return true;
+            return /(?:Using\s+|🔧\s*)$/.test(beforeFn);
+          })();
         if (validCall) {
           foundCalls.push({ id: 'v4-' + (Date.now() + foundCalls.length), name: resolvedName, args: jsonStr });
           removeRanges.push([fnMatch.index ?? 0, endIdx]);
         }
-      } catch { /* not valid JSON */ }
+      } catch {
+        /* not valid JSON */
+      }
       searchFrom = endIdx + 1;
     }
     if (foundCalls.length > 0) {
@@ -217,16 +298,34 @@ export async function streamLLM(
       content = clean.trim();
     }
   }
-  if (toolCalls.length > 0) content = content.replace(/\{[\s\S]*?"(title|description|content|status)"[\s\S]*?\}/g, '').trim();
+  if (toolCalls.length > 0)
+    content = content.replace(/\{[\s\S]*?"(title|description|content|status)"[\s\S]*?\}/g, '').trim();
 
   // Strip <thinking> tags from content, accumulate into reasoningContent
-  content = content.replace(/<thinking>([\s\S]*?)<\/thinking>\s*/gi, (_m: string, thinking: string) => {
-    if (!reasoningBuf) reasoningContent = (reasoningContent ? reasoningContent + '\n' : '') + thinking.trim();
-    return '';
-  }).trim();
+  content = content
+    .replace(/<thinking>([\s\S]*?)<\/thinking>\s*/gi, (_m: string, thinking: string) => {
+      if (!reasoningBuf) reasoningContent = (reasoningContent ? reasoningContent + '\n' : '') + thinking.trim();
+      return '';
+    })
+    .trim();
   // Reasoning was already streamed chunk-by-chunk via flushReasoning() — don't resend as blob
-  agentLog('[streamLLM] model=' + model + ' reasoningLen=' + reasoningContent.length + ' contentLen=' + content.length + ' toolCalls=' + toolCalls.length);
-  send('debug', { model, reasoningLen: reasoningContent.length, contentLen: content.length, toolCalls: toolCalls.length, tools: toolCalls.map(tc => tc.name) });
+  agentLog(
+    '[streamLLM] model=' +
+      model +
+      ' reasoningLen=' +
+      reasoningContent.length +
+      ' contentLen=' +
+      content.length +
+      ' toolCalls=' +
+      toolCalls.length,
+  );
+  send('debug', {
+    model,
+    reasoningLen: reasoningContent.length,
+    contentLen: content.length,
+    toolCalls: toolCalls.length,
+    tools: toolCalls.map((tc) => tc.name),
+  });
   return { content, reasoningContent, toolCalls };
 }
 
@@ -242,12 +341,14 @@ export async function streamLLMWithRetry(
 ): Promise<LLMResult> {
   let lastError: any;
   for (let attempt = 0; attempt < 3; attempt++) {
-    try { return await streamLLM(config, messages, toolsList, send, streamTokens); }
-    catch (e: any) {
+    try {
+      return await streamLLM(config, messages, toolsList, send, streamTokens);
+    } catch (e: any) {
       lastError = e;
-      if (attempt < 2) {
+      // Gateway quota/feature errors are final — don't burn retries.
+      if (!e?.gateway && attempt < 2) {
         const delay = Math.pow(2, attempt) * 1000;
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise((r) => setTimeout(r, delay));
       }
     }
   }

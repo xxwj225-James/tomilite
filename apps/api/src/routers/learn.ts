@@ -1,5 +1,6 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
+import { resolveLLM } from '../lib/gateway';
 
 // ═══ Agent Self-Learning — lightweight, no MQ/Celery ═══
 // Captures implicit feedback (reopen, reassign), reflects on startup,
@@ -8,14 +9,16 @@ import { prisma } from '@tomilite/database';
 export const learnRouter = router({
   // ─── Capture feedback ───
   capture: publicProcedure
-    .input(z.object({
-      featureType: z.string(),   // ISSUE_REOPEN, ISSUE_ASSIGN, STATUS_REVERT, etc.
-      aiOutput: z.string(),      // what the AI suggested (e.g. status=done, assignee=X)
-      humanAction: z.string(),   // REJECT / CORRECT
-      humanCorrected: z.string().optional(),
-      issueKey: z.string().optional(),
-      context: z.string().optional(),  // JSON snapshot
-    }))
+    .input(
+      z.object({
+        featureType: z.string(), // ISSUE_REOPEN, ISSUE_ASSIGN, STATUS_REVERT, etc.
+        aiOutput: z.string(), // what the AI suggested (e.g. status=done, assignee=X)
+        humanAction: z.string(), // REJECT / CORRECT
+        humanCorrected: z.string().optional(),
+        issueKey: z.string().optional(),
+        context: z.string().optional(), // JSON snapshot
+      }),
+    )
     .mutation(async ({ input }) => {
       await prisma.aiDecisionFeedback.create({ data: { ...input } });
       return { captured: true };
@@ -41,25 +44,33 @@ export const learnRouter = router({
 
     const patterns = Object.entries(byType)
       .filter(([, v]) => v.rejects > 0)
-      .map(([type, v]) => `${type}: ${v.rejects}/${v.total} rejected (${Math.round(v.rejects / v.total * 100)}%)`);
+      .map(([type, v]) => `${type}: ${v.rejects}/${v.total} rejected (${Math.round((v.rejects / v.total) * 100)}%)`);
 
     // Try LLM reflection
     let insights: string[] = [];
     try {
-      const provider = await prisma.llmProvider.findFirst({ where: { isActive: true } });
-      if (provider?.apiKey) {
-        const master = await prisma.llmProviderMaster.findFirst({ where: { providers: { some: { id: provider.id } } } });
-        const cfg = await prisma.llmConfig.findFirst();
-        const feedbackSummary = recent.slice(0, 10).map(f =>
-          `${f.featureType}: AI said "${f.aiOutput}" → Human ${f.humanAction} → corrected to "${f.humanCorrected || 'N/A'}"`
-        ).join('\n');
+      const llm = await resolveLLM();
+      if (llm) {
+        const feedbackSummary = recent
+          .slice(0, 10)
+          .map(
+            (f) =>
+              `${f.featureType}: AI said "${f.aiOutput}" → Human ${f.humanAction} → corrected to "${f.humanCorrected || 'N/A'}"`,
+          )
+          .join('\n');
 
-        const resp = await fetch(`${master?.apiBaseUrl }/chat/completions`, {
+        const resp = await fetch(`${llm.baseUrl}/chat/completions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provider.apiKey}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llm.apiKey}` },
           body: JSON.stringify({
-            model: cfg?.flashModel , max_tokens: 300,
-            messages: [{ role: 'user', content: `Analyze these AI mistakes and give 2-3 actionable lessons (one sentence each):\n${feedbackSummary}` }],
+            model: llm.flashModel || llm.proModel,
+            max_tokens: 300,
+            messages: [
+              {
+                role: 'user',
+                content: `Analyze these AI mistakes and give 2-3 actionable lessons (one sentence each):\n${feedbackSummary}`,
+              },
+            ],
           }),
           signal: AbortSignal.timeout(20000),
         });
@@ -87,9 +98,12 @@ export const learnRouter = router({
     });
     if (recent.length === 0) return { lessons: 'No past mistakes to learn from.' };
 
-    const lessons = recent.map(f =>
-      `Avoid: ${f.featureType} → "${f.aiOutput}" (user corrected to "${f.humanCorrected || 'something else'}")`
-    ).join(' | ');
+    const lessons = recent
+      .map(
+        (f) =>
+          `Avoid: ${f.featureType} → "${f.aiOutput}" (user corrected to "${f.humanCorrected || 'something else'}")`,
+      )
+      .join(' | ');
 
     return { lessons, count: recent.length };
   }),

@@ -1,6 +1,7 @@
 import type { SSESender } from '../utils/sse.js';
 import type { LLMConfig } from '../llm/client.js';
 import { buildGuardPrompt, type GuardPromptContext } from '../prompts/guardPrompt.js';
+import { isDeepseekEndpoint } from '../../lib/gateway.js';
 
 // ─── Types ───
 
@@ -73,7 +74,7 @@ export async function classifyGuard(
           max_tokens: 200,
           temperature: 0,
           response_format: { type: 'json_object' },
-          ...(config.baseUrl.includes('moonshot') || config.baseUrl.includes('deepseek')
+          ...(config.baseUrl.includes('moonshot') || isDeepseekEndpoint(config.baseUrl)
             ? { thinking: { type: 'disabled' } }
             : {}),
           ...(config.baseUrl.includes('dashscope') ? { enable_thinking: false } : {}),

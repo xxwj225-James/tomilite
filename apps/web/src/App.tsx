@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { tr } from '@/lib/i18n';
+import { tr, t } from '@/lib/i18n';
 import { ContentPanel } from '@/components/ContentPanel';
 import { useUICommandStore } from '@/stores/uiCommandStore';
 import { useLang, useSetLang } from '@/stores/LangContext';
@@ -24,6 +24,8 @@ import { MenuNav } from '@/components/chat/MenuNav';
 import { LlmBanner } from '@/components/chat/LlmBanner';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
+import { TelemetryConsentDialog } from '@/components/TelemetryConsentDialog';
+import { setConsent as telSetConsent, track as telTrack } from '@/lib/telemetry';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { applyTheme, getTheme } from '@/lib/constants';
 import type { StagedEdit } from '@/types/chat';
@@ -190,6 +192,80 @@ export function App() {
     llmBannerDismissed,
     setLlmBannerDismissed,
   } = useSetupChecks();
+
+  // ─── Anonymous usage telemetry — first-run opt-in (nothing is captured
+  // until the user agrees). Consent is stored server-side (SystemConfig
+  // 'telemetry.consent'); this dialog only asks when the key is unset. ───
+  const [consentOpen, setConsentOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api.system
+      .getConfig('telemetry.consent')
+      .then((v: any) => {
+        if (!alive) return;
+        telSetConsent(v === 'yes');
+        if (v === null || v === undefined) setConsentOpen(true);
+      })
+      .catch(() => {
+        if (alive) telSetConsent(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ─── Hosted gateway closed? Poll while a hosted session is routing LLM traffic, so the
+  // chat input can warn BEFORE a request 403s (gateway total switch featureOpen=false). ───
+  const [hostedClosed, setHostedClosed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const st: any = await api.hosted.status();
+        if (!st?.active) {
+          if (alive) setHostedClosed(false);
+          return;
+        }
+        const cfg: any = await api.hosted.config();
+        if (alive) setHostedClosed(!!cfg?.ok && cfg.data?.featureOpen === false);
+      } catch {
+        if (alive) setHostedClosed(false);
+      }
+    };
+    check();
+    const iv = setInterval(check, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, []);
+
+  const onConsentAgree = async () => {
+    try {
+      await api.system.setConfig({ key: 'telemetry.consent', value: 'yes' });
+    } catch {}
+    telSetConsent(true);
+    setConsentOpen(false);
+    // One-shot profile: which integrations were already configured at opt-in.
+    // (The server itself logs app_launch when consent flips to 'yes'.)
+    telTrack('profile.activation', {
+      llm: llmConfigured,
+      email: emailConfigured,
+      git: gitConfigured,
+      apikey: apikeyConfigured,
+      standup: standupConfigured,
+      mcp: mcpConfigured,
+    });
+  };
+
+  const onConsentDecline = async () => {
+    try {
+      await api.system.setConfig({ key: 'telemetry.consent', value: 'no' });
+    } catch {}
+    telSetConsent(false);
+    setConsentOpen(false);
+  };
 
   // SSE send/stop core — pre-flight checks + streaming agent loop
   const { sendMessage, stopStream, sendMessageRef, forceCreateRef } = useSendMessage({
@@ -566,6 +642,22 @@ export function App() {
                   onDismiss={() => setLlmBannerDismissed(true)}
                 />
               )}
+              {hostedClosed && (
+                <div
+                  style={{
+                    margin: '0 12px 8px',
+                    padding: '6px 10px',
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    color: 'var(--amber)',
+                    background: 'var(--surface2)',
+                    border: '1px solid var(--amber)',
+                    borderRadius: 8,
+                  }}
+                >
+                  {t('hosted.closedBanner', lang)}
+                </div>
+              )}
               <ChatInput
                 query={query}
                 setQuery={setQuery}
@@ -676,6 +768,7 @@ export function App() {
         }}
         onStopDownloadCancel={() => setStopDownloadConfirm(false)}
       />
+      <TelemetryConsentDialog open={consentOpen} onAgree={onConsentAgree} onDecline={onConsentDecline} />
     </div>
   );
 }
