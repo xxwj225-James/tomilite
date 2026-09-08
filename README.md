@@ -1,8 +1,18 @@
 # TomiLite
 
+Your local AI workspace that remembers your context.
+
+TomiLite connects your AI agent with
+tasks, notes, knowledge, email and projects.
+
 ![TomiLite — chat-first AI agent](docs/images/home.jpg)
 
-AI-powered personal productivity desktop app — chat with an AI agent that manages your tasks, notes, emails, and daily reports. Built with Electron + React + tRPC + SQLite + Milkdown.
+## Why TomiLite?
+
+AI can answer questions.
+But it doesn't know what you're working on.
+
+TomiLite gives your AI a persistent workspace.
 
 > 🌐 **Official Website**: [tomatovector.com](https://tomatovector.com) — AI-powered next-generation R&D ecosystem
 >
