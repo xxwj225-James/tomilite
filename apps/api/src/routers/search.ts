@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../lib/gateway';
+import { webSearch } from '../agent/tools/searchTools.js';
 
 // ═══ FTS5 Full-Text Search ═══
 // global_fts virtual table created by initFTS5() in server.ts
@@ -105,30 +106,15 @@ export const searchRouter = router({
       }
     }),
 
-  // ═══ Web Search (LLM-powered) ═══
+  // ═══ Web Search ═══
+  //
+  // This used to ask the LLM to "provide a concise answer" without giving it any
+  // tool or fetching anything — so it returned the model's recollection dressed up
+  // as search results, and returned nothing at all whenever no LLM was configured.
+  // It now performs the same real HTTP search the agent's web_search tool uses.
   webSearch: publicProcedure.input(z.object({ query: z.string() })).query(async ({ input }) => {
-    try {
-      const llm = await resolveLLM();
-      if (!llm) return { results: [], source: 'no_api_key' };
-      const resp = await fetch(`${llm.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llm.apiKey}` },
-        body: JSON.stringify({
-          model: llm.flashModel || llm.proModel,
-          max_tokens: 500,
-          messages: [
-            { role: 'user', content: `Search query: "${input.query}". Provide a concise answer with key facts.` },
-          ],
-        }),
-        signal: AbortSignal.timeout(20000),
-      });
-      if (!resp.ok) return { results: [], source: 'error' };
-      const data = await resp.json();
-      const content = data.choices?.[0]?.message?.content;
-      return { results: content ? [{ title: input.query, snippet: content }] : [], source: 'llm' };
-    } catch {
-      return { results: [], source: 'unavailable' };
-    }
+    const { results, source, message } = await webSearch({ query: input.query });
+    return { results, source: source ?? 'unknown', message };
   }),
 
   // ═══ AI Issue Review ═══

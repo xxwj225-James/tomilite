@@ -14,3 +14,6 @@ packages/database/prisma/generated/
 .encryption_key
 .api_token
 *.log
+# Stray output from ad-hoc `npm run … > run_out.txt 2> run_err.txt` debugging.
+run_out.txt
+run_err.txt

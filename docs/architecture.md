@@ -152,8 +152,8 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 
 ### 6.2 AI Agent
 
-- **~30 built-in tools** (`apps/api/src/agent/tools/registry.ts` + `emailTools.ts`): issues (`create_issue`, `force_create_issue`, `get_issue`, `list_issues`, `update_issue`, `suggest_issue_edit`), notes (`create_note`, `update_note`, `list_notes`, `search_notes`, `suggest_note_edit`, `force_create_note`), reports (`create_report`, `update_report`, `get_report`, `list_reports`, `delete_report`, `suggest_report_edit`, `polish_report`, `summarize_report`, `expand_report`, `translate_report`, `force_create_report`), email (`list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email`), search (`search_local_data`, `brave_search`, `web_search`), git (`list_git_commits`, `list_workspaces`), stats/exec (`get_stats`, `shell_exec`), export (`export_to_excel`, `export_to_doc`), plus MCP-injected tools as `mcp__<server>__<tool>` (capped at 25)
-- **LLM Function Calling**: streaming + tool calls; tools are pruned based on open editors
+- **~30 built-in tools** (`apps/api/src/agent/tools/registry.ts` + `emailTools.ts`): issues (`create_issue`, `force_create_issue`, `get_issue`, `list_issues`, `update_issue`, `suggest_issue_edit`), notes (`create_note`, `update_note`, `list_notes`, `search_notes`, `suggest_note_edit`, `force_create_note`), reports (`create_report`, `update_report`, `get_report`, `list_reports`, `delete_report`, `suggest_report_edit`, `polish_report`, `summarize_report`, `expand_report`, `translate_report`, `force_create_report`), email (`list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email`), search (`search_local_data`, `web_search`, plus `brave_search` when a Brave key is present), git (`list_git_commits`, `list_workspaces`), stats/exec (`get_stats`, `shell_exec`), export (`export_to_excel`, `export_to_doc`), plus MCP-injected tools as `mcp__<server>__<tool>` (capped at 25)
+- **LLM Function Calling**: streaming + tool calls; tools are pruned based on open editors, and any tool that cannot work in the current environment is withheld rather than offered and failed (e.g. `brave_search` without a key)
 - **Fallback strategy**: no API Key → `LlmBanner` soft-gate banner blocks sending until configured (no wasted API call)
 
 ### 6.3 Personal Health Score (AI Health)
@@ -170,7 +170,7 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
 
 ### 6.4 FTS5 Search + AI Issue Review
 
-- **Full-text search**: local sources — issues, notes, reports, emails, git commits (`search_local_data`) — plus LLM Web Search (`brave_search` / `web_search`)
+- **Full-text search**: local sources — issues, notes, reports, emails, git commits (`search_local_data`) — plus real web search via the app's own HTTP fetch (`web_search`, Bing RSS). It needs no API key and no LLM with native search, so it behaves the same on every provider including the hosted gateway; `brave_search` (Brave Search API) is offered only when a Brave key is configured
 - **AI Review**: duplicate detection (≥70% match flagged high-risk), title quality, description completeness, story-point reasonableness
 - **LLM polish**: optional DeepSeek analysis
 

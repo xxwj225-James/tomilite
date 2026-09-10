@@ -5,7 +5,7 @@ import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
 import { getProxyUrl } from './utils/proxy.js';
 import { getWorkspaceRoots } from './utils/shell.js';
 
-import { isQwenProvider, type LLMConfig } from './llm/client.js';
+import { type LLMConfig } from './llm/client.js';
 
 import { ALL_TOOLS, getActiveTools, type PruningContext } from './tools/registry.js';
 import { executeAgentTool } from './tools/dispatcher.js';
@@ -160,7 +160,11 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
       taskEditorOpen,
       newTaskFormOpen,
       reportEditorOpen,
-      isQwen: isQwenProvider(config.baseUrl),
+      // brave_search can only work when BRAVE_API_KEY is in the environment —
+      // there is no UI or DB field for it. Without the key the tool is withheld
+      // rather than offered and failed. Synchronous on purpose: no DB read, no
+      // cache, nothing to invalidate.
+      hasBraveKey: !!process.env.BRAVE_API_KEY,
     };
     const activeTools = getActiveTools(ALL_TOOLS, pruningCtx);
     // Merge MCP-injected tools from connected servers (never throws)

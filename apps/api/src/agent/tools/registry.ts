@@ -219,8 +219,12 @@ export const ALL_TOOLS: any[] = [
     type: 'function',
     function: {
       name: 'brave_search',
+      // Only present when a key is configured (see getActiveTools). The old text
+      // said "Use this FIRST for factual queries" while the key it needs had no
+      // way of ever being set — so the model reliably opened with a call that
+      // could only return an error, and then answered from memory.
       description:
-        'Search via Brave Search API — best for Chinese queries, news, recent info. Use this FIRST for factual queries. If results are poor, try web_search next.',
+        'Search via the Brave Search API — higher quality on news and Chinese queries than web_search. Only available when a Brave key is configured; if you do not see it, use web_search.',
       parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     },
   },
@@ -229,7 +233,7 @@ export const ALL_TOOLS: any[] = [
     function: {
       name: 'web_search',
       description:
-        'Search via Bing + DuckDuckGo — no API key needed. Use as fallback when brave_search returns poor results.',
+        'Search the web (Bing). Always available and needs no API key. This is the primary search tool — use it for news, current events, and any factual question you are not certain about.',
       parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     },
   },
@@ -583,10 +587,12 @@ export interface PruningContext {
   taskEditorOpen: boolean;
   newTaskFormOpen: boolean;
   reportEditorOpen: boolean;
-  isQwen: boolean;
+  /** Required, not optional: a new construction site must not silently re-expose
+   *  a tool that fails on every call. See the brave_search note below. */
+  hasBraveKey: boolean;
 }
 
-/** Prune suggest_*_edit tools based on which editor is open. Removes web_search for Qwen (uses native enable_search). */
+/** Prune tools that cannot work in the current environment. */
 export function getActiveTools(tools: any[], context: PruningContext): any[] {
   let active = tools;
   if (context.noteEditorOpen) {
@@ -602,9 +608,21 @@ export function getActiveTools(tools: any[], context: PruningContext): any[] {
       (t: any) => t.function.name !== 'suggest_note_edit' && t.function.name !== 'suggest_issue_edit',
     );
   }
-  if (context.isQwen) {
-    active = active.filter((t: any) => t.function.name !== 'web_search');
+
+  // brave_search needs an API key that only exists in the environment — there is
+  // no Settings field for it. Without the key it returns {results: []} on every
+  // call, so offering it just burns a turn: its description said "use this FIRST"
+  // and the model obeyed, then answered from memory. Withhold it unless the key
+  // is actually present.
+  if (!context.hasBraveKey) {
+    active = active.filter((t: any) => t.function.name !== 'brave_search');
   }
+
+  // Qwen used to have web_search pruned here on the grounds that it "uses native
+  // enable_search" — but `enable_search` is never sent in any request body, so
+  // that branch left Qwen with no web search at all (brave_search was broken too).
+  // web_search performs its own HTTP fetch and is provider-independent, so every
+  // provider gets the same tool list.
   return active;
 }
 
@@ -613,6 +631,7 @@ export function getActiveTools(tools: any[], context: PruningContext): any[] {
 export const toolLabels: Record<string, string> = {
   search_notes: 'Searching knowledge base',
   web_search: 'Searching the web',
+  brave_search: 'Searching the web',
   create_issue: 'Creating issue',
   force_create_issue: 'Force-creating issue',
   get_stats: 'Fetching stats',

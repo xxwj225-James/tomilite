@@ -3,7 +3,12 @@ import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { agentLog } from '../utils/logger.js';
 import { getProxyUrl } from '../utils/proxy.js';
 
-/** Brave Search API (free tier: 2000 req/month). LLM can call this first, fall back to web_search if unsatisfied. */
+/**
+ * Brave Search API. Requires BRAVE_API_KEY in the environment — there is no UI or
+ * DB field for it, so this is only reachable for someone running the API from
+ * source. `getActiveTools` withholds the tool entirely when the key is absent, so
+ * the model is never offered a call that can only fail.
+ */
 export async function braveSearch(
   args: Record<string, unknown>,
 ): Promise<{ results: Array<{ title: string; url: string; snippet: string }>; source: string; message?: string }> {
@@ -11,16 +16,22 @@ export async function braveSearch(
   agentLog('[brave_search] query:', query);
   const q = encodeURIComponent(query);
   const braveKey = process.env.BRAVE_API_KEY || '';
-  if (!braveKey) return { results: [], source: 'brave', message: 'Brave API key not configured. Set BRAVE_API_KEY env var.' };
+  if (!braveKey)
+    return { results: [], source: 'brave', message: 'Brave API key not configured. Set BRAVE_API_KEY env var.' };
 
   const proxy = getProxyUrl();
   const fetchOpts: any = {};
-  if (proxy) { try { // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
-    const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch {} }
+  if (proxy) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
+      const { ProxyAgent } = require('undici');
+      fetchOpts.dispatcher = new ProxyAgent(proxy);
+    } catch {}
+  }
 
   try {
     const resp = await fetch('https://api.search.brave.com/res/v1/web/search?q=' + q + '&count=10', {
-      headers: { 'Accept': 'application/json', 'X-Subscription-Token': braveKey },
+      headers: { Accept: 'application/json', 'X-Subscription-Token': braveKey },
       signal: AbortSignal.timeout(8000),
       ...fetchOpts,
     });
@@ -28,7 +39,9 @@ export async function braveSearch(
     if (!resp.ok) return { results: [], source: 'brave', message: 'HTTP ' + resp.status };
     const data = await resp.json();
     const webResults = (data.web?.results || []).slice(0, 10).map((r: any) => ({
-      title: r.title || '', url: r.url || '', snippet: r.description || '',
+      title: r.title || '',
+      url: r.url || '',
+      snippet: r.description || '',
     }));
     agentLog('[brave_search] results:', webResults.length);
     return { results: webResults, source: 'brave' };
@@ -37,7 +50,16 @@ export async function braveSearch(
   }
 }
 
-/** Search the web via Bing RSS → DuckDuckGo fallback. Uses system proxy when configured. */
+/**
+ * Search the web via Bing RSS. This is the app's own HTTP fetch — it needs no API
+ * key and no LLM with native search, which is what makes it work identically on
+ * every provider including the hosted DeepSeek gateway.
+ *
+ * The DuckDuckGo fallback below is best-effort only: it was verified returning an
+ * empty response from this network, so it is NOT a dependable second source. It is
+ * kept short (3s) because a Bing query that parses to zero results pays that
+ * timeout on the way out.
+ */
 export async function webSearch(
   args: Record<string, unknown>,
 ): Promise<{ results: Array<{ title: string; url: string; snippet: string }>; source?: string; message?: string }> {
@@ -56,7 +78,9 @@ export async function webSearch(
         const { ProxyAgent } = require('undici');
         fetchOpts.dispatcher = new ProxyAgent(proxy);
         agentLog('[web_search] using proxy:', proxy);
-      } catch { /* undici not available */ }
+      } catch {
+        /* undici not available */
+      }
     }
 
     // ── Primary: Bing RSS (structured XML, no JS rendering needed) ──
@@ -108,11 +132,11 @@ export async function webSearch(
       }
     }
 
-    // ── Fallback: DuckDuckGo Lite HTML ──
+    // ── Best-effort fallback: DuckDuckGo Lite HTML ──
     agentLog('[web_search] bing rss empty, trying ddg');
     resp = await fetch('https://lite.duckduckgo.com/lite/?q=' + q, {
       headers: { 'User-Agent': 'TomiLite/1.0' },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(3000),
       ...fetchOpts,
     });
     agentLog('[web_search] ddg status:', resp.status);
