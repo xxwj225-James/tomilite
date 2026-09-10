@@ -76,6 +76,7 @@ model Issue {
   boardCards BoardCard[]
   gitRefs    GitCommitRef[]
   smartEmail SmartEmail?
+  meetingActionItems MeetingActionItem[]
 
   @@index([projectId, status])
 }
@@ -471,6 +472,99 @@ model FeedbackItem {
   email     String?
   status    String @default("open") // open | acknowledged | closed
   createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
+}
+
+// ═══ Meetings (local recording → transcript → AI minutes → tasks) ═══
+// Audio never leaves the machine; only the transcript text is sent to the LLM.
+model Meeting {
+  id           String  @id @default(uuid())
+  projectId    String  @default("proj-default")
+  title        String
+  source       String  @default("mic+system") // mic | mic+system
+  status       String  @default("recording") // recording | recorded | archived
+  audioFile    String? // filename only — never an absolute path (survives moving ~/.tomilite)
+  audioBytes   Int     @default(0)
+  sampleRate   Int     @default(16000)
+  durationMs   Int     @default(0)
+  whisperModel String  @default("base")
+  lang         String  @default("auto")
+
+  // Stage state — plain strings (not enums/JSON) so a boot-time sweep can find
+  // jobs orphaned by a crash with a single indexed query
+  transcribeStatus   String @default("none") // none | queued | running | done | failed | cancelled
+  transcribeProgress Int    @default(0)
+  transcribeError    String?
+  aiStatus           String @default("none") // none | running | done | failed | partial
+  minutesStatus      String @default("none") // none | draft | sent
+  jobStage           String? // download | transcribe | map | synth — what the SSE stream is reporting
+
+  // Transcript & AI artefacts
+  transcript     String?
+  chunkSummaries String? // JSON string[] — the MAP-phase idempotency boundary (never re-charged)
+  summary        String?
+  decisions      String? // JSON string[]
+  speakers       String? // JSON {label,inferredRole}[] — label is always neutral ("Speaker 1")
+  minutes        String? // markdown
+  minutesSubject String?
+  stageLog       String  @default("[]") // JSON {stage,model,inTokens,outTokens,costCny,ms,at}[]
+
+  // Outbound
+  attendees String? // JSON string[]
+  sendTo    String?
+  sendCc    String?
+  sentAt    String?
+
+  // Retention & consent
+  retentionDays         Int     @default(30) // 0 = keep audio forever
+  audioDeletedAt        String?
+  consentAcknowledgedAt String?
+
+  archived  Boolean @default(false)
+  createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+  updatedAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  segments    MeetingSegment[]
+  actionItems MeetingActionItem[]
+
+  @@index([status, createdAt])
+  @@index([transcribeStatus])
+}
+
+// ═══ Meeting Transcript Segments ═══
+// One row per whisper segment: the unit of display, of MAP-phase chunking, and
+// (later) of click-to-seek. A separate table because a 1-hour meeting is 400–800
+// rows, which a JSON blob would force the UI to load in full.
+model MeetingSegment {
+  id        String  @id @default(uuid())
+  meetingId String
+  idx       Int
+  startMs   Int
+  endMs     Int
+  speaker   String? // neutral label only — v1 does no diarization, so never a real name
+  text      String
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, idx])
+}
+
+// ═══ Meeting Action Items (→ Task with one click) ═══
+model MeetingActionItem {
+  id        String  @id @default(uuid())
+  meetingId String
+  idx       Int
+  text      String
+  owner     String?
+  dueDate   String?
+  priority  String  @default("medium")
+  status    String  @default("open") // open | created | dismissed
+  issueId   String? @unique // set once the user turns this into a real task
+  createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  issue   Issue?  @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, idx])
 }
 
 // ═══ Chat Sessions ═══

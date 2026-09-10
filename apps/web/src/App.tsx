@@ -21,6 +21,7 @@ import { UpdateBar } from '@/components/chat/UpdateBar';
 import { WelcomeGuide } from '@/components/chat/WelcomeGuide';
 import { MsgList } from '@/components/chat/MsgList';
 import { MenuNav } from '@/components/chat/MenuNav';
+import { MeetingIndicator } from '@/components/chat/MeetingIndicator';
 import { LlmBanner } from '@/components/chat/LlmBanner';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
@@ -173,6 +174,7 @@ export function App() {
     taskRefresh,
     reportRefresh,
     emailRefresh,
+    meetingRefresh,
     bumpNote,
     bumpTask,
     bumpReport,
@@ -619,6 +621,8 @@ export function App() {
                   onPin={(t) => setPinnedText((prev) => (prev === t ? null : t))}
                 />
               </div>
+              {/* Recording stays visible on every panel — see MeetingIndicator. */}
+              <MeetingIndicator onOpen={() => handleMenuNav('meeting')} />
               <MenuNav
                 panel={panel}
                 notifyCount={notifyCount}
@@ -675,6 +679,7 @@ export function App() {
             <ContentPanel
               panel={panel}
               emailRefresh={emailRefresh}
+              meetingRefresh={meetingRefresh}
               onClose={() => {
                 if ((window as any).__tl_unsaved) {
                   setLeaveTarget({ type: 'close' });

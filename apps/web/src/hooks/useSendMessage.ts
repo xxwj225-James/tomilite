@@ -15,6 +15,7 @@ export function preFlightPanel(msg: string): string | null {
   if (/^(打开|open)\s*TL-(\d+)/i.test(m)) return 'tasks';
   if (/^(打开|open)\s*(report|报告)/i.test(m)) return 'reports';
   if (/^(打开|open)\s*(email|邮件|邮箱|メール)/i.test(m)) return 'email';
+  if (/^(打开|open)\s*(meeting|会议|会議|録音)/i.test(m)) return 'meeting';
   return null;
 }
 
@@ -590,6 +591,8 @@ export function useSendMessage({
         contextMsg = `[Reports panel OPEN — user can see the report list]\n`;
       } else if (panel === 'email') {
         contextMsg = `[Email panel OPEN]\n`;
+      } else if (panel === 'meeting') {
+        contextMsg = `[Meetings panel OPEN — user can see the meeting library]\n`;
       } else if (panel === 'tasks') {
         contextMsg = `[Tasks panel OPEN]\n`;
       }

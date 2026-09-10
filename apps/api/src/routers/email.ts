@@ -3,6 +3,7 @@ import { prisma } from '@tomilite/database';
 import { encrypt, decrypt } from '../lib/crypto';
 import { emailManager, sendSMTP } from '@tomilite/email';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway';
+import { sendWithStoredSmtp } from '../lib/smtpSend';
 export const emailRouter = router({
   // ─── Smart Email list (for notification badge + Task panel) ───
   listSmartEmails: publicProcedure
@@ -103,40 +104,17 @@ export const emailRouter = router({
           .optional(),
       }),
     )
-    .mutation(async ({ input }) => {
-      const smtp = await prisma.integration.findFirst({ where: { type: 'smtp', enabled: true } });
-      if (!smtp) return { ok: false, error: 'No SMTP config found' };
-      const cfg = JSON.parse(smtp.config);
-      if (!cfg.host || !cfg.port || !cfg.user)
-        return { ok: false, error: `SMTP config incomplete: host=${cfg.host}, port=${cfg.port}, user=${cfg.user}` };
-      if (cfg.pass) cfg.pass = await decrypt(cfg.pass);
-      if (cfg.password) cfg.password = await decrypt(cfg.password);
-      const pass = cfg.pass || cfg.password || '';
-      if (!pass) return { ok: false, error: 'SMTP password not configured' };
-      // F5: frontend stores tls field as 'starttls'
-      const tls = cfg.starttls !== undefined ? cfg.starttls : cfg.port === 587;
-      // F6: use fromName for display name in From header
-      const fromName = cfg.fromName || '';
-      const from = fromName ? `${fromName} <${cfg.user}>` : cfg.user;
-      try {
-        await sendSMTP({
-          host: cfg.host,
-          port: cfg.port,
-          user: cfg.user,
-          password: pass,
-          tls,
-          from,
-          to: input.to + (input.cc ? ', ' + input.cc : ''),
-          subject: input.subject,
-          html: input.html,
-          attachments: input.attachments || [],
-          rejectUnauthorized: false,
-        });
-        return { ok: true };
-      } catch (e: any) {
-        return { ok: false, error: e.message };
-      }
-    }),
+    // Shared with meeting.sendMinutes — one implementation of "read the stored
+    // SMTP integration, decrypt, send". See lib/smtpSend.ts.
+    .mutation(({ input }) =>
+      sendWithStoredSmtp({
+        to: input.to,
+        cc: input.cc,
+        subject: input.subject,
+        html: input.html,
+        attachments: input.attachments,
+      }),
+    ),
 
   saveIMAP: publicProcedure
     .input(

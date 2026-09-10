@@ -2,8 +2,16 @@
 import type { I18NKey } from '@/lib/i18n';
 
 export const MENU = [
-  { key: 'tasks' }, { key: 'notes' },
-  { key: 'home' }, { key: 'email' }, { key: 'reports' }, { key: 'mcp' }, { key: 'feedback' }, { key: 'settings' }, { key: 'about' },
+  { key: 'tasks' },
+  { key: 'notes' },
+  { key: 'home' },
+  { key: 'email' },
+  { key: 'reports' },
+  { key: 'meeting' },
+  { key: 'mcp' },
+  { key: 'feedback' },
+  { key: 'settings' },
+  { key: 'about' },
 ] as const;
 
 export type MenuKey = (typeof MENU)[number]['key'];
@@ -14,6 +22,7 @@ export const MENU_LABEL: Record<MenuKey, I18NKey> = {
   home: 'app.menuHome',
   email: 'app.menuEmail',
   reports: 'app.menuReports',
+  meeting: 'app.menuMeeting',
   mcp: 'app.menuMcp',
   feedback: 'app.menuFeedback',
   settings: 'app.menuSettings',
@@ -21,9 +30,23 @@ export const MENU_LABEL: Record<MenuKey, I18NKey> = {
 };
 
 export const THEMES = ['pipeline', 'hub', 'canvas', 'quantum'] as const;
-export const THEME_COLORS: Record<string, string> = { pipeline: '#4338CA', hub: '#1877F2', canvas: '#1A73E8', quantum: '#76B900' };
+// The theme swatches. This is the table of theme *values*, not a place to read
+// one: `var(--brand)` resolves to whichever theme is currently active, so it
+// would paint all four dots the same colour.
+// eslint-disable-next-line no-restricted-syntax
+export const THEME_COLORS: Record<string, string> = {
+  pipeline: '#4338CA',
+  hub: '#1877F2',
+  canvas: '#1A73E8',
+  quantum: '#76B900',
+};
 export const LANGS = ['en', 'zh', 'ja'] as const;
 export const LANGS_FULL: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' };
 
-export function applyTheme(key: string) { document.documentElement.setAttribute('data-theme', key); localStorage.setItem('tomilite-theme', key); }
-export function getTheme() { return localStorage.getItem('tomilite-theme') || 'pipeline'; }
+export function applyTheme(key: string) {
+  document.documentElement.setAttribute('data-theme', key);
+  localStorage.setItem('tomilite-theme', key);
+}
+export function getTheme() {
+  return localStorage.getItem('tomilite-theme') || 'pipeline';
+}

@@ -583,6 +583,7 @@ const I18N = {
     ru: 'API Документы',
   },
   'notes.runbook': { en: 'Runbook', zh: '操作手册', ja: 'ランブック', th: 'คู่มือ', mi: 'Pukapuka', ru: 'Руководство' },
+  'notes.toc': { en: 'Table of contents', zh: '目录', ja: '目次', th: 'สารบัญ', mi: 'Rārangi Upoko', ru: 'Оглавление' },
 
   // ═══ Tasks Panel ═══
   'tasks.search': {
@@ -1515,6 +1516,7 @@ const I18N = {
     ru: 'Аудит MCP',
   },
   'app.menuReports': { en: 'Reports', zh: '报告', ja: 'レポート', th: 'รายงาน', mi: 'Pūrongo', ru: 'Отчёты' },
+  'app.menuMeeting': { en: 'Meetings', zh: '会议', ja: '会議', th: 'การประชุม', mi: 'Hui', ru: 'Встречи' },
   'app.menuFeedback': {
     en: 'Feedback',
     zh: '反馈',
@@ -1722,6 +1724,426 @@ const I18N = {
     en: 'Opened task TL-{num} "{title}"',
     zh: '用户打开了 Task TL-{num}「{title}」',
     ja: 'ユーザーがタスク TL-{num}「{title}」を開きました',
+  },
+
+  // ═══ Meeting Intelligence ═══
+  // Two rules run through this whole block:
+  //  1. Never say "identified" a speaker — see meeting.speakers.disclaimer.
+  //  2. Never claim the audio is the only thing that leaves the machine; the
+  //     transcript does too, and that is stated plainly (meeting.privacy.*).
+
+  'meeting.title': { en: 'Meetings', zh: '会议', ja: '会議' },
+  'meeting.new': { en: 'New meeting', zh: '新建会议', ja: '新しい会議' },
+  'meeting.search': { en: 'Search meetings', zh: '搜索会议', ja: '会議を検索' },
+  'meeting.searchTranscript': { en: 'Search transcript', zh: '搜索转写内容', ja: '文字起こしを検索' },
+  'meeting.back': { en: 'Back', zh: '返回', ja: '戻る' },
+  'meeting.loading': { en: 'Loading…', zh: '加载中…', ja: '読み込み中…' },
+  'meeting.empty': { en: 'No meetings yet', zh: '还没有会议', ja: '会議はまだありません' },
+  'meeting.emptyHint': {
+    en: 'Record a meeting and TomiLite will turn it into tasks you can actually start.',
+    zh: '录一场会议，TomiLite 会把它变成能直接开工的任务。',
+    ja: '会議を録音すると、TomiLite がそのまま着手できるタスクに変えます。',
+  },
+  'meeting.noResults': { en: 'No matches', zh: '没有匹配结果', ja: '一致する項目がありません' },
+
+  // ─── Recorder ───
+  'meeting.recorder.title': { en: 'Record', zh: '录音', ja: '録音' },
+  'meeting.source.mic': { en: 'Microphone only', zh: '仅麦克风', ja: 'マイクのみ' },
+  'meeting.source.both': { en: 'Microphone + system audio', zh: '麦克风 + 系统声音', ja: 'マイク + システム音声' },
+  'meeting.record.start': { en: 'Start recording', zh: '开始录音', ja: '録音を開始' },
+  'meeting.record.starting': { en: 'Starting…', zh: '正在开始…', ja: '開始しています…' },
+  'meeting.record.stop': { en: 'Stop', zh: '停止', ja: '停止' },
+  'meeting.record.pause': { en: 'Pause', zh: '暂停', ja: '一時停止' },
+  'meeting.record.resume': { en: 'Resume', zh: '继续', ja: '再開' },
+  'meeting.record.stopAndTranscribe': { en: 'Stop & transcribe', zh: '停止并转写', ja: '停止して文字起こし' },
+  'meeting.record.hint': {
+    en: 'System audio is captured through the screen-capture permission; the video track is closed immediately and nothing is recorded from the screen.',
+    zh: '系统声音通过屏幕捕获权限获取；视频轨会被立即关闭，屏幕内容不会被录制。',
+    ja: 'システム音声は画面キャプチャ権限で取得します。映像トラックは即座に閉じ、画面は録画しません。',
+  },
+  'meeting.record.elapsed': { en: 'Elapsed', zh: '已录时长', ja: '経過時間' },
+  'meeting.record.uploading': { en: 'Uploading…', zh: '上传中…', ja: 'アップロード中…' },
+  'meeting.record.clipping': { en: 'Clipping', zh: '削顶', ja: 'クリッピング' },
+  'meeting.record.micDeniedTitle': { en: 'Microphone unavailable', zh: '麦克风不可用', ja: 'マイクを利用できません' },
+  'meeting.record.micDenied': {
+    en: 'TomiLite could not open the microphone. If you denied permission, allow it and retry. On Windows, "Microphone access", "Let desktop apps access your microphone" and the per-app list are three separate switches — check all three.',
+    zh: 'TomiLite 打不开麦克风。如果是你拒绝了权限，请允许后重试。Windows 上「麦克风访问」「允许桌面应用访问麦克风」和逐应用列表是三个独立开关，三个都要检查。',
+    ja: 'マイクを開けませんでした。拒否した場合は許可して再試行してください。Windows では「マイクへのアクセス」「デスクトップアプリにマイクへのアクセスを許可する」とアプリ個別リストは別々のスイッチです。3つとも確認してください。',
+  },
+  'meeting.record.openWindowsSettings': {
+    en: 'Open Windows settings',
+    zh: '打开 Windows 设置',
+    ja: 'Windows の設定を開く',
+  },
+  'meeting.record.retry': { en: 'Retry', zh: '重试', ja: '再試行' },
+  'meeting.record.degraded': {
+    en: 'System audio is unavailable, so this recording is microphone-only. The other side of the call will not be in the transcript.',
+    zh: '系统声音不可用，本次仅录制麦克风。通话对方的语音不会出现在转写里。',
+    ja: 'システム音声を取得できないため、マイクのみで録音しています。通話相手の音声は文字起こしに含まれません。',
+  },
+  'meeting.record.deadStream': {
+    en: 'No system audio for {sec}s. The other side of the call may be playing through an output device TomiLite cannot capture — check your output device before this meeting ends.',
+    zh: '已经 {sec} 秒没有系统声音。对方的语音可能走到了 TomiLite 采集不到的输出设备——请在会议结束前检查输出设备。',
+    ja: '{sec} 秒間システム音声がありません。通話相手の音声が TomiLite が取得できない出力先に流れている可能性があります。会議が終わる前に出力デバイスを確認してください。',
+  },
+  'meeting.record.uploadFailed': {
+    en: 'Could not upload the recording. Recording is paused and nothing has been dropped.',
+    zh: '录音上传失败。已暂停录音，已录内容没有丢失。',
+    ja: '録音をアップロードできませんでした。録音を停止し、データは保持しています。',
+  },
+  'meeting.level.mic': { en: 'Mic', zh: '麦克风', ja: 'マイク' },
+  'meeting.level.system': { en: 'System', zh: '系统', ja: 'システム' },
+  'meeting.level.mix': { en: 'Mix', zh: '混合', ja: 'ミックス' },
+
+  // ─── Consent gate ───
+  'meeting.consent.title': { en: 'Before you record', zh: '录音前请确认', ja: '録音の前に' },
+  'meeting.consent.body': {
+    en: "TomiLite will save the microphone and (optionally) your computer's system audio to a file on this machine. Audio is never uploaded. Recording a conversation may require the consent of everyone in it — some jurisdictions require every participant to agree, others only one. TomiLite cannot decide that for you.",
+    zh: 'TomiLite 会把麦克风与（可选的）系统声音保存成本机文件。音频不会上传。录制对话可能需要在场所有参与者同意——部分地区要求全员同意，部分地区只需一方同意。TomiLite 无法替你判断。',
+    ja: 'TomiLite はマイクと（任意で）システム音声をこの端末上のファイルに保存します。音声はアップロードしません。会話の録音には参加者の同意が必要な場合があります。全員の同意が必要な地域もあれば、一方の同意で足りる地域もあります。TomiLite がそれを判断することはできません。',
+  },
+  'meeting.consent.check': {
+    en: 'I will obtain any consent required where the recording happens.',
+    zh: '我会在录音所在地取得所需的同意。',
+    ja: '録音を行う地域で必要な同意を取得します。',
+  },
+  'meeting.consent.readMore': {
+    en: 'How meetings are stored and sent',
+    zh: '会议数据如何存储与发送',
+    ja: '会議データの保存と送信について',
+  },
+  'meeting.consent.continue': { en: 'Start recording', zh: '开始录音', ja: '録音を開始' },
+  'meeting.consent.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+
+  // ─── Status ───
+  'meeting.status.recording': { en: 'Recording', zh: '录音中', ja: '録音中' },
+  'meeting.status.recorded': { en: 'Recorded', zh: '已录音', ja: '録音済み' },
+  'meeting.status.queued': { en: 'Queued', zh: '排队中', ja: '待機中' },
+  'meeting.status.running': { en: 'Transcribing {pct}%', zh: '转写中 {pct}%', ja: '文字起こし中 {pct}%' },
+  'meeting.status.done': { en: 'Transcribed', zh: '已转写', ja: '文字起こし済み' },
+  'meeting.status.failed': { en: 'Failed', zh: '失败', ja: '失敗' },
+  'meeting.status.cancelled': { en: 'Cancelled', zh: '已取消', ja: 'キャンセル済み' },
+  'meeting.status.aiRunning': { en: 'Generating…', zh: '生成中…', ja: '生成中…' },
+  'meeting.status.aiDone': { en: 'Minutes ready', zh: '纪要已生成', ja: '議事録あり' },
+  'meeting.status.aiFailed': { en: 'Generation failed', zh: '生成失败', ja: '生成に失敗' },
+  'meeting.status.aiNone': { en: 'Not generated', zh: '未生成', ja: '未生成' },
+  'meeting.status.sent': { en: 'Minutes sent', zh: '纪要已发送', ja: '議事録を送信済み' },
+
+  // ─── Tabs ───
+  'meeting.tab.transcript': { en: 'Transcript', zh: '转写', ja: '文字起こし' },
+  'meeting.tab.minutes': { en: 'Minutes', zh: '纪要', ja: '議事録' },
+  'meeting.tab.actions': { en: 'Action items', zh: '行动项', ja: 'アクション項目' },
+
+  // ─── Transcription ───
+  'meeting.transcribe.start': { en: 'Transcribe', zh: '开始转写', ja: '文字起こし' },
+  'meeting.transcribe.retry': { en: 'Retry transcription', zh: '重新转写', ja: '文字起こしを再実行' },
+  'meeting.transcribe.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'meeting.transcribe.noAudio': {
+    en: 'This meeting has no audio to transcribe.',
+    zh: '这场会议没有可转写的音频。',
+    ja: '文字起こしできる音声がありません。',
+  },
+  'meeting.transcribe.noBinary': {
+    en: 'The local speech engine is missing from this build.',
+    zh: '此版本缺少本地语音引擎。',
+    ja: 'このビルドには音声エンジンが含まれていません。',
+  },
+  'meeting.transcribe.noModel': {
+    en: 'No speech model installed.',
+    zh: '尚未安装语音模型。',
+    ja: '音声モデルが未インストールです。',
+  },
+  'meeting.transcribe.busy': {
+    en: 'Another transcription is already running.',
+    zh: '已有另一场转写正在进行。',
+    ja: '別の文字起こしが実行中です。',
+  },
+  'meeting.transcribe.noAudioFile': {
+    en: 'The audio file is missing.',
+    zh: '音频文件不存在。',
+    ja: '音声ファイルがありません。',
+  },
+  'meeting.transcribe.slowHint': {
+    en: 'A 30-minute meeting takes roughly 2–5 minutes on this machine.',
+    zh: '30 分钟的会议在这台机器上大约需要 2–5 分钟。',
+    ja: '30分の会議でおよそ2〜5分かかります。',
+  },
+  'meeting.transcribe.installModel': {
+    en: 'Install a speech model',
+    zh: '安装语音模型',
+    ja: '音声モデルをインストール',
+  },
+  'meeting.transcribe.keepSafe': {
+    en: 'Your audio and transcript are saved. You can continue at any time.',
+    zh: '音频与转写已保存，随时可以继续。',
+    ja: '音声と文字起こしは保存済みです。いつでも続けられます。',
+  },
+  'meeting.transcribe.showMore': { en: 'Show {n} more', zh: '再显示 {n} 条', ja: 'さらに {n} 件表示' },
+
+  // ─── Speaker honesty ───
+  'meeting.speakers.disclaimer': {
+    en: 'Speaker labels are inferred from pauses, not from voice identification. Roles are guesses and may be wrong.',
+    zh: '说话人标签由停顿推断，并非声纹识别。角色为推测，可能出错。',
+    ja: '話者ラベルは無音区間からの推定で、声紋識別ではありません。役割は推測であり、誤ることがあります。',
+  },
+  'meeting.speakers.roleGuess': { en: 'possibly {role}', zh: '可能是{role}', ja: '{role}の可能性' },
+
+  // ─── AI ───
+  'meeting.ai.generate': { en: 'Generate minutes', zh: '生成纪要', ja: '議事録を生成' },
+  'meeting.ai.regenerate': { en: 'Regenerate', zh: '重新生成', ja: '再生成' },
+  'meeting.ai.estimating': { en: 'Estimating…', zh: '正在估算…', ja: '見積もり中…' },
+  'meeting.ai.mapStage': {
+    en: 'Summarizing part {i} of {n}…',
+    zh: '正在摘要第 {i}/{n} 部分…',
+    ja: '{n} 件中 {i} 件目を要約中…',
+  },
+  'meeting.ai.synthStage': { en: 'Writing up the minutes…', zh: '正在撰写纪要…', ja: '議事録を作成中…' },
+  'meeting.ai.confirmTitle': {
+    en: 'This will use your trial credit',
+    zh: '这将消耗试用额度',
+    ja: 'トライアル残高を消費します',
+  },
+  'meeting.ai.confirmBody': {
+    en: 'About {tokens} tokens will be sent to {model} through the TomiVector gateway. Your balance is ¥{balance} of ¥{total}. Transcript, audio and any previous summaries stay on this machine — only transcript text goes out.',
+    zh: '大约 {tokens} token 将经 TomiVector 网关发送给 {model}。当前余额 ¥{balance} / ¥{total}。转写、音频与已有摘要都留在本机——只有转写文本会发出去。',
+    ja: '約 {tokens} トークンを TomiVector ゲートウェイ経由で {model} に送信します。残高は ¥{balance} / ¥{total} です。文字起こし・音声・生成済み要約は端末に残り、送信されるのは文字起こしテキストのみです。',
+  },
+  'meeting.ai.confirmOk': { en: 'Generate', zh: '生成', ja: '生成する' },
+  'meeting.ai.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'meeting.ai.byokNote': {
+    en: 'About {tokens} tokens will be sent to your own {model} endpoint.',
+    zh: '大约 {tokens} token 将发送到你自己配置的 {model} 接口。',
+    ja: '約 {tokens} トークンを、設定済みの {model} エンドポイントに送信します。',
+  },
+  'meeting.ai.estimateHint': {
+    en: 'Long meetings are summarized in parts on a cheaper model, so cost grows with length far more slowly than the transcript does.',
+    zh: '长会议会用更便宜的模型分块摘要，因此成本随时长增长远慢于转写文本的增长。',
+    ja: '長い会議は安価なモデルで分割要約するため、コストの増加は文字起こしの長さほど急ではありません。',
+  },
+  'meeting.ai.quotaExhausted': {
+    en: 'Trial credit exhausted. Your transcript and audio are already saved — generate the minutes after upgrading and only the writing-up step is charged.',
+    zh: '试用额度已用尽。转写与音频都已保存——升级后再生成，只有撰写纪要这一步会计费。',
+    ja: 'トライアル残高が不足しています。文字起こしと音声は保存済みです。アップグレード後に生成すれば、議事録作成の分だけが課金されます。',
+  },
+  'meeting.ai.upgrade': { en: 'Open settings', zh: '打开设置', ja: '設定を開く' },
+  'meeting.ai.retry': { en: 'Try again', zh: '重试', ja: '再試行' },
+  'meeting.ai.fallbackUsed': {
+    en: 'The structured response could not be parsed, so the minutes were written by three separate calls.',
+    zh: '结构化响应解析失败，已改用三次独立调用生成纪要。',
+    ja: '構造化レスポンスを解析できなかったため、3回の個別呼び出しで議事録を作成しました。',
+  },
+
+  // ─── Minutes ───
+  'meeting.minutes.summary': { en: 'Summary', zh: '摘要', ja: '要約' },
+  'meeting.minutes.decisions': { en: 'Decisions', zh: '决议', ja: '決定事項' },
+  'meeting.minutes.speakers': { en: 'Participants', zh: '与会人', ja: '参加者' },
+  'meeting.minutes.subject': { en: 'Subject', zh: '主题', ja: '件名' },
+  'meeting.minutes.to': { en: 'To', zh: '收件人', ja: '宛先' },
+  'meeting.minutes.cc': { en: 'Cc', zh: '抄送', ja: 'Cc' },
+  'meeting.minutes.attachTranscript': {
+    en: 'Attach transcript (.md)',
+    zh: '附上转写（.md）',
+    ja: '文字起こしを添付（.md）',
+  },
+  'meeting.minutes.send': { en: 'Send minutes', zh: '发送纪要', ja: '議事録を送信' },
+  'meeting.minutes.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'meeting.minutes.sending': { en: 'Sending…', zh: '发送中…', ja: '送信中…' },
+  'meeting.minutes.sent': { en: 'Minutes sent.', zh: '纪要已发送。', ja: '議事録を送信しました。' },
+  'meeting.minutes.sendFailed': {
+    en: 'Send failed: {error}',
+    zh: '发送失败：{error}',
+    ja: '送信に失敗しました：{error}',
+  },
+  'meeting.minutes.notConfigured': {
+    en: 'No email account configured. Minutes are generated locally; add SMTP in Settings → Email to send them.',
+    zh: '尚未配置邮箱。纪要在本机生成；要发送请到 设置 → 邮件 配置 SMTP。',
+    ja: 'メールアカウントが未設定です。議事録は端末内で生成されます。送信するには 設定 → メール で SMTP を設定してください。',
+  },
+  'meeting.minutes.goConfigure': { en: 'Configure email', zh: '去配置邮箱', ja: 'メールを設定' },
+  'meeting.minutes.empty': {
+    en: 'Generate the minutes to fill this in.',
+    zh: '生成纪要后这里会有内容。',
+    ja: '議事録を生成すると表示されます。',
+  },
+  'meeting.minutes.noRecipients': {
+    en: 'Add at least one recipient.',
+    zh: '请至少填写一个收件人。',
+    ja: '宛先を1件以上入力してください。',
+  },
+
+  // ─── Action items ───
+  'meeting.actions.title': { en: 'Action items', zh: '行动项', ja: 'アクション項目' },
+  'meeting.actions.empty': {
+    en: 'No action items. TomiLite looks for them when it writes the minutes.',
+    zh: '没有行动项。生成纪要时 TomiLite 会从中提取。',
+    ja: 'アクション項目はありません。議事録の生成時に抽出します。',
+  },
+  'meeting.actions.createTask': { en: 'Create task', zh: '创建任务', ja: 'タスクを作成' },
+  'meeting.actions.creating': { en: 'Creating…', zh: '创建中…', ja: '作成中…' },
+  'meeting.actions.openTask': { en: 'Open task', zh: '打开任务', ja: 'タスクを開く' },
+  'meeting.actions.owner': { en: 'Owner', zh: '负责人', ja: '担当' },
+  'meeting.actions.due': { en: 'Due', zh: '截止', ja: '期限' },
+  'meeting.actions.priority': { en: 'Priority', zh: '优先级', ja: '優先度' },
+  'meeting.actions.text': { en: 'Action', zh: '事项', ja: '内容' },
+  'meeting.actions.dismiss': { en: 'Dismiss', zh: '忽略', ja: '却下' },
+  'meeting.actions.reopen': { en: 'Restore', zh: '恢复', ja: '復元' },
+  'meeting.actions.taskCreated': { en: 'Task created', zh: '任务已创建', ja: 'タスクを作成しました' },
+  'meeting.actions.createFailed': {
+    en: 'Could not create the task: {error}',
+    zh: '创建任务失败：{error}',
+    ja: 'タスクを作成できませんでした：{error}',
+  },
+  'meeting.actions.alreadyLinked': {
+    en: 'This item is already linked to a task.',
+    zh: '该行动项已关联任务。',
+    ja: 'この項目はすでにタスクに紐づいています。',
+  },
+  'meeting.actions.unassigned': { en: 'Unassigned', zh: '未指派', ja: '未割当' },
+  'meeting.actions.none': { en: '—', zh: '—', ja: '—' },
+
+  // ─── Library rows ───
+  'meeting.retention.inDays': {
+    en: 'Audio deletes in {days} days',
+    zh: '音频将在 {days} 天后自动删除',
+    ja: '音声は {days} 日後に削除されます',
+  },
+  'meeting.retention.forever': { en: 'Audio kept forever', zh: '音频永久保留', ja: '音声は永続保存' },
+  'meeting.retention.deleted': { en: 'Audio deleted', zh: '音频已删除', ja: '音声は削除済み' },
+  'meeting.counts': {
+    en: '{segments} segments · {actions} action items',
+    zh: '{segments} 段转写 · {actions} 个行动项',
+    ja: '{segments} セグメント · アクション {actions} 件',
+  },
+  'meeting.delete.title': { en: 'Delete meeting', zh: '删除会议', ja: '会議を削除' },
+  'meeting.delete.message': {
+    en: 'Delete "{title}", its transcript, its audio file and its action items? Tasks already created from it are kept.',
+    zh: '删除「{title}」及其转写、音频文件和行动项？已创建的任务会保留。',
+    ja: '「{title}」とその文字起こし・音声ファイル・アクション項目を削除しますか？作成済みのタスクは残ります。',
+  },
+  'meeting.delete.ok': { en: 'Delete', zh: '删除', ja: '削除' },
+  'meeting.delete.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'meeting.delete.failed': { en: 'Delete failed: {error}', zh: '删除失败：{error}', ja: '削除に失敗しました：{error}' },
+
+  // ─── Global recording indicator (visible on every panel) ───
+  'meeting.indicator.recording': { en: 'Recording: {title}', zh: '正在录音：{title}', ja: '録音中：{title}' },
+  'meeting.indicator.open': { en: 'Open', zh: '打开', ja: '開く' },
+
+  // ─── Settings → Meeting ───
+  'meeting.settings.tab': { en: 'Meetings', zh: '会议', ja: '会議' },
+  'meeting.privacy.title': { en: 'Privacy', zh: '隐私', ja: 'プライバシー' },
+  'meeting.privacy.audio': { en: 'Audio', zh: '音频', ja: '音声' },
+  'meeting.privacy.audioDetail': {
+    en: 'Processed and stored locally. Never uploaded.',
+    zh: '本机处理与本机存储，绝不上传。',
+    ja: '端末内で処理・保存。アップロードしません。',
+  },
+  'meeting.privacy.transcript': { en: 'Transcript', zh: '转写', ja: '文字起こし' },
+  'meeting.privacy.transcriptDetail': {
+    en: "Stored locally in TomiLite's database.",
+    zh: '保存在 TomiLite 本机数据库中。',
+    ja: 'TomiLite の端末内データベースに保存。',
+  },
+  'meeting.privacy.ai': { en: 'AI summary', zh: 'AI 摘要', ja: 'AI 要約' },
+  'meeting.privacy.aiDetail': {
+    en: 'Transcript text IS sent to the LLM provider you configured — or to the TomiVector gateway during a hosted trial. Audio is not.',
+    zh: '转写文本会发送给你配置的 LLM 服务商——托管试用时发送至 TomiVector 网关。音频不会。',
+    ja: '文字起こしテキストは、設定した LLM プロバイダ（ホスティング試用時は TomiVector ゲートウェイ）に送信されます。音声は送信しません。',
+  },
+  'meeting.settings.models': { en: 'Speech models', zh: '语音模型', ja: '音声モデル' },
+  'meeting.settings.engine': { en: 'Local engine', zh: '本地引擎', ja: 'ローカルエンジン' },
+  'meeting.settings.engineOk': {
+    en: 'Ready — {bytes} · {threads} threads',
+    zh: '就绪 — {bytes} · {threads} 线程',
+    ja: '準備完了 — {bytes} · {threads} スレッド',
+  },
+  'meeting.settings.engineMissing': {
+    en: 'Missing files: {files}',
+    zh: '缺少文件：{files}',
+    ja: '不足ファイル：{files}',
+  },
+  'meeting.settings.modelInstalled': { en: 'Installed', zh: '已安装', ja: 'インストール済み' },
+  'meeting.settings.modelDownload': { en: 'Download', zh: '下载', ja: 'ダウンロード' },
+  'meeting.settings.modelDelete': { en: 'Delete', zh: '删除', ja: '削除' },
+  'meeting.settings.modelDefault': { en: 'Default', zh: '默认', ja: '既定' },
+  'meeting.settings.downloading': {
+    en: 'Downloading {name} — {pct}%',
+    zh: '正在下载 {name} — {pct}%',
+    ja: '{name} をダウンロード中 — {pct}%',
+  },
+  'meeting.settings.downloadCancel': { en: 'Cancel download', zh: '取消下载', ja: 'ダウンロードを中止' },
+  'meeting.settings.downloadFailed': {
+    en: 'Download failed: {error}',
+    zh: '下载失败：{error}',
+    ja: 'ダウンロードに失敗：{error}',
+  },
+  'meeting.settings.speed': { en: '{done} / {total}', zh: '{done} / {total}', ja: '{done} / {total}' },
+  'meeting.settings.defaults': { en: 'Recording defaults', zh: '录音默认值', ja: '録音の既定値' },
+  'meeting.settings.defaultSource': { en: 'Default audio source', zh: '默认音源', ja: '既定の音声ソース' },
+  'meeting.settings.defaultLang': { en: 'Transcription language', zh: '转写语言', ja: '文字起こし言語' },
+  'meeting.settings.retention': {
+    en: 'Keep audio for (days, 0 = forever)',
+    zh: '音频保留天数（0 = 永久）',
+    ja: '音声の保存日数（0 = 無期限）',
+  },
+  'meeting.settings.retentionNote': {
+    en: 'Meetings recorded after this change use the new value. Automatic deletion runs at startup, so a value of 0 is the only way to be sure nothing is ever removed automatically.',
+    zh: '修改后录制的会议使用新值。自动清理在启动时执行；设为 0 才能确保不会被自动删除。',
+    ja: '変更後に録音した会議に適用されます。自動削除は起動時に実行されるため、確実に残すには 0 を指定してください。',
+  },
+  'meeting.settings.saved': { en: 'Saved', zh: '已保存', ja: '保存しました' },
+  'meeting.settings.consentSection': { en: 'Recording consent', zh: '录音同意声明', ja: '録音の同意' },
+  'meeting.settings.consentAt': { en: 'Acknowledged on {date}', zh: '已于 {date} 确认', ja: '{date} に確認済み' },
+  'meeting.settings.consentNever': { en: 'Not acknowledged yet', zh: '尚未确认', ja: '未確認' },
+  'meeting.settings.consentReset': { en: 'Show the notice again', zh: '重新显示声明', ja: '通知を再表示' },
+  'meeting.settings.openDoc': {
+    en: 'Read docs/meetings.md',
+    zh: '阅读 docs/meetings.md',
+    ja: 'docs/meetings.md を読む',
+  },
+  'meeting.settings.modelGuide': {
+    en: 'Pick one to start — Base, the default, is the right choice for almost everyone. The others trade size and speed for accuracy. You only need to download once.',
+    zh: '先装一个就行 —— 默认的 Base 对绝大多数人都是正确选择。其余各档是在体积/速度与准确度之间取舍。只需下载一次。',
+    ja: 'まずは1つだけ。既定の Base がほとんどの場合に最適です。他のモデルはサイズ・速度と精度のトレードオフです。ダウンロードは一度だけです。',
+  },
+  'meeting.settings.modelPick': {
+    en: 'Download this one',
+    zh: '下载这个',
+    ja: 'これをダウンロード',
+  },
+  'meeting.settings.modelBest': {
+    en: 'Best for most meetings',
+    zh: '最适合大多数会议',
+    ja: 'ほとんどの会議に最適',
+  },
+  'meeting.settings.modelNote.tiny': {
+    en: 'Fastest, least accurate. Fine for a quick test, rough on real meetings.',
+    zh: '最快、最不准。适合快速试一下，真实会议里效果粗糙。',
+    ja: '最速・最低精度。お試し向きで、実際の会議では粗い結果になります。',
+  },
+  'meeting.settings.modelNote.base': {
+    en: 'The balance point. Real meetings, real accuracy, minutes not hours.',
+    zh: '平衡点。真实的会议、可用的准确度，耗时是分钟级而非小时级。',
+    ja: 'バランス型。実用的な精度で、所要時間は分単位です。',
+  },
+  'meeting.settings.modelNote.small': {
+    en: 'Noticeably better on accents, jargon and noisy rooms. Several times slower.',
+    zh: '对口音、专业术语和嘈杂环境明显更好，但慢好几倍。',
+    ja: '訛り・専門用語・騒がしい環境に明らかに強い。ただし数倍遅い。',
+  },
+  'meeting.settings.modelNote.medium': {
+    en: 'Best quality, and the slowest by far — an hour of audio can take hours. Pick only if accuracy matters more than waiting.',
+    zh: '质量最好，但最慢 —— 一小时录音可能要跑几小时。只有准确度比等待更重要时才选。',
+    ja: '最高品質ですが最も遅く、1時間の音声に数時間かかることも。精度を待ち時間より優先する場合のみ。',
+  },
+  'meeting.panel.noModelHint': {
+    en: 'No speech model installed yet — recording works, but transcription needs a model (about 150 MB, downloaded once).',
+    zh: '尚未安装语音模型 —— 录音可以正常使用，但转写需要一个模型（约 150 MB，下载一次即可）。',
+    ja: '音声モデルが未インストールです — 録音は可能ですが、文字起こしにはモデル（約 150 MB・初回のみ）が必要です。',
+  },
+  'meeting.settings.binMissingWarn': {
+    en: 'This build is missing the local speech engine, so transcription is unavailable. Recording and emailing still work.',
+    zh: '此版本缺少本地语音引擎，无法转写。录音与邮件仍可正常使用。',
+    ja: 'このビルドには音声エンジンが含まれていないため、文字起こしは利用できません。録音とメールは利用できます。',
   },
 } as const satisfies Record<string, Record<string, string>>;
 

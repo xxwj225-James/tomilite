@@ -1,5 +1,21 @@
 // TomiLite Electron Shell
-const { app, BrowserWindow, Tray, Menu, nativeImage, dialog, Notification, ipcMain } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  nativeImage,
+  dialog,
+  Notification,
+  ipcMain,
+  // `shell` was used at setWindowOpenHandler below without ever being
+  // destructured here — it only happened to work because a later handler
+  // required it locally. Imported properly so openExternal can't throw.
+  shell,
+  session,
+  screen,
+  desktopCapturer,
+} = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -406,9 +422,85 @@ function createTray() {
   }
 }
 
+// ─── Meeting capture: microphone + system audio ───
+//
+// The repo had no permission handlers at all before this, so getUserMedia would
+// have been refused outright. Both handlers are scoped to the local origin: the
+// renderer is served from http://localhost:3192 by the bundled API, and nothing
+// else on this machine has any business opening a microphone through this app.
+//
+// The system-audio half is the fragile part on Windows. Measured constraints:
+//  • `useSystemPicker` MUST be false. With it true this handler is never called
+//    and the loopback grant is dropped silently — recording appears to work but
+//    captures only the microphone.
+//  • The legacy getUserMedia({audio:{mandatory:{chromeMediaSource:'desktop'}}})
+//    trick must NOT be used: Electron #42765 / #46369 record it terminating the
+//    render process on Windows 11 with bad_message.cc reason 263.
+//  • Sources are matched by display id. `sources[0]` is not reliably the primary
+//    display on a multi-monitor machine.
+function configureMeetingCapture() {
+  var ses = session.defaultSession;
+  var ALLOWED = ['media', 'display-capture', 'audioCapture', 'videoCapture'];
+
+  function isLocalOrigin(url) {
+    var u = String(url || '');
+    return u.indexOf('http://localhost:') === 0 || u.indexOf('http://127.0.0.1:') === 0;
+  }
+
+  ses.setPermissionRequestHandler(function (webContents, permission, callback, details) {
+    var url = (details && details.requestingUrl) || (webContents && webContents.getURL()) || '';
+    var granted = ALLOWED.indexOf(permission) !== -1 && isLocalOrigin(url);
+    if (!granted) console.log('[Meeting] Denied permission "' + permission + '" for ' + url);
+    callback(granted);
+  });
+
+  ses.setPermissionCheckHandler(function (_webContents, permission, requestingOrigin) {
+    return ALLOWED.indexOf(permission) !== -1 && isLocalOrigin(requestingOrigin);
+  });
+
+  ses.setDisplayMediaRequestHandler(
+    function (request, callback) {
+      desktopCapturer
+        .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+        .then(function (sources) {
+          if (!sources.length) {
+            console.error('[Meeting] No screen sources — system audio unavailable');
+            callback({});
+            return;
+          }
+          var primaryId = '';
+          try {
+            primaryId = String(screen.getPrimaryDisplay().id);
+          } catch {
+            /* fall back to the first source */
+          }
+          var chosen = null;
+          for (var i = 0; i < sources.length; i++) {
+            if (sources[i].display_id === primaryId) {
+              chosen = sources[i];
+              break;
+            }
+          }
+          // audio:'loopback' is what actually returns system sound; the video
+          // track is discarded in the renderer.
+          callback({ video: chosen || sources[0], audio: 'loopback' });
+        })
+        .catch(function (e) {
+          console.error('[Meeting] desktopCapturer failed:', e && e.message);
+          callback({});
+        });
+    },
+    { useSystemPicker: false },
+  );
+
+  console.log('[Meeting] Capture handlers installed');
+}
+
 // ─── App lifecycle ───
 app.whenReady().then(function () {
   console.log('Starting TomiLite...');
+
+  configureMeetingCapture();
 
   // Main window is created hidden; a transparent floating-logo splash shows first.
   createWindow();

@@ -1,0 +1,7 @@
+{
+  "name": "@tomilite/whisper-bin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vendored whisper-cli binary for local speech-to-text (fetched at pack time)",
+  "license": "MIT"
+}

@@ -7,6 +7,7 @@ import { TasksPanel } from '@/panels/tasks/TasksPanel';
 import { NotesPanel } from '@/panels/notes/NotesPanel';
 import { EmailPanel } from '@/panels/email/EmailPanel';
 import { ReportsPanel } from '@/panels/reports/ReportsPanel';
+import { MeetingPanel } from '@/panels/meeting/MeetingPanel';
 import { McpPanel } from '@/panels/mcp/McpPanel';
 import { FeedbackPanel } from '@/panels/feedback/FeedbackPanel';
 import { SettingsPanel } from '@/panels/settings/SettingsPanel';
@@ -23,6 +24,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: 'Email',
     mcp: 'MCP Approve',
     reports: 'Reports',
+    meeting: 'Meetings',
     feedback: 'Feedback',
     settings: 'Settings',
     about: 'About',
@@ -34,6 +36,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: '邮件',
     mcp: 'MCP审批',
     reports: '报告',
+    meeting: '会议',
     feedback: '反馈',
     settings: '设置',
     about: '关于',
@@ -45,6 +48,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: 'メール',
     mcp: 'MCP 承認',
     reports: 'レポート',
+    meeting: '会議',
     feedback: 'フィードバック',
     settings: '設定',
     about: 'About',
@@ -56,6 +60,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: 'อีเมล',
     mcp: 'ตรวจสอบ MCP',
     reports: 'รายงาน',
+    meeting: 'การประชุม',
     feedback: 'ข้อเสนอแนะ',
     settings: 'การตั้งค่า',
   },
@@ -66,6 +71,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: 'Īmēra',
     mcp: 'Arotake MCP',
     reports: 'Pūrongo',
+    meeting: 'Hui',
     feedback: 'Urupare',
     settings: 'Tautuhinga',
   },
@@ -76,6 +82,7 @@ const MENU_TEXTS: Record<string, Record<string, string>> = {
     email: 'Почта',
     mcp: 'Аудит MCP',
     reports: 'Отчёты',
+    meeting: 'Встречи',
     feedback: 'Отзывы',
     settings: 'Настройки',
   },
@@ -107,6 +114,7 @@ interface Props {
   taskRefresh?: number;
   reportRefresh?: number;
   emailRefresh?: number;
+  meetingRefresh?: number;
   appliedEdit?: { title?: string; content?: string; category?: string } | null;
   appliedTaskEdit?: Record<string, any> | null;
   appliedReport?: { title?: string; content?: string } | null;
@@ -128,6 +136,7 @@ export function ContentPanel({
   taskRefresh,
   reportRefresh,
   emailRefresh,
+  meetingRefresh,
   appliedEdit,
   appliedTaskEdit,
   appliedReport,
@@ -142,7 +151,13 @@ export function ContentPanel({
     if (cmd) {
       clearType('navigate');
       const targetPanel = cmd.payload.panel;
-      if (targetPanel === 'notes' || targetPanel === 'tasks' || targetPanel === 'reports' || targetPanel === 'email') {
+      if (
+        targetPanel === 'notes' ||
+        targetPanel === 'tasks' ||
+        targetPanel === 'reports' ||
+        targetPanel === 'email' ||
+        targetPanel === 'meeting'
+      ) {
         window.dispatchEvent(new CustomEvent('tl-navigate', { detail: targetPanel }));
       }
     }
@@ -212,6 +227,11 @@ export function ContentPanel({
               reportRefresh={reportRefresh}
               active={panel === 'reports'}
             />
+          </PanelBody>
+        )}
+        {mounted.has('meeting') && (
+          <PanelBody active={panel === 'meeting'}>
+            <MeetingPanel active={panel === 'meeting'} refreshKey={meetingRefresh} />
           </PanelBody>
         )}
         {mounted.has('mcp') && (

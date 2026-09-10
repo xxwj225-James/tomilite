@@ -1671,3 +1671,93 @@ pre code.hljs {
 .milkdown-editor tr:hover td {
   background: var(--surface2);
 }
+
+/* ─── Note TOC rail (panels/notes/NoteToc.tsx) ───
+   Hover and focus live here rather than inline, because a React inline style
+   cannot express either. The thread is drawn per row and clipped to its half at
+   each end, so it runs exactly from the first dot's centre to the last one's. */
+.toc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  /* No vertical padding here: the row-height gap belongs on the label, or the
+     stretched dot column would stop short of the next row and the thread would
+     render as dashes with a break at every heading. */
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.toc-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 12px;
+  flex-shrink: 0;
+}
+.toc-line {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: var(--edge);
+}
+.toc-k {
+  position: relative;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.55;
+  transition: all var(--transition-fast);
+}
+.toc-label {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--transition-fast);
+}
+.toc-item[data-on] .toc-k {
+  width: 9px;
+  height: 9px;
+  background: var(--brand);
+  opacity: 1;
+}
+.toc-item[data-on] .toc-label {
+  color: var(--brand);
+  font-weight: 600;
+}
+.toc-item:hover .toc-k {
+  background: var(--brand);
+  opacity: 1;
+  transform: scale(1.4);
+}
+.toc-item:hover .toc-label {
+  color: var(--ink);
+}
+.toc-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toc-k,
+  .toc-label {
+    transition: none;
+  }
+  .toc-item:hover .toc-k {
+    transform: none;
+  }
+}

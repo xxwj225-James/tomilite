@@ -167,6 +167,44 @@ export const api = {
     subGroupByCategory: (emailIds: string[], category: number, lang: string) =>
       trpcMutate('email.subGroupByCategory', { emailIds, category, lang }),
   },
+  meeting: {
+    list: (search?: string) => trpcCall('meeting.list', { search: search || '', limit: 200 }),
+    get: (id: string, segmentLimit = 200, segmentOffset = 0) =>
+      trpcCall('meeting.get', { id, segmentLimit, segmentOffset }),
+    stats: () => trpcCall('meeting.stats'),
+    create: (data: { title?: string; source?: string; lang?: string; whisperModel?: string; retentionDays?: number }) =>
+      trpcMutate('meeting.create', data),
+    finalizeRecording: (id: string, autoTranscribe = true, durationMs?: number) =>
+      trpcMutate('meeting.finalizeRecording', { id, autoTranscribe, durationMs }),
+    transcribe: (id: string, force = false) => trpcMutate('meeting.transcribe', { id, force }),
+    cancelTranscribe: (id: string) => trpcMutate('meeting.cancelTranscribe', { id }),
+    update: (data: Record<string, unknown>) => trpcMutate('meeting.update', data),
+    setActionItemStatus: (id: string, status: 'open' | 'created' | 'dismissed') =>
+      trpcMutate('meeting.setActionItemStatus', { id, status }),
+    delete: (id: string) => trpcMutate('meeting.delete', { id }),
+    searchSegments: (id: string, q: string) => trpcCall('meeting.searchSegments', { id, q }),
+    estimate: (id: string) => trpcCall('meeting.estimate', { id }),
+    summarize: (id: string, force = false, confirmHosted = false) =>
+      trpcMutate('meeting.summarize', { id, force, confirmHosted }),
+    emailStatus: () => trpcCall('meeting.emailStatus'),
+    sendMinutes: (data: {
+      id: string;
+      to: string;
+      cc?: string;
+      subject: string;
+      html: string;
+      attachTranscript?: boolean;
+    }) => trpcMutate('meeting.sendMinutes', data),
+    createTaskFromActionItem: (actionItemId: string, lang: string) =>
+      trpcMutate('meeting.createTaskFromActionItem', { actionItemId, lang }),
+    binStatus: () => trpcCall('meeting.binStatus'),
+    listModels: () => trpcCall('meeting.listModels'),
+    downloadModel: (name: string) => trpcMutate('meeting.downloadModel', { name }),
+    cancelDownload: () => trpcMutate('meeting.cancelDownload', {}),
+    deleteModel: (name: string) => trpcMutate('meeting.deleteModel', { name }),
+    consent: () => trpcCall('meeting.consent'),
+    acknowledgeConsent: () => trpcMutate('meeting.acknowledgeConsent', {}),
+  },
   report: {
     list: (limit?: number) => trpcCall('report.list', { limit: limit || 50 }),
     save: (data: { reportType: string; title: string; content: string; id?: string }) =>

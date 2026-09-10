@@ -25,6 +25,7 @@ import { chatRouter } from './routers/chat';
 import { standupRouter, checkAndGenerateEvening, checkAndGenerateMorning } from './routers/standup';
 import { mcpServerRouter } from './routers/mcpServer';
 import { hostedRouter } from './routers/hosted';
+import { meetingRouter, handleMeetingAudioChunk, handleMeetingStream, recoverStuckMeetings } from './routers/meeting';
 import { resolveLLM } from './lib/gateway.js';
 import * as telemetry from './lib/telemetry.js';
 
@@ -51,6 +52,7 @@ const appRouter = router({
   chat: chatRouter,
   standup: standupRouter,
   hosted: hostedRouter,
+  meeting: meetingRouter,
 });
 
 export type AppRouter = typeof appRouter;
@@ -219,6 +221,34 @@ const server = createServer(async (req, res) => {
     } catch {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+    return;
+  }
+
+  // ─── Meeting audio upload (raw PCM body — tRPC can't carry binary) ───
+  if (req.url?.startsWith('/api/meeting/audio-chunk') && req.method === 'POST') {
+    try {
+      await handleMeetingAudioChunk(req, res);
+    } catch (e: any) {
+      console.error('[MeetingAudio] 500:', e?.message || e);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e?.message || String(e) }));
+      }
+    }
+    return;
+  }
+
+  // ─── Meeting progress stream (SSE: model download / transcribe / AI stages) ───
+  if (req.url?.startsWith('/api/meeting/stream') && req.method === 'GET') {
+    try {
+      await handleMeetingStream(req, res);
+    } catch (e: any) {
+      console.error('[MeetingStream] 500:', e?.message || e);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end(e?.message || String(e));
+      }
     }
     return;
   }
@@ -400,6 +430,12 @@ function startBackgroundTasks() {
   // Report archiver (hourly)
   startReportArchiver();
 
+  // Meetings interrupted by a crash/force-quit would otherwise sit at
+  // "transcribing…" forever. Flip them to a retryable state on boot.
+  setTimeout(() => {
+    recoverStuckMeetings().catch(() => {});
+  }, 5_000);
+
   // Morning & Evening standup — check every 60 seconds
   setInterval(() => {
     checkAndGenerateMorning().catch(() => {});
@@ -476,7 +512,7 @@ function startBackgroundTasks() {
 // ⚠️ OTA migration: increment EVERY TIME you change prisma/schema.prisma
 // Only ADDITIVE changes (new columns/tables). Never rename or drop.
 // ensureSchema() → detects old version → prisma db push → preserves all user data
-const SCHEMA_VERSION = 20; // activate McpServer with transport/status/headers/toolsJson/hitlMode columns
+const SCHEMA_VERSION = 21; // Meetings: local recording → transcript → AI minutes → tasks
 
 // ─── Ensure database schema is up to date (runs db push only when needed) ───
 async function ensureSchema() {
@@ -525,6 +561,98 @@ async function ensureSchema() {
     { version: 20, sql: "ALTER TABLE McpServer ADD COLUMN hitlMode TEXT DEFAULT 'none'" },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN hitlConfirmUrl TEXT' },
     { version: 20, sql: 'ALTER TABLE McpServer ADD COLUMN updatedAt TEXT' },
+    // ─── v21: Meeting Intelligence ───
+    // DDL below is copied verbatim from `prisma migrate diff --from-empty
+    // --to-schema-datamodel` so these tables match what `db push` (Phase 2)
+    // would create. Any drift here surfaces as a db push failure, not silent
+    // corruption. Order matters: Meeting must exist before its children (FKs).
+    {
+      version: 21,
+      sql: `CREATE TABLE IF NOT EXISTS "Meeting" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "projectId" TEXT NOT NULL DEFAULT 'proj-default',
+        "title" TEXT NOT NULL,
+        "source" TEXT NOT NULL DEFAULT 'mic+system',
+        "status" TEXT NOT NULL DEFAULT 'recording',
+        "audioFile" TEXT,
+        "audioBytes" INTEGER NOT NULL DEFAULT 0,
+        "sampleRate" INTEGER NOT NULL DEFAULT 16000,
+        "durationMs" INTEGER NOT NULL DEFAULT 0,
+        "whisperModel" TEXT NOT NULL DEFAULT 'base',
+        "lang" TEXT NOT NULL DEFAULT 'auto',
+        "transcribeStatus" TEXT NOT NULL DEFAULT 'none',
+        "transcribeProgress" INTEGER NOT NULL DEFAULT 0,
+        "transcribeError" TEXT,
+        "aiStatus" TEXT NOT NULL DEFAULT 'none',
+        "minutesStatus" TEXT NOT NULL DEFAULT 'none',
+        "jobStage" TEXT,
+        "transcript" TEXT,
+        "chunkSummaries" TEXT,
+        "summary" TEXT,
+        "decisions" TEXT,
+        "speakers" TEXT,
+        "minutes" TEXT,
+        "minutesSubject" TEXT,
+        "stageLog" TEXT NOT NULL DEFAULT '[]',
+        "attendees" TEXT,
+        "sendTo" TEXT,
+        "sendCc" TEXT,
+        "sentAt" TEXT,
+        "retentionDays" INTEGER NOT NULL DEFAULT 30,
+        "audioDeletedAt" TEXT,
+        "consentAcknowledgedAt" TEXT,
+        "archived" BOOLEAN NOT NULL DEFAULT false,
+        "createdAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        "updatedAt" TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )`,
+    },
+    {
+      version: 21,
+      sql: `CREATE TABLE IF NOT EXISTS "MeetingSegment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "meetingId" TEXT NOT NULL,
+        "idx" INTEGER NOT NULL,
+        "startMs" INTEGER NOT NULL,
+        "endMs" INTEGER NOT NULL,
+        "speaker" TEXT,
+        "text" TEXT NOT NULL,
+        CONSTRAINT "MeetingSegment_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+    },
+    {
+      version: 21,
+      sql: `CREATE TABLE IF NOT EXISTS "MeetingActionItem" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "meetingId" TEXT NOT NULL,
+        "idx" INTEGER NOT NULL,
+        "text" TEXT NOT NULL,
+        "owner" TEXT,
+        "dueDate" TEXT,
+        "priority" TEXT NOT NULL DEFAULT 'medium',
+        "status" TEXT NOT NULL DEFAULT 'open',
+        "issueId" TEXT,
+        "createdAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        CONSTRAINT "MeetingActionItem_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "MeetingActionItem_issueId_fkey" FOREIGN KEY ("issueId") REFERENCES "Issue" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+      )`,
+    },
+    {
+      version: 21,
+      sql: 'CREATE INDEX IF NOT EXISTS "Meeting_status_createdAt_idx" ON "Meeting"("status", "createdAt")',
+    },
+    { version: 21, sql: 'CREATE INDEX IF NOT EXISTS "Meeting_transcribeStatus_idx" ON "Meeting"("transcribeStatus")' },
+    {
+      version: 21,
+      sql: 'CREATE INDEX IF NOT EXISTS "MeetingSegment_meetingId_idx_idx" ON "MeetingSegment"("meetingId", "idx")',
+    },
+    {
+      version: 21,
+      sql: 'CREATE UNIQUE INDEX IF NOT EXISTS "MeetingActionItem_issueId_key" ON "MeetingActionItem"("issueId")',
+    },
+    {
+      version: 21,
+      sql: 'CREATE INDEX IF NOT EXISTS "MeetingActionItem_meetingId_idx_idx" ON "MeetingActionItem"("meetingId", "idx")',
+    },
   ];
 
   for (const m of migrations) {
