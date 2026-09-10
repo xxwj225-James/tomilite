@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
+import { NoteToc } from './NoteToc';
 import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { t as tt2, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
@@ -40,6 +41,9 @@ export function NotesEditor(p: Props) {
   const _t = (zh: string, ja: string, en: string) => tr(lang, zh, ja, en);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportResult, setExportResult] = useState('');
+  // The TOC rail finds the editor's scroll root through this — Milkdown owns that
+  // node, so a ref on the wrapper is the only handle we get on it.
+  const editorBoxRef = useRef<HTMLDivElement>(null);
 
   const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'md' | 'pdf' | 'pptx') => {
     if (!p.selected?.id) return;
@@ -396,10 +400,12 @@ export function NotesEditor(p: Props) {
           />
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, padding: '10px 14px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, padding: '10px 14px', display: 'flex' }}>
         <div
+          ref={editorBoxRef}
           style={{
             flex: 1,
+            minWidth: 0,
             minHeight: 0,
             background: 'var(--surface)',
             border: '1px solid var(--edge)',
@@ -420,6 +426,9 @@ export function NotesEditor(p: Props) {
             height="100%"
           />
         </div>
+        {/* Outside the note's border, so the rail never sits on top of the
+            editor's own scrollbar or steals clicks from the text. */}
+        <NoteToc content={p.content} containerRef={editorBoxRef} lang={lang} />
       </div>
       <ConfirmDialog
         open={!!p.deleteTarget}
