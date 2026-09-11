@@ -253,7 +253,7 @@ function synthPrompt(digest: string, speakerLabels: string[], lang: string): str
 Output ONLY valid JSON, no markdown fence, in ${langLabel(lang)}:
 {
   "summary": "3-6 short paragraphs in markdown, covering what was discussed and concluded",
-  "decisions": ["each decision as one sentence"],
+  "decisions": [{"text":"the decision as one sentence","rationale":"why it was made, or empty","date":"YYYY-MM-DD or empty"}],
   "actionItems": [{"text":"concrete assignable action","owner":"name or empty","dueDate":"YYYY-MM-DD or empty","priority":"high|medium|low"}],
   "speakers": [{"label":"Speaker 1","inferredRole":"a short guess at their role"}]
 }
@@ -261,6 +261,7 @@ Output ONLY valid JSON, no markdown fence, in ${langLabel(lang)}:
 Rules:
 - summary/decisions/actionItems reflect only the summaries. Empty arrays are correct when the meeting decided or assigned nothing.
 - actionItems must be concrete and assignable ("Send the revised quote to the client"), never topics ("pricing").
+- A decision's "rationale" and "date" are optional and must come from the summaries. Leave them empty rather than inferring a reason that was never stated or guessing a date — a fabricated rationale is worse than none, because it reads as a record of what was said.
 - The speaker labels below come from pause-based turn splitting, NOT voice recognition. They are unreliable as identities. In "speakers", keep the label verbatim and fill inferredRole with a HEDGED guess based on what that person said — phrased as a guess ("可能是项目负责人"), never as fact. Omit any speaker you cannot guess.
 - Speaker labels present: ${speakerLabels.join(', ') || 'none'}
 
@@ -268,6 +269,90 @@ Summaries:
 """
 ${digest}
 """`;
+}
+
+// ─── Follow-up draft ───
+
+export interface FollowUpInput {
+  title: string;
+  lang: string;
+  summary: string;
+  decisions: NormalizedDecision[];
+  actionItems: Array<{ text: string; owner: string | null; dueDate: string | null }>;
+}
+
+export interface FollowUpResult {
+  ok: boolean;
+  subject?: string;
+  body?: string;
+  /** Present whenever a call was actually made, so the cost lands in stageLog. */
+  raw?: ChatOk;
+  ms: number;
+  error?: string;
+}
+
+function followUpPrompt(input: FollowUpInput): string {
+  const decisions = input.decisions.length
+    ? input.decisions
+        .map((d) => `- ${d.text}${d.rationale ? ` (${d.rationale})` : ''}${d.decidedAt ? ` [${d.decidedAt}]` : ''}`)
+        .join('\n')
+    : '(none)';
+  const actions = input.actionItems.length
+    ? input.actionItems
+        .map((a) => `- ${a.text}${a.owner ? ` — ${a.owner}` : ''}${a.dueDate ? ` (due ${a.dueDate})` : ''}`)
+        .join('\n')
+    : '(none)';
+
+  return `Write a short follow-up email after a meeting, in ${langLabel(input.lang)}.
+The decisions and action items below are your ONLY source of truth. Never invent a name, date, number or commitment that is not in them.
+
+Output ONLY valid JSON, no markdown fence:
+{"subject":"a specific subject line, naming the meeting","body":"markdown, under 200 words"}
+
+Rules:
+- The email goes from the organizer to the attendees. One line of context, then the decisions, then the action items with owner and due date.
+- Omit a section entirely when it is empty rather than writing "none" or "no decisions".
+- This is a draft a human will read before sending. No filler ("I hope this finds you well"), no invented pleasantries, no sign-off name — the sender adds that.
+
+Meeting: ${input.title}
+
+Summary:
+"""
+${input.summary}
+"""
+
+Decisions:
+${decisions}
+
+Action items:
+${actions}`;
+}
+
+/**
+ * Generate the post-meeting follow-up draft.
+ *
+ * Reads only the artefacts the pipeline already produced — never the transcript.
+ * The expensive call is already spent by this point; this is one flash-model
+ * round trip whose input is bounded by the summary, so it does not scale with
+ * how long the meeting ran.
+ *
+ * A draft, never a send. Nothing in this file talks to SMTP.
+ */
+export async function generateFollowUp(llm: LLMAccess, input: FollowUpInput): Promise<FollowUpResult> {
+  const t0 = Date.now();
+  const r = await chat(llm, {
+    model: llm.flashModel || llm.proModel,
+    messages: [{ role: 'user', content: followUpPrompt(input) }],
+    maxTokens: 900,
+  });
+  const ms = Date.now() - t0;
+  if (!r.ok) return { ok: false, ms, error: r.error };
+
+  const parsed = parseJsonLoose<{ subject?: unknown; body?: unknown }>(r.content);
+  const subject = String(parsed?.subject ?? '').trim();
+  const body = String(parsed?.body ?? '').trim();
+  if (!subject || !body) return { ok: false, ms, raw: r, error: 'empty_followup' };
+  return { ok: true, subject, body, raw: r, ms };
 }
 
 // ─── Stage log ───
@@ -347,7 +432,53 @@ interface ActionOut {
   priority?: unknown;
 }
 
+interface DecisionOut {
+  text?: unknown;
+  rationale?: unknown;
+  date?: unknown;
+}
+
+export interface NormalizedDecision {
+  text: string;
+  rationale: string | null;
+  decidedAt: string | null;
+}
+
 const PRIORITIES = ['high', 'medium', 'low'];
+
+/**
+ * Accepts both decision shapes the pipeline can produce.
+ *
+ * The synth prompt asks for objects, but two other writers emit plain strings:
+ * the degraded three-call fallback (older prompt versions) and any synth output
+ * cached before this shape existed. A bare string is a complete decision with no
+ * rationale, which is exactly what the old field meant — so it normalizes rather
+ * than being dropped.
+ */
+export function normalizeDecisions(raw: unknown): NormalizedDecision[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NormalizedDecision[] = [];
+  for (const d of raw) {
+    if (typeof d === 'string') {
+      const text = d.trim();
+      if (text) out.push({ text, rationale: null, decidedAt: null });
+      continue;
+    }
+    if (!d || typeof d !== 'object') continue;
+    const o = d as DecisionOut;
+    const text = String(o.text ?? '').trim();
+    if (!text) continue;
+    out.push({
+      text,
+      rationale: o.rationale ? String(o.rationale).trim() || null : null,
+      // Only a real YYYY-MM-DD is kept: a model that answers "last Tuesday" or
+      // "not specified" must not put that string in a date column the UI renders
+      // as a date.
+      decidedAt: /^\d{4}-\d{2}-\d{2}$/.test(String(o.date ?? '').trim()) ? String(o.date).trim() : null,
+    });
+  }
+  return out;
+}
 
 // ─── Estimate ───
 
@@ -566,7 +697,7 @@ export async function runPipeline(meetingId: string, opts: RunOptions = {}): Pro
         messages: [
           {
             role: 'user',
-            content: `List the decisions made in this meeting, in ${langLabel(meeting.lang)}. Output ONLY a JSON array of strings, no fence. Empty array if none.\n\n${draft}`,
+            content: `List the decisions made in this meeting, in ${langLabel(meeting.lang)}. Output ONLY a JSON array of objects, no fence: [{"text":"the decision as one sentence","rationale":"why, or empty","date":"YYYY-MM-DD or empty"}]. Leave rationale and date empty rather than inventing them. Empty array if none.\n\n${draft}`,
           },
         ],
         maxTokens: 700,
@@ -612,9 +743,7 @@ export async function runPipeline(meetingId: string, opts: RunOptions = {}): Pro
     return { ok: false, error: 'empty_summary' };
   }
 
-  const decisions = (Array.isArray(parsed.decisions) ? parsed.decisions : [])
-    .map((d) => String(d).trim())
-    .filter(Boolean);
+  const decisions = normalizeDecisions(parsed.decisions);
 
   const actionItems = (Array.isArray(parsed.actionItems) ? parsed.actionItems : [])
     .filter((a): a is ActionOut => !!a && typeof a === 'object')
@@ -633,21 +762,63 @@ export async function runPipeline(meetingId: string, opts: RunOptions = {}): Pro
     // "Speaker N" — never let a model name a person it cannot identify.
     .filter((s) => /^Speaker \d+$/.test(s.label));
 
+  // ─── Follow-up draft ───
+  // Runs before the transaction so a network call never holds a write lock, and
+  // best-effort: a meeting with minutes but no draft is still a useful meeting.
+  // Skipped outright when there is nothing to follow up on, so an empty or purely
+  // conversational meeting does not pay for a draft nobody will send.
+  let followUp: { subject: string; body: string } | null = null;
+  if (decisions.length || actionItems.length) {
+    const fr = await generateFollowUp(llm, {
+      title: meeting.title,
+      lang: meeting.lang,
+      summary,
+      decisions,
+      actionItems,
+    });
+    if (fr.ok && fr.subject && fr.body) {
+      followUp = { subject: fr.subject, body: fr.body };
+      if (fr.raw) await appendStage(meetingId, stageFrom(fr.raw, 'followup', fr.ms));
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
+    // Regenerating rewrites the open items but leaves the user's dismissals
+    // alone — a decision they rejected must not come back on the next run.
+    await tx.meetingDecision.deleteMany({ where: { meetingId, status: 'active' } });
     await tx.meetingActionItem.deleteMany({ where: { meetingId, status: 'open' } });
     await tx.meeting.update({
       where: { id: meetingId },
       data: {
         summary,
-        decisions: JSON.stringify(decisions),
         speakers: speakers.length ? JSON.stringify(speakers) : null,
         aiStatus: 'done',
         jobStage: null,
         minutesStatus: 'draft',
         minutes: meeting.minutes || summary,
         minutesSubject: meeting.minutesSubject || meeting.title,
+        // A dismissed draft stays dismissed; anything else takes the fresh one.
+        ...(followUp && meeting.followUpStatus !== 'dismissed'
+          ? {
+              followUpSubject: followUp.subject,
+              followUpBody: followUp.body,
+              followUpStatus: 'ready',
+            }
+          : {}),
       },
     });
+    for (let i = 0; i < decisions.length; i++) {
+      await tx.meetingDecision.create({
+        data: {
+          meetingId,
+          idx: i,
+          text: decisions[i].text,
+          rationale: decisions[i].rationale,
+          decidedAt: decisions[i].decidedAt,
+          status: 'active',
+        },
+      });
+    }
     for (let i = 0; i < actionItems.length; i++) {
       const a = actionItems[i];
       await tx.meetingActionItem.create({
@@ -665,7 +836,11 @@ export async function runPipeline(meetingId: string, opts: RunOptions = {}): Pro
   });
 
   publish(meetingId, 'ai:progress', { stage: 'synth', percent: 100 });
-  publish(meetingId, 'ai:done', { actionItems: actionItems.length, decisions: decisions.length });
+  publish(meetingId, 'ai:done', {
+    actionItems: actionItems.length,
+    decisions: decisions.length,
+    followUp: !!followUp,
+  });
 
   return { ok: true, mapCalls, cachedMap: !willCallMap, fallback: usedFallback };
 }

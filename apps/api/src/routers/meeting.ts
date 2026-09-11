@@ -35,7 +35,13 @@ import {
   listModels,
 } from '../lib/meeting/models';
 import { isSafeId, meetingWavPath } from '../lib/meeting/paths';
-import { assignSpeakerTurns, estimateMeeting, runPipeline } from '../lib/meeting/pipeline';
+import {
+  assignSpeakerTurns,
+  estimateMeeting,
+  generateFollowUp,
+  normalizeDecisions,
+  runPipeline,
+} from '../lib/meeting/pipeline';
 import { cancelWhisperJob, cleanupTempDir, runWhisperJob, whisperBusy } from '../lib/meeting/whisperJob';
 import { whisperBinStatus, whisperThreads } from '../lib/meeting/whisperBin';
 
@@ -303,6 +309,57 @@ export async function recoverStuckMeetings(): Promise<void> {
   }
 }
 
+/**
+ * Move decisions out of the legacy JSON column and into rows, once.
+ *
+ * Before v22 a meeting's decisions lived in `Meeting.decisions` as a string[].
+ * The detail view now reads rows, so without this an existing install would open
+ * its meetings and find the decisions gone — the data is still there, just no
+ * longer where anything looks. The column is left in place (and left populated)
+ * because dropping it is irreversible, and this is an additive-only schema.
+ *
+ * Idempotent by construction: a meeting that already has decision rows is
+ * skipped, so a second boot is a no-op. `rationale`/`decidedAt` are null — the
+ * old shape never carried them, and they are exactly the fields a regeneration
+ * will fill in.
+ */
+export async function backfillMeetingDecisions(): Promise<void> {
+  try {
+    const candidates = await prisma.meeting.findMany({
+      where: { decisions: { not: null } },
+      select: { id: true, decisions: true, _count: { select: { decisionItems: true } } },
+    });
+
+    let migrated = 0;
+    for (const m of candidates) {
+      if (m._count.decisionItems > 0) continue;
+      const decisions = normalizeDecisions(parseArray(m.decisions));
+      if (!decisions.length) continue;
+      await prisma.$transaction(
+        decisions.map((d, i) =>
+          prisma.meetingDecision.create({
+            data: {
+              meetingId: m.id,
+              idx: i,
+              text: d.text,
+              rationale: d.rationale,
+              decidedAt: d.decidedAt,
+              status: 'active',
+            },
+          }),
+        ),
+      );
+      migrated++;
+    }
+
+    if (migrated) console.warn(`[Init] Meeting decisions migrated to rows: ${migrated} meeting(s)`);
+  } catch (e: unknown) {
+    // A failed backfill must not stop the server — the worst case is that an old
+    // meeting shows no decisions until the next successful boot.
+    console.error('[Init] Meeting decision backfill failed:', e instanceof Error ? e.message : e);
+  }
+}
+
 // ═══ Transcription runner ═══
 
 /**
@@ -375,6 +432,10 @@ async function startTranscription(meetingId: string): Promise<{ ok: boolean; err
     // half-written transcript is worse than none.
     await prisma.$transaction(async (tx) => {
       await tx.meetingSegment.deleteMany({ where: { meetingId } });
+      // Decisions and the follow-up draft are analysis of the transcript that was
+      // just replaced, so they go with it. Leaving the rows behind would show
+      // decisions from a transcript that no longer exists.
+      await tx.meetingDecision.deleteMany({ where: { meetingId } });
       for (let i = 0; i < result.segments.length; i++) {
         const s = result.segments[i];
         await tx.meetingSegment.create({
@@ -400,6 +461,12 @@ async function startTranscription(meetingId: string): Promise<{ ok: boolean; err
           minutes: null,
           minutesSubject: null,
           minutesStatus: 'none',
+          followUpSubject: null,
+          followUpBody: null,
+          followUpStatus: 'none',
+          // `followUpAt` is deliberately NOT reset: the draft derives from the
+          // transcript that just went away, but the reminder was already seen by
+          // a person, and re-transcribing is not a reason to nag them again.
           stageLog: '[]',
           updatedAt: nowStr(),
         },
@@ -470,7 +537,7 @@ export const meetingRouter = router({
       const meeting = await prisma.meeting.findUnique({ where: { id: input.id } });
       if (!meeting) return null;
 
-      const [segments, actionItems, total] = await Promise.all([
+      const [segments, actionItems, decisionItems, total] = await Promise.all([
         prisma.meetingSegment.findMany({
           where: { meetingId: input.id },
           orderBy: { idx: 'asc' },
@@ -478,17 +545,24 @@ export const meetingRouter = router({
           take: input.segmentLimit,
         }),
         prisma.meetingActionItem.findMany({ where: { meetingId: input.id }, orderBy: { idx: 'asc' } }),
+        prisma.meetingDecision.findMany({ where: { meetingId: input.id }, orderBy: { idx: 'asc' } }),
         prisma.meetingSegment.count({ where: { meetingId: input.id } }),
       ]);
 
+      // `decisions` (the legacy JSON column) is deliberately not sent: it is
+      // superseded by decisionItems, and shipping both would let the renderer
+      // read a stale copy. The column itself is kept in the DB — additive-only.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { decisions: legacyDecisions, ...meetingFields } = meeting;
+
       return {
         meeting: {
-          ...meeting,
-          decisions: parseArray(meeting.decisions),
+          ...meetingFields,
           speakers: parseArray(meeting.speakers) as Array<{ label: string; inferredRole: string }>,
           attendees: parseArray(meeting.attendees) as string[],
           stageLog: parseArray(meeting.stageLog),
         },
+        decisions: decisionItems,
         segments,
         actionItems,
         totalSegments: total,
@@ -653,12 +727,20 @@ export const meetingRouter = router({
       return { ok: true };
     }),
 
+  setDecisionStatus: publicProcedure
+    .input(z.object({ id: z.string(), status: z.enum(['active', 'dismissed', 'superseded']) }))
+    .mutation(async ({ input }) => {
+      await prisma.meetingDecision.update({ where: { id: input.id }, data: { status: input.status } });
+      return { ok: true };
+    }),
+
   delete: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     cancelWhisperJob(input.id);
     // SQLite does not enforce foreign keys here (PRAGMA foreign_keys is off), so
     // onDelete: Cascade is documentation only — delete children explicitly.
     await prisma.$transaction([
       prisma.meetingActionItem.deleteMany({ where: { meetingId: input.id } }),
+      prisma.meetingDecision.deleteMany({ where: { meetingId: input.id } }),
       prisma.meetingSegment.deleteMany({ where: { meetingId: input.id } }),
       prisma.meeting.delete({ where: { id: input.id } }),
     ]);
@@ -701,6 +783,67 @@ export const meetingRouter = router({
       }
       return result;
     }),
+
+  /**
+   * Regenerate just the follow-up draft, without re-running MAP/SYNTH.
+   *
+   * Two callers: a meeting summarized before this feature existed, and a user who
+   * didn't like the draft. Both already paid for the summary, so this reads the
+   * stored artefacts rather than the transcript.
+   */
+  generateFollowUp: publicProcedure
+    .input(z.object({ id: z.string(), confirmHosted: z.boolean().default(false) }))
+    .mutation(async ({ input }) => {
+      const meeting = await prisma.meeting.findUnique({ where: { id: input.id } });
+      if (!meeting) return { ok: false, error: 'not_found' };
+      if (!meeting.summary) return { ok: false, error: 'no_summary' };
+
+      const llm = await resolveLLM();
+      if (!llm) return { ok: false, error: 'no_llm' };
+      // Same gate as the pipeline: hosted traffic is a charge, never a side effect.
+      if (llm.mode === 'hosted' && !input.confirmHosted) {
+        return { ok: false, error: 'confirm_required', code: 'confirm_required' };
+      }
+
+      const [rows, actionItems] = await Promise.all([
+        prisma.meetingDecision.findMany({
+          where: { meetingId: input.id, status: 'active' },
+          orderBy: { idx: 'asc' },
+        }),
+        prisma.meetingActionItem.findMany({
+          where: { meetingId: input.id, status: { not: 'dismissed' } },
+          orderBy: { idx: 'asc' },
+        }),
+      ]);
+
+      const r = await generateFollowUp(llm, {
+        title: meeting.title,
+        lang: meeting.lang,
+        summary: meeting.summary,
+        decisions: rows.map((d) => ({ text: d.text, rationale: d.rationale, decidedAt: d.decidedAt })),
+        actionItems: actionItems.map((a) => ({ text: a.text, owner: a.owner, dueDate: a.dueDate })),
+      });
+      if (!r.ok || !r.subject || !r.body) return { ok: false, error: r.error || 'empty_followup' };
+
+      await prisma.meeting.update({
+        where: { id: input.id },
+        data: { followUpSubject: r.subject, followUpBody: r.body, followUpStatus: 'ready', updatedAt: nowStr() },
+      });
+      return { ok: true, subject: r.subject, body: r.body };
+    }),
+
+  /**
+   * Dismiss the follow-up draft. Sticky across regenerations: the pipeline only
+   * overwrites a draft that isn't dismissed, so a user who said "I don't want
+   * this" isn't asked again on the next summarize.
+   */
+  dismissFollowUp: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    await prisma.meeting.update({
+      where: { id: input.id },
+      data: { followUpStatus: 'dismissed', updatedAt: nowStr() },
+    });
+    return { ok: true };
+  }),
 
   // ─── Minutes email ───
 
@@ -757,6 +900,8 @@ export const meetingRouter = router({
           sendTo: input.to,
           sendCc: input.cc || null,
           sentAt: nowStr(),
+          // Only meaningful when this send actually carried the follow-up draft.
+          ...(meeting.followUpStatus === 'ready' ? { followUpStatus: 'sent' } : {}),
           updatedAt: nowStr(),
         },
       });

@@ -1936,6 +1936,34 @@ const I18N = {
   // ─── Minutes ───
   'meeting.minutes.summary': { en: 'Summary', zh: '摘要', ja: '要約' },
   'meeting.minutes.decisions': { en: 'Decisions', zh: '决议', ja: '決定事項' },
+  // `{n}` is the decision's position (01, 02, …) — the number the minutes refer
+  // to when someone says "the second decision".
+  'meeting.decision.title': { en: 'Decision #{n}', zh: '决议 #{n}', ja: '決定 #{n}' },
+  'meeting.decision.rationale': { en: 'Why', zh: '理由', ja: '理由' },
+  'meeting.decision.dismiss': { en: 'Hide', zh: '隐藏', ja: '非表示' },
+  'meeting.decision.reopen': { en: 'Show', zh: '显示', ja: '表示' },
+  'meeting.followup.title': { en: 'Follow-up email', zh: '跟进邮件', ja: 'フォローアップ' },
+  'meeting.followup.ready': {
+    en: 'Draft ready — review it before sending.',
+    zh: '草稿已生成，发送前请确认。',
+    ja: '下書きを作成しました。送信前に確認してください。',
+  },
+  'meeting.followup.sent': { en: 'Sent', zh: '已发送', ja: '送信済み' },
+  'meeting.followup.none': {
+    en: 'No draft yet. TomiLite writes one when it generates the minutes.',
+    zh: '还没有草稿。生成纪要时 TomiLite 会一并生成。',
+    ja: '下書きはまだありません。議事録の生成時に作成します。',
+  },
+  'meeting.followup.reviewSend': { en: 'Review & send', zh: '确认并发送', ja: '確認して送信' },
+  'meeting.followup.generate': { en: 'Draft it', zh: '生成草稿', ja: '下書きを作成' },
+  'meeting.followup.regenerate': { en: 'Regenerate', zh: '重新生成', ja: '再生成' },
+  'meeting.followup.generating': { en: 'Generating…', zh: '生成中…', ja: '生成中…' },
+  'meeting.followup.dismiss': { en: 'Discard', zh: '丢弃', ja: '破棄' },
+  'meeting.followup.failed': {
+    en: 'Could not generate the draft: {error}',
+    zh: '无法生成草稿：{error}',
+    ja: '下書きを生成できませんでした：{error}',
+  },
   'meeting.minutes.speakers': { en: 'Participants', zh: '与会人', ja: '参加者' },
   'meeting.minutes.subject': { en: 'Subject', zh: '主题', ja: '件名' },
   'meeting.minutes.to': { en: 'To', zh: '收件人', ja: '宛先' },
@@ -2091,6 +2119,18 @@ const I18N = {
     ja: '変更後に録音した会議に適用されます。自動削除は起動時に実行されるため、確実に残すには 0 を指定してください。',
   },
   'meeting.settings.saved': { en: 'Saved', zh: '已保存', ja: '保存しました' },
+  'meeting.settings.reminders': { en: 'Reminders', zh: '提醒', ja: 'リマインダー' },
+  'meeting.settings.remindersOn': {
+    en: 'Notify me about open action items',
+    zh: '行动项有到期/未处理时通知我',
+    ja: '未対応のアクションアイテムを通知する',
+  },
+  'meeting.settings.followUpDays': { en: 'Review after (days)', zh: '会后几天提醒（天）', ja: '会議後の通知（日）' },
+  'meeting.settings.remindersNote': {
+    en: 'Two Windows notifications: when an action item falls due tomorrow, and when a meeting ended the set number of days ago with action items still open. Nothing is ever emailed automatically.',
+    zh: '两个 Windows 通知：行动项明天到期时，以及会议结束达到设定天数但仍有未处理行动项时。不会自动发送任何邮件。',
+    ja: 'Windows 通知は 2 種類です。アクションアイテムの期限が明日になったとき、および会議終了から指定日数が経過しても未対応の項目が残っているとき。メールが自動送信されることはありません。',
+  },
   'meeting.settings.consentSection': { en: 'Recording consent', zh: '录音同意声明', ja: '録音の同意' },
   'meeting.settings.consentAt': { en: 'Acknowledged on {date}', zh: '已于 {date} 确认', ja: '{date} に確認済み' },
   'meeting.settings.consentNever': { en: 'Not acknowledged yet', zh: '尚未确认', ja: '未確認' },

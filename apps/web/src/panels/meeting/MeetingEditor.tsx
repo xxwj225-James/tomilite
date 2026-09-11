@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { marked } from 'marked';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { t } from '@/lib/i18n';
-import type { ActionItem, MeetingState } from './useMeetingState';
+import type { ActionItem, Decision, MeetingState } from './useMeetingState';
 
 // ═══ Meeting detail — transcript | minutes | action items ═══
 //
@@ -124,7 +124,7 @@ function MinutesTab({ s }: { s: MeetingState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-seed when the meeting or its AI output changes
   }, [m?.id, m?.aiStatus, m?.summary, m?.minutes]);
 
-  const decisions: string[] = Array.isArray(m?.decisions) ? m.decisions : [];
+  const decisions: Decision[] = s.detail?.decisions || [];
   const attendees: string[] = Array.isArray(m?.attendees) ? m.attendees : [];
   const generated = m?.aiStatus === 'done';
 
@@ -167,11 +167,64 @@ function MinutesTab({ s }: { s: MeetingState }) {
         <div className="card" style={{ marginTop: 8 }}>
           <div className="card-hd">{t('meeting.minutes.decisions', lang)}</div>
           <div className="card-bd">
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.8 }}>
-              {decisions.map((d, i) => (
-                <li key={i}>{d}</li>
-              ))}
-            </ul>
+            {decisions.map((d) => {
+              const dismissed = d.status === 'dismissed';
+              return (
+                <div
+                  key={d.id}
+                  style={{
+                    padding: '7px 9px',
+                    marginBottom: 6,
+                    borderRadius: 8,
+                    border: '1px solid var(--edge)',
+                    background: dismissed ? 'var(--surface2)' : 'transparent',
+                    opacity: dismissed ? 0.55 : 1,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ ...chipStyle, borderColor: 'var(--brand)', color: 'var(--brand)' }}>
+                      {t('meeting.decision.title', lang, { n: String(d.idx + 1).padStart(2, '0') })}
+                    </span>
+                    {/* Kept in the DOM when dismissed, struck through rather than
+                        removed — the user hid it, they did not dispute it. */}
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 12,
+                        lineHeight: 1.7,
+                        color: 'var(--ink)',
+                        textDecoration: dismissed ? 'line-through' : 'none',
+                      }}
+                    >
+                      {d.text}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => void s.setDecisionStatus(d, dismissed ? 'active' : 'dismissed')}
+                    >
+                      {dismissed ? t('meeting.decision.reopen', lang) : t('meeting.decision.dismiss', lang)}
+                    </button>
+                  </div>
+
+                  {/* Only rendered when the model actually found a reason or a
+                      date. An empty "理由：" row would imply the meeting gave
+                      one and it was lost. */}
+                  {(d.rationale || d.decidedAt) && (
+                    <div className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 3 }}>
+                      {d.rationale && (
+                        <span>
+                          {t('meeting.decision.rationale', lang)}: {d.rationale}
+                        </span>
+                      )}
+                      {d.rationale && d.decidedAt && ' · '}
+                      {d.decidedAt && <span>{d.decidedAt}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -249,6 +302,93 @@ function MinutesTab({ s }: { s: MeetingState }) {
                 {t('meeting.minutes.goConfigure', lang)}
               </button>
             </div>
+          )}
+        </div>
+      </div>
+
+      <FollowUpCard s={s} />
+    </div>
+  );
+}
+
+// ─── Follow-up draft ───
+//
+// The draft is shown, not hidden behind a button, because the point of the
+// feature is that the email is already written when you come back to the meeting.
+// Sending is still the existing SendDialog: this card adds a draft and a reason
+// to open it, never a second send path.
+
+function FollowUpCard({ s }: { s: MeetingState }) {
+  const lang = s.lang;
+  const m = s.meeting;
+  const status: string = m?.followUpStatus || 'none';
+  const body: string = m?.followUpBody || '';
+
+  if (status === 'dismissed') return null;
+
+  const hasDraft = status === 'ready' || status === 'sent';
+
+  return (
+    <div className="card" style={{ marginTop: 8, marginBottom: 12 }}>
+      <div className="card-hd">{t('meeting.followup.title', lang)}</div>
+      <div className="card-bd">
+        {hasDraft ? (
+          <>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+              {status === 'sent' ? t('meeting.followup.sent', lang) : t('meeting.followup.ready', lang)}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
+              {m?.followUpSubject}
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: '8px 10px',
+                maxHeight: 220,
+                overflowY: 'auto',
+                fontSize: 11,
+                lineHeight: 1.7,
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'inherit',
+                color: 'var(--ink)',
+                background: 'var(--surface2)',
+                borderRadius: 8,
+              }}
+            >
+              {body}
+            </pre>
+          </>
+        ) : (
+          <p className="text-ink-muted" style={{ fontSize: 11, lineHeight: 1.7, margin: 0 }}>
+            {t('meeting.followup.none', lang)}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-brand btn-sm"
+            disabled={!s.emailConfigured || !hasDraft}
+            onClick={s.openSend}
+          >
+            {t('meeting.followup.reviewSend', lang)}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={s.followUpBusy || !m?.summary}
+            onClick={() => void s.regenerateFollowUp()}
+          >
+            {s.followUpBusy
+              ? t('meeting.followup.generating', lang)
+              : hasDraft
+                ? t('meeting.followup.regenerate', lang)
+                : t('meeting.followup.generate', lang)}
+          </button>
+          {hasDraft && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void s.dismissFollowUp()}>
+              {t('meeting.followup.dismiss', lang)}
+            </button>
           )}
         </div>
       </div>

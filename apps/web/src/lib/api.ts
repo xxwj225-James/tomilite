@@ -181,6 +181,11 @@ export const api = {
     update: (data: Record<string, unknown>) => trpcMutate('meeting.update', data),
     setActionItemStatus: (id: string, status: 'open' | 'created' | 'dismissed') =>
       trpcMutate('meeting.setActionItemStatus', { id, status }),
+    setDecisionStatus: (id: string, status: 'active' | 'dismissed' | 'superseded') =>
+      trpcMutate('meeting.setDecisionStatus', { id, status }),
+    generateFollowUp: (id: string, confirmHosted = false) =>
+      trpcMutate('meeting.generateFollowUp', { id, confirmHosted }),
+    dismissFollowUp: (id: string) => trpcMutate('meeting.dismissFollowUp', { id }),
     delete: (id: string) => trpcMutate('meeting.delete', { id }),
     searchSegments: (id: string, q: string) => trpcCall('meeting.searchSegments', { id, q }),
     estimate: (id: string) => trpcCall('meeting.estimate', { id }),

@@ -502,7 +502,11 @@ model Meeting {
   transcript     String?
   chunkSummaries String? // JSON string[] — the MAP-phase idempotency boundary (never re-charged)
   summary        String?
-  decisions      String? // JSON string[]
+  // DEPRECATED — superseded by the MeetingDecision table, which carries a
+  // rationale and a date per decision. Kept (not dropped) because existing
+  // installs still hold their decisions here; `backfillMeetingDecisions()` in
+  // apps/api/src/server.ts copies them into rows once. Nothing writes it anymore.
+  decisions      String? // JSON string[] — legacy, read-only
   speakers       String? // JSON {label,inferredRole}[] — label is always neutral ("Speaker 1")
   minutes        String? // markdown
   minutesSubject String?
@@ -514,6 +518,13 @@ model Meeting {
   sendCc    String?
   sentAt    String?
 
+  // Follow-up — a draft the user reviews and sends. Nothing here is ever sent
+  // automatically; `followUpStatus` only tracks whether a draft exists.
+  followUpSubject String?
+  followUpBody    String? // markdown
+  followUpStatus  String  @default("none") // none | ready | sent | dismissed
+  followUpAt      String? // when the post-meeting review reminder fired (dedupe)
+
   // Retention & consent
   retentionDays         Int     @default(30) // 0 = keep audio forever
   audioDeletedAt        String?
@@ -523,8 +534,9 @@ model Meeting {
   createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
   updatedAt String  @default(dbgenerated("(datetime('now','localtime'))"))
 
-  segments    MeetingSegment[]
-  actionItems MeetingActionItem[]
+  segments      MeetingSegment[]
+  actionItems   MeetingActionItem[]
+  decisionItems MeetingDecision[]
 
   @@index([status, createdAt])
   @@index([transcribeStatus])
@@ -560,9 +572,34 @@ model MeetingActionItem {
   status    String  @default("open") // open | created | dismissed
   issueId   String? @unique // set once the user turns this into a real task
   createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+  // Set when the due-date reminder fires, so the 60s sweep doesn't re-notify.
+  // Regenerating the meeting recreates the row, which resets the clock — that
+  // is intended: a fresh extraction starts a fresh reminder cycle.
+  remindedAt String?
 
   meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   issue   Issue?  @relation(fields: [issueId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, idx])
+  @@index([status, dueDate])
+}
+
+// ═══ Meeting Decisions ═══
+// A decision is what you look for months later, and what a follow-up email is
+// built from — so it needs a rationale and a date, which a JSON string[] cannot
+// carry. Same shape as MeetingActionItem on purpose: both are extracted lists
+// that survive a regenerate by keeping the user's dismissals.
+model MeetingDecision {
+  id        String  @id @default(uuid())
+  meetingId String
+  idx       Int
+  text      String
+  rationale String? // only when the transcript actually stated one — never inferred
+  decidedAt String? // YYYY-MM-DD, null when the meeting doesn't pin it down
+  status    String  @default("active") // active | dismissed | superseded
+  createdAt String  @default(dbgenerated("(datetime('now','localtime'))"))
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
 
   @@index([meetingId, idx])
 }

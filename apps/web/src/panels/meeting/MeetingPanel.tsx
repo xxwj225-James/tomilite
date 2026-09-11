@@ -101,11 +101,13 @@ function SendDialog({ s }: { s: ReturnType<typeof useMeetingState> }) {
   const [body, setBody] = useState('');
   const m = s.meeting;
 
-  // Seed the editable body when the dialog opens, from the generated minutes.
+  // Seed the editable body when the dialog opens. The follow-up draft wins when
+  // one exists — it is the shorter, purpose-written version of the same meeting,
+  // and it is what the "send" button in the follow-up section was asking for.
   const [seededFor, setSeededFor] = useState<string | null>(null);
   if (s.sendOpen && m && seededFor !== m.id + ':' + String(s.sendOpen)) {
     setSeededFor(m.id + ':' + String(s.sendOpen));
-    setBody(m.minutes || m.summary || '');
+    setBody(m.followUpBody || m.minutes || m.summary || '');
   }
   if (!s.sendOpen && seededFor) setSeededFor(null);
 

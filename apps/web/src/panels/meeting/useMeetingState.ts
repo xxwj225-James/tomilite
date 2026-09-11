@@ -53,6 +53,17 @@ export interface ActionItem {
   issueId: string | null;
 }
 
+export interface Decision {
+  id: string;
+  idx: number;
+  text: string;
+  /** Why it was decided — null unless the transcript actually said so. */
+  rationale: string | null;
+  /** YYYY-MM-DD, or null when the meeting doesn't pin it down. */
+  decidedAt: string | null;
+  status: string;
+}
+
 export interface Segment {
   id: string;
   idx: number;
@@ -65,6 +76,7 @@ export interface Segment {
 export interface MeetingDetail {
   meeting: any;
   segments: Segment[];
+  decisions: Decision[];
   actionItems: ActionItem[];
   totalSegments: number;
 }
@@ -540,7 +552,7 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
     const m = detail.meeting;
     setSendTo(m.sendTo || '');
     setSendCc(m.sendCc || '');
-    setSendSubject(m.minutesSubject || m.title || '');
+    setSendSubject(m.followUpSubject || m.minutesSubject || m.title || '');
     setSendAttach(false);
     setSendOpen(true);
   }, [detail]);
@@ -642,6 +654,49 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
       d ? { ...d, actionItems: d.actionItems.map((a) => (a.id === item.id ? { ...a, status } : a)) } : d,
     );
   }, []);
+
+  const setDecisionStatus = useCallback(async (item: Decision, status: 'active' | 'dismissed' | 'superseded') => {
+    await api.meeting.setDecisionStatus(item.id, status).catch(() => {});
+    setDetail((d) => (d ? { ...d, decisions: d.decisions.map((x) => (x.id === item.id ? { ...x, status } : x)) } : d));
+  }, []);
+
+  const [followUpBusy, setFollowUpBusy] = useState(false);
+
+  const regenerateFollowUp = useCallback(async () => {
+    if (!selectedId) return;
+    setFollowUpBusy(true);
+    try {
+      const r: any = await api.meeting.generateFollowUp(selectedId, true);
+      if (r?.ok) {
+        setDetail((d) =>
+          d
+            ? {
+                ...d,
+                meeting: {
+                  ...d.meeting,
+                  followUpSubject: r.subject,
+                  followUpBody: r.body,
+                  followUpStatus: 'ready',
+                },
+              }
+            : d,
+        );
+      } else {
+        setNotice({
+          title: t('meeting.followup.title', lang),
+          message: t('meeting.followup.failed', lang, { error: r?.error || 'error' }),
+        });
+      }
+    } finally {
+      setFollowUpBusy(false);
+    }
+  }, [selectedId, lang]);
+
+  const dismissFollowUp = useCallback(async () => {
+    if (!selectedId) return;
+    await api.meeting.dismissFollowUp(selectedId).catch(() => {});
+    setDetail((d) => (d ? { ...d, meeting: { ...d.meeting, followUpStatus: 'dismissed' } } : d));
+  }, [selectedId]);
 
   // ─── Deletion ───
   const executeDelete = useCallback(async () => {
@@ -865,6 +920,11 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
     createTask,
     openTask,
     setActionStatus,
+    // decisions & follow-up
+    setDecisionStatus,
+    regenerateFollowUp,
+    dismissFollowUp,
+    followUpBusy,
     // delete
     deleteTarget,
     setDeleteTarget,

@@ -19,9 +19,19 @@ export interface MeetingDefaults {
   source: 'mic' | 'mic+system';
   lang: string;
   retentionDays: number;
+  /** Windows toast when an action item falls due / a meeting is still open. */
+  remindersEnabled: boolean;
+  /** Days after a meeting before the "still open" review reminder fires. */
+  followUpReminderDays: number;
 }
 
-const DEFAULTS: MeetingDefaults = { source: 'mic+system', lang: 'auto', retentionDays: 30 };
+const DEFAULTS: MeetingDefaults = {
+  source: 'mic+system',
+  lang: 'auto',
+  retentionDays: 30,
+  remindersEnabled: true,
+  followUpReminderDays: 3,
+};
 
 const card: CSSProperties = { marginBottom: 10 };
 const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' };
@@ -338,6 +348,41 @@ export function MeetingTab() {
 
           <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.7 }}>
             {t('meeting.settings.retentionNote', lang)}
+          </p>
+
+          <div style={{ ...row, marginTop: 10 }}>
+            <span style={label}>{t('meeting.settings.reminders', lang)}</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={defaults.remindersEnabled !== false}
+                onChange={(e) => persist({ ...defaults, remindersEnabled: e.target.checked })}
+              />
+              {t('meeting.settings.remindersOn', lang)}
+            </label>
+          </div>
+
+          {/* Only meaningful while reminders are on — leaving it editable would
+              suggest a setting that does nothing. */}
+          {defaults.remindersEnabled !== false && (
+            <div style={row}>
+              <span style={label}>{t('meeting.settings.followUpDays', lang)}</span>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                max={90}
+                value={defaults.followUpReminderDays ?? 3}
+                onChange={(e) =>
+                  persist({ ...defaults, followUpReminderDays: Math.max(1, Number(e.target.value) || 1) })
+                }
+                style={{ fontSize: 12, maxWidth: 120 }}
+              />
+            </div>
+          )}
+
+          <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.7 }}>
+            {t('meeting.settings.remindersNote', lang)}
           </p>
 
           {saved && <span style={{ fontSize: 11, color: 'var(--green)' }}>✓ {t('meeting.settings.saved', lang)}</span>}

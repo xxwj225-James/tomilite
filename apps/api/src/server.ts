@@ -25,9 +25,18 @@ import { chatRouter } from './routers/chat';
 import { standupRouter, checkAndGenerateEvening, checkAndGenerateMorning } from './routers/standup';
 import { mcpServerRouter } from './routers/mcpServer';
 import { hostedRouter } from './routers/hosted';
-import { meetingRouter, handleMeetingAudioChunk, handleMeetingStream, recoverStuckMeetings } from './routers/meeting';
+import {
+  meetingRouter,
+  handleMeetingAudioChunk,
+  handleMeetingStream,
+  recoverStuckMeetings,
+  backfillMeetingDecisions,
+} from './routers/meeting';
+import { checkMeetingReminders } from './lib/meeting/reminders.js';
 import { resolveLLM } from './lib/gateway.js';
 import * as telemetry from './lib/telemetry.js';
+// The one path to a Windows toast — shared with the meeting reminder sweep.
+import { sendNotification } from './lib/notify.js';
 
 // ─── Compose all routers ───
 const appRouter = router({
@@ -288,25 +297,6 @@ const server = createServer(async (req, res) => {
     });
 });
 
-// ─── OS Notification helper ───
-async function sendNotification(title: string, body: string) {
-  try {
-    await fetch('http://127.0.0.1:3191/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, body: body }),
-    });
-    // Increment notification count
-    const cfg = await prisma.systemConfig.findUnique({ where: { key: 'notifyCount' } });
-    const count = (cfg ? parseInt(cfg.value) || 0 : 0) + 1;
-    await prisma.systemConfig.upsert({
-      where: { key: 'notifyCount' },
-      create: { key: 'notifyCount', value: String(count) },
-      update: { value: String(count) },
-    });
-  } catch {}
-}
-
 // ─── Start email watchers ───
 import { emailManager, classifyEmail, heuristicClassify } from '@tomilite/email';
 import { prisma } from '@tomilite/database';
@@ -436,6 +426,18 @@ function startBackgroundTasks() {
     recoverStuckMeetings().catch(() => {});
   }, 5_000);
 
+  // Decisions used to live in a JSON column; copy them into rows once so old
+  // meetings don't open with their decisions missing.
+  setTimeout(() => {
+    backfillMeetingDecisions().catch(() => {});
+  }, 8_000);
+
+  // Meeting reminders — action item due tomorrow, and post-meeting review.
+  // Same 60s cadence as the standup checks; both are single indexed queries.
+  setInterval(() => {
+    checkMeetingReminders().catch(() => {});
+  }, 60_000);
+
   // Morning & Evening standup — check every 60 seconds
   setInterval(() => {
     checkAndGenerateMorning().catch(() => {});
@@ -512,7 +514,7 @@ function startBackgroundTasks() {
 // ⚠️ OTA migration: increment EVERY TIME you change prisma/schema.prisma
 // Only ADDITIVE changes (new columns/tables). Never rename or drop.
 // ensureSchema() → detects old version → prisma db push → preserves all user data
-const SCHEMA_VERSION = 21; // Meetings: local recording → transcript → AI minutes → tasks
+const SCHEMA_VERSION = 22; // Meeting decisions as rows + follow-up draft & reminders
 
 // ─── Ensure database schema is up to date (runs db push only when needed) ───
 async function ensureSchema() {
@@ -652,6 +654,37 @@ async function ensureSchema() {
     {
       version: 21,
       sql: 'CREATE INDEX IF NOT EXISTS "MeetingActionItem_meetingId_idx_idx" ON "MeetingActionItem"("meetingId", "idx")',
+    },
+    // ─── v22: structured decisions + follow-up draft & reminders ───
+    // Decisions move out of the JSON `decisions` column into rows so each one
+    // can carry a rationale and a date. The old column stays (dropping it would
+    // lose data on existing installs); backfillMeetingDecisions() copies it once.
+    {
+      version: 22,
+      sql: `CREATE TABLE IF NOT EXISTS "MeetingDecision" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "meetingId" TEXT NOT NULL,
+        "idx" INTEGER NOT NULL,
+        "text" TEXT NOT NULL,
+        "rationale" TEXT,
+        "decidedAt" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'active',
+        "createdAt" TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        CONSTRAINT "MeetingDecision_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+    },
+    {
+      version: 22,
+      sql: 'CREATE INDEX IF NOT EXISTS "MeetingDecision_meetingId_idx_idx" ON "MeetingDecision"("meetingId", "idx")',
+    },
+    { version: 22, sql: 'ALTER TABLE "Meeting" ADD COLUMN "followUpSubject" TEXT' },
+    { version: 22, sql: 'ALTER TABLE "Meeting" ADD COLUMN "followUpBody" TEXT' },
+    { version: 22, sql: 'ALTER TABLE "Meeting" ADD COLUMN "followUpStatus" TEXT NOT NULL DEFAULT \'none\'' },
+    { version: 22, sql: 'ALTER TABLE "Meeting" ADD COLUMN "followUpAt" TEXT' },
+    { version: 22, sql: 'ALTER TABLE "MeetingActionItem" ADD COLUMN "remindedAt" TEXT' },
+    {
+      version: 22,
+      sql: 'CREATE INDEX IF NOT EXISTS "MeetingActionItem_status_dueDate_idx" ON "MeetingActionItem"("status", "dueDate")',
     },
   ];
 
