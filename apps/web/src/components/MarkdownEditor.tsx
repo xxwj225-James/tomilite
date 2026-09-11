@@ -363,12 +363,24 @@ function serializeInline(node: any): string {
   return text;
 }
 
+// Run a block command (H1/H2/H3, lists, quote, code block…) against THIS
+// editor's own ctx.
+//
+// Must NOT call `cmd.run()`: `cmd` is a module-level `$command` singleton
+// (wrapInHeadingCommand etc.), and Milkdown rebinds `plugin.run` on every
+// editor load — `plugin.run = (payload) => ctx.get(commandsCtx).call(...)`
+// (see $command in @milkdown/utils). So `.run()` sends the command into
+// whichever MarkdownEditor mounted LAST, which silently does nothing here.
+// `callCommand` takes the ctx explicitly, so each toolbar hits its own editor
+// — the same mechanism `toggleMark` above already uses.
 function execBlockCmd(ed: any, cmd: any, arg?: any) {
-  if (arg !== undefined) {
-    cmd.run(arg);
-  } else {
-    cmd.run();
-  }
+  ed.action((ctx: any) => {
+    if (arg !== undefined) {
+      callCommand(cmd.key, arg)(ctx);
+    } else {
+      callCommand(cmd.key)(ctx);
+    }
+  });
 }
 
 /**
