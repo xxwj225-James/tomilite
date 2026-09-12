@@ -42,6 +42,35 @@ Every external call is audited in `McpAuditLog` (tool, arguments, status, approv
 - The API server is bundled with esbuild into `apps/api/dist/server.cjs` (`scripts/bundle-api.js`) — bundled but not minified
 - `scripts/clean-engines.js` removes non-Windows Prisma engine binaries from the installer to shrink its size
 
+## Dependency Advisories
+
+Dependabot watches `package-lock.json`. Most entries in it are transitive — a package
+we never call directly, pulled in by one we do. The root `package.json` therefore
+carries an `overrides` block that pins those transitives to a patched release:
+
+| Package                    | Pinned    | Why an override, not a plain bump                                                                                |
+| -------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- |
+| `@xmldom/xmldom`           | `^0.8.15` | `mammoth` / `plist` accept `^0.8.x`; staying on 0.8 avoids a major jump                                          |
+| `fast-uri`                 | `^3.1.6`  | nested under `app-builder-lib`'s `ajv`                                                                           |
+| `js-yaml`                  | `^4.3.2`  | pulled in by `electron-updater`, `eslint`, `electron-builder`                                                    |
+| `nodemailer`               | `^9.1.1`  | `imapflow` and `mailparser` **pin exact versions** (`9.0.1`, `9.0.5`) — an override is the only way to move them |
+| `baseline-browser-mapping` | `^2.11.0` | nested under `browserslist`                                                                                      |
+
+`browserslist` itself is a **devDependency** rather than an override: npm does not apply
+an override to a package that another dependency consumes as a _peer_ (`update-browserslist-db`
+peers on it), so pinning it at the root is the only lever that works.
+
+**Accepted risk — `image-size`.** Two advisories (ICNS infinite loop; JXL/HEIF infinite
+loops) cover every published version up to and including the latest, `2.0.2`, so there is
+nothing to upgrade to and `pptxgenjs` (its only consumer here) has not moved off it. The
+vulnerable parsers run only on `addImage`; our single `pptxgenjs` call site
+(`exportToPptx` → `markdownToDeck` in `apps/api/src/agent/tools/reportTools.ts`) draws
+slides with `addSlide` / `addText` only, so the affected code is never reached. Revisit
+when `pptxgenjs` ships a release with a fixed `image-size`.
+
+Note that a dependency fix only reaches users after the next **release**: the API server
+is bundled into `apps/api/dist/server.cjs` at pack time and that directory is gitignored.
+
 ## Reporting a Vulnerability
 
 Please report security issues via [GitHub Issues](https://github.com/xxwj225-James/tomilite/issues) — avoid publishing details of exploitable vulnerabilities before a fix is released.
