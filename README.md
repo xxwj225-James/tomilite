@@ -23,21 +23,12 @@ TomiLite gives your AI a persistent workspace — your tasks, notes, knowledge b
 
 Record a meeting, and get minutes with action items — without the audio ever being uploaded:
 
-**1. Record** — microphone + system audio mixed into one track
+![TomiLite meeting workflow — record, local transcription, AI minutes, action item becomes a task](docs/images/meeting-demo.gif)
 
-![Record a meeting](docs/images/meeting-1.gif)
-
-**2. Transcribe locally** — the bundled [whisper.cpp](https://github.com/ggml-org/whisper.cpp) binary does the speech-to-text on your machine: no API call, no upload
-
-![Local transcription](docs/images/meeting-2.gif)
-
-**3. Summarize with AI** — summary, decisions and action items, with honest `Speaker 1/2/3` labels (no invented names, because no voice-print identification is performed)
-
-![AI minutes and action items](docs/images/meeting-3.gif)
-
-**4. Act on it** — one click turns any action item into a task on your board; minutes can be emailed through your own SMTP
-
-![Action item becomes a task](docs/images/meeting-4.gif)
+1. **Record** — microphone + system audio mixed into one track
+2. **Transcribe locally** — the bundled [whisper.cpp](https://github.com/ggml-org/whisper.cpp) binary does the speech-to-text on your machine: no API call, no upload
+3. **Summarize with AI** — summary, decisions and action items, with honest `Speaker 1/2/3` labels (no invented names, because no voice-print identification is performed)
+4. **Act on it** — one click turns any action item into a task on your board; minutes can be emailed through your own SMTP
 
 Most meeting-AI tools upload your audio and bill by the minute. TomiLite's audio never leaves your computer — only the transcript text reaches your LLM, and only when you ask for a summary. Recording and transcription work even with **no LLM configured at all**.
 
