@@ -1,7 +1,8 @@
 import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
-import { generateReportVector } from '../utils/vector.js';
 import { semanticRank } from '../utils/search.js';
+import { agentLog } from '../utils/logger.js';
+import { toFtsMatch } from '../../lib/fts.js';
 
 /** List or search reports by title/content. Uses term-split OR search + FTS fallback. */
 export async function listReports(
@@ -29,35 +30,59 @@ export async function listReports(
     where,
     take: args.limit || 10,
     orderBy: { createdAt: 'desc' },
-    select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true },
+    // `vector` is selected only so semanticRank below can use it; it is never returned.
+    select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true, vector: true },
   });
 
-  // FTS fallback: when Prisma contains returns nothing, try full-text search via global_fts
-  if (args.query && reports.length === 0) {
-    try {
-      // FTS5 unicode61 tokenizer splits CJK into individual chars — pass query as-is
-      const ftsRows = (await prisma.$queryRawUnsafe(
-        'SELECT ref_id FROM global_fts WHERE type = ? AND global_fts MATCH ? ORDER BY rank LIMIT 10',
-        'report',
-        args.query,
-      )) as any[];
-      if (ftsRows?.length > 0) {
-        const ids = ftsRows.map((r: any) => r.ref_id);
-        reports = await prisma.report.findMany({
-          where: { id: { in: ids } },
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true },
-        });
+  // FTS ranks across title and content by BM25, which the contains path above cannot
+  // do. This used to run only when contains had already returned nothing, so a single
+  // substring hit suppressed the ranked path entirely; it now takes precedence and the
+  // contains results stand as the fallback when FTS finds nothing.
+  if (args.query) {
+    // toFtsMatch quotes each term: the query used to reach MATCH verbatim, so input
+    // containing `-` or a lone `"` threw ("no such column" / "unterminated string").
+    const match = toFtsMatch(String(args.query));
+    if (match) {
+      try {
+        const ftsRows = (await prisma.$queryRawUnsafe(
+          'SELECT ref_id FROM global_fts WHERE type = ? AND global_fts MATCH ? ORDER BY rank LIMIT ?',
+          'report',
+          match,
+          args.limit || 10,
+        )) as any[];
+        const ids = (ftsRows || []).map((r: any) => r.ref_id).filter(Boolean);
+        if (ids.length > 0) {
+          // `archived: false` has to be repeated here: this is a separate query from the
+          // primary path, and without it FTS would surface archived reports that the
+          // primary path deliberately hides.
+          const found = await prisma.report.findMany({
+            where: { id: { in: ids }, archived: false },
+            select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true, vector: true },
+          });
+          if (found.length > 0) {
+            // Keep BM25 order — findMany's own ordering would discard it.
+            const byId = new Map(found.map((r) => [r.id, r]));
+            reports = ids.map((id: string) => byId.get(id)).filter(Boolean) as typeof reports;
+          }
+        }
+      } catch (e: any) {
+        agentLog('[list_reports] FTS failed:', e?.message);
       }
-    } catch {
-      /* FTS may not be available or query syntax invalid */
     }
   }
 
   if (args.query && reports.length > 0) {
     const ranked = await semanticRank(
       args.query,
-      reports.map((r) => ({ id: r.id, title: r.title, snippet: r.content?.substring(0, 200) })),
+      // `vector` has to be handed over here. It was omitted before, which made
+      // Report.vector write-only data: semanticRank could only ever take the keyword
+      // branch, no matter how many vectors the queue had written.
+      reports.map((r) => ({
+        id: r.id,
+        title: r.title,
+        snippet: r.content?.substring(0, 200),
+        vector: r.vector,
+      })),
     );
     return ranked.map((r) => {
       const orig = reports.find((rep) => rep.id === r.id);
@@ -132,7 +157,8 @@ export async function createReport(
       status: 'draft',
     },
   });
-  generateReportVector(report.id);
+  // Embedding is queued by the `embed_report_i` trigger, not called from here — see the
+  // note in noteTools.createNote.
   return { id: report.id, title: report.title, reportType: report.reportType, status: report.status };
 }
 

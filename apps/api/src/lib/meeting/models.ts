@@ -170,7 +170,14 @@ export async function downloadModel(name: string, handlers: DownloadHandlers): P
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function downloadOnce(url: string, partPath: string, handlers: DownloadHandlers): Promise<void> {
+/**
+ * Fetch one URL to `partPath`, with a stall watchdog and a truncation check.
+ *
+ * Exported for `lib/embed/modelFiles.ts`, which reuses it rather than reimplementing
+ * resume-free download + watchdog + content-length validation. It is generic over the
+ * URL, so nothing here is whisper-specific; the caller renames `partPath` into place.
+ */
+export async function downloadOnce(url: string, partPath: string, handlers: DownloadHandlers): Promise<void> {
   const { signal } = handlers;
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();

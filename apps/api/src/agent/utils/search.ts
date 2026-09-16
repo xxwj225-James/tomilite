@@ -1,72 +1,27 @@
 import { prisma } from '@tomilite/database';
-import { resolveLLM, isDeepseekEndpoint } from '../../lib/gateway.js';
+import { DEFAULT_PROJECT_ID } from './constants.js';
+import { toFtsMatch } from '../../lib/fts.js';
+import { cosineSimilarity, decodeVector, embedQuery } from '../../lib/embed/index.js';
 
-// ─── Search term extraction (Chinese-friendly) ───
-
-const STOP_CHARS =
-  /[的了吗呢吧啊呀着过是和在或者与及 to the a an in on at for with and or of is are was were be been 0-9\s，,、.\-_:：；;（）()【】\[\]{}""''''""！!？?…·]+/g;
-
-/** Extract clean search terms from a title, filtering stop words and short tokens.
- *  For CJK text (Chinese/Japanese), generates character bigrams so the dedup
- *  rough-filter has enough terms for the ≥2 match threshold. */
-export function getSearchTerms(title: string): string[] {
-  const clean = title.replace(STOP_CHARS, ' ').replace(/\s+/g, ' ').trim();
-  const words = clean.split(/\s+/).filter((w: string) => w.length >= 2);
-
-  // Generate CJK character bigrams for better matching (Chinese/Japanese has no spaces)
-  const bigrams: string[] = [];
-  for (const w of words) {
-    if (/[一-鿿぀-ゟ゠-ヿ㐀-䶿]/.test(w)) {
-      for (let i = 0; i < w.length - 1; i++) bigrams.push(w.substring(i, i + 2));
-    }
-  }
-
-  const all = [...new Set([...words, ...bigrams])];
-  return all.slice(0, 30);
-}
+// `cosineSimilarity` now lives with the rest of the vector code in lib/embed; re-exported
+// so existing importers of this module keep working.
+export { cosineSimilarity };
 
 // ─── Embedding ───
 
-/** Call LLM embedding API to get a float vector. Returns null if provider doesn't support it. */
+/**
+ * Embed a query. Thin alias for `embedQuery` in lib/embed.
+ *
+ * This function used to call the LLM's /embeddings endpoint. Of the five providers this
+ * app ships, that path was dead for DeepSeek, Anthropic and the hosted gateway — the
+ * guard was `!isDeepseekEndpoint(baseUrl)`, which matches DeepSeek *and* the gateway —
+ * and quietly corrupting for OpenAI and Qwen, which passed it and stored a 1536- or
+ * 1024-dim vector in the same column the local 384-dim model reads. A width mismatch
+ * makes cosineSimilarity return 0, so those rows would have ranked last forever with
+ * nothing logged. One model, one space, one stored format.
+ */
 export async function embedText(text: string): Promise<number[] | null> {
-  try {
-    const llm = await resolveLLM();
-    if (!llm) return null;
-    const baseUrl = llm.baseUrl;
-    // Gateway/DeepSeek have no embeddings endpoint — semantic search degrades to keyword.
-    if (!baseUrl || isDeepseekEndpoint(baseUrl) || baseUrl.includes('anthropic')) return null;
-    const apiKey = llm.apiKey;
-    const model = baseUrl.includes('dashscope') ? 'text-embedding-v3' : 'text-embedding-3-small';
-    const input = text.substring(0, 8000);
-    const resp = await fetch(baseUrl + '/embeddings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({ model, input }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!resp.ok) return null;
-    const d = await resp.json();
-    return d.data?.[0]?.embedding || null;
-  } catch {
-    return null;
-  }
-}
-
-// ─── Similarity ───
-
-/** Cosine similarity between two equal-length float vectors */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (!a || !b || a.length !== b.length) return 0;
-  let dot = 0,
-    na = 0,
-    nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom;
+  return embedQuery(text);
 }
 
 // ─── Semantic ranking ───
@@ -77,11 +32,21 @@ export async function semanticRank(
   candidates: Array<{ id: string; title: string; snippet?: string | null; vector?: string | null }>,
 ): Promise<Array<{ id: string; title: string; snippet?: string | null; score: number }>> {
   if (candidates.length === 0) return [];
-  const qv = await embedText(query);
+  const qv = await embedQuery(query);
   if (qv) {
-    const scored = candidates.map((c) => ({ ...c, score: c.vector ? cosineSimilarity(qv, JSON.parse(c.vector)) : 0 }));
-    scored.sort((a, b) => b.score - a.score);
-    if (scored[0].score > 0.5) return scored.slice(0, 10);
+    // Gate on the CANDIDATES being embedded, not on the top score.
+    //
+    // This used to require `scored[0].score > 0.5`. That number was calibrated for
+    // OpenAI embeddings; e5 puts unrelated texts around 0.75-0.85, so the threshold was
+    // true for every query and told us nothing. Whether a cosine ordering is meaningful
+    // depends on whether the candidates have usable vectors at all — if none do, every
+    // score is 0 and the "ranking" is just the input order.
+    const usable = candidates.some((c) => decodeVector(c.vector) !== null);
+    if (usable) {
+      const scored = candidates.map((c) => ({ ...c, score: cosineSimilarity(qv, decodeVector(c.vector)) }));
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, 10);
+    }
   }
   // Fallback: keyword contains-based scoring
   const terms = [query];
@@ -106,19 +71,105 @@ export async function semanticRank(
   return scored.slice(0, 10);
 }
 
-// ─── Semantic note search ───
+// ─── Hybrid note search ───
 
+/** Candidates pulled from each retrieval list before fusion. */
+const CANDIDATES = 500;
+/** Items taken from each individual ranking. */
+const PER_LIST = 50;
+/** Reciprocal-rank-fusion constant. 60 is the value from the original RRF paper and the
+ *  one every implementation converges on; it only sets how fast rank discounting decays. */
+const RRF_K = 60;
+
+/**
+ * Find notes by meaning as well as by wording.
+ *
+ * Two independent rankings are fused with reciprocal rank fusion rather than by combining
+ * scores: BM25 rank and cosine similarity have no common scale, and normalizing them
+ * against each other would need per-corpus tuning that silently stops working when the
+ * corpus changes shape. RRF only uses the *order* each list produced, so it needs no
+ * weights and no calibration — an item ranked well by either method surfaces.
+ *
+ * Degradation is graceful in both directions: no model → the embedding list is empty and
+ * RRF reduces to BM25 order; no FTS index → same in reverse. A query that is a single
+ * 2-character Chinese word produces no MATCH expression at all (trigram cannot serve it),
+ * which is the case the embedding list exists to cover.
+ */
 export async function searchNotesSemantic(query: string, limit = 5) {
   const pages = await prisma.knowledgePage.findMany({
-    where: { projectId: 'proj-default' },
-    take: 100,
+    where: { projectId: DEFAULT_PROJECT_ID, status: 'active' },
+    // Was an unordered `take: 100` with no status filter, which meant "the 100 notes the
+    // planner happened to return" — archived notes included, and recent ones possibly not.
+    orderBy: { updatedAt: 'desc' },
+    take: CANDIDATES,
     select: { id: true, title: true, content: true, vector: true },
   });
   if (!query)
-    return pages.slice(0, limit).map((p) => ({ title: p.title, snippet: (p.content || '').substring(0, 200) }));
-  const ranked = await semanticRank(
-    query,
-    pages.map((p) => ({ id: p.id, title: p.title, snippet: p.content?.substring(0, 200), vector: p.vector })),
-  );
-  return ranked.slice(0, limit).map((r) => ({ title: r.title, snippet: r.snippet?.substring(0, 200) || '' }));
+    return pages.slice(0, limit).map((p) => ({
+      id: p.id,
+      title: p.title,
+      snippet: (p.content || '').substring(0, 200),
+    }));
+
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const lists: string[][] = [];
+
+  // ── List 1: BM25 over the trigram index ──
+  const match = toFtsMatch(query);
+  if (match) {
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ ref_id: string }>>(
+        `SELECT ref_id FROM global_fts WHERE type = 'note' AND global_fts MATCH ? ORDER BY rank LIMIT ?`,
+        match,
+        PER_LIST,
+      );
+      const ids = rows.map((r) => r.ref_id).filter((id) => byId.has(id));
+      if (ids.length > 0) lists.push(ids);
+    } catch {
+      /* index missing or MATCH rejected — the other list still works */
+    }
+  }
+
+  // ── List 2: cosine over stored vectors ──
+  //
+  // This list always fills to PER_LIST when any vector exists, including for a query with
+  // no relevant note anywhere — see the measurement in knowledgeRecall.ts. So a nonsense
+  // query now returns `limit` arbitrary notes where it used to return none. That is the
+  // accepted cost of the same property that makes cross-lingual and 2-character CJK
+  // queries work at all; there is no score cut-off that separates the two cases.
+  const qv = await embedQuery(query);
+  if (qv) {
+    const scored = pages
+      .map((p) => ({ id: p.id, score: cosineSimilarity(qv, decodeVector(p.vector)) }))
+      .filter((s) => s.score > 0) // 0 means "no usable vector", not "unrelated"
+      .sort((a, b) => b.score - a.score)
+      .slice(0, PER_LIST);
+    if (scored.length > 0) lists.push(scored.map((s) => s.id));
+  }
+
+  if (lists.length === 0) return [];
+
+  // ── Fusion ──
+  const fused = new Map<string, number>();
+  for (const list of lists) {
+    for (let rank = 0; rank < list.length; rank++) {
+      const id = list[rank];
+      fused.set(id, (fused.get(id) || 0) + 1 / (RRF_K + rank + 1));
+    }
+  }
+
+  return [...fused.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => {
+      const p = byId.get(id)!;
+      return {
+        // The id used to be dropped here, which left the agent unable to open a note it
+        // had just found and reported.
+        id: p.id,
+        title: p.title,
+        snippet: (p.content || '').substring(0, 200),
+        score: Number(fused.get(id)!.toFixed(6)),
+      };
+    });
 }

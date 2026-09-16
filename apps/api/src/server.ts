@@ -33,6 +33,9 @@ import {
   backfillMeetingDecisions,
 } from './routers/meeting';
 import { checkMeetingReminders } from './lib/meeting/reminders.js';
+import { ensureSearchIndexes, reclaimIndexSpace } from './lib/ftsIndex.js';
+import { embedWarmup } from './lib/embed/index.js';
+import { drainEmbedQueue, embedBootSweep } from './lib/embed/queue.js';
 import { resolveLLM } from './lib/gateway.js';
 import * as telemetry from './lib/telemetry.js';
 // The one path to a Windows toast — shared with the meeting reminder sweep.
@@ -419,6 +422,43 @@ function startBackgroundTasks() {
 
   // Report archiver (hourly)
   startReportArchiver();
+
+  // The index rebuild dropped a large amount of duplicated data; VACUUM gives those
+  // pages back to the filesystem. Deferred well past listen() because a VACUUM takes
+  // an exclusive lock and would otherwise be visible as a slow startup.
+  setTimeout(() => {
+    reclaimIndexSpace().catch(() => {});
+  }, 120_000);
+
+  // ── Embedding (semantic search) ──
+  //
+  // Three timers, none of them awaited, none of them on the request path. The order and
+  // the delays matter:
+  //
+  //   45 s — build the ONNX session. This costs ~11 s of CPU and the whole reason it is
+  //          a timer is that no user action may ever pay it. Doing it first also means
+  //          knowledge recall's fallback (which is gated on isEmbedLoaded()) starts
+  //          working a minute into the session instead of never.
+  //   90 s — enqueue the backfill, download the model if it is missing, drain a first
+  //          batch. Placed after the warm-up so a model that IS installed is never
+  //          loaded twice concurrently, and late enough that the download does not
+  //          compete with startup I/O.
+  //   60 s — steady-state drain (60 rows ≈ 1 s of work per minute). Notes and reports
+  //          enqueue themselves via triggers; this is what turns the queue into vectors.
+  //          Worth knowing before changing it: a big corpus is bounded by this rate, and
+  //          the boot sweep's 200 rows only covers the first pass.
+  setTimeout(() => {
+    embedWarmup().catch(() => {});
+  }, 45_000);
+  setTimeout(() => {
+    embedBootSweep().catch(() => {});
+  }, 90_000);
+  setInterval(
+    () => {
+      drainEmbedQueue(60).catch(() => {});
+    },
+    60_000,
+  );
 
   // Meetings interrupted by a crash/force-quit would otherwise sit at
   // "transcribing…" forever. Flip them to a retryable state on boot.
@@ -844,56 +884,15 @@ async function ensureSeed() {
   }
 }
 
-// Initialize FTS5 full-text search
-async function initFTS5() {
-  try {
-    await prisma.$executeRawUnsafe(
-      `CREATE VIRTUAL TABLE IF NOT EXISTS global_fts USING fts5(type, title, body, ref_id, tokenize='porter unicode61')`,
-    );
-    // Sync triggers for real-time indexing
-    const triggers = [
-      `CREATE TRIGGER IF NOT EXISTS fts_issue_i AFTER INSERT ON Issue BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('issue',new.title,new.description,new.id); END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_issue_u AFTER UPDATE ON Issue BEGIN UPDATE global_fts SET title=new.title, body=new.description WHERE ref_id=new.id AND type='issue'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_issue_d AFTER DELETE ON Issue BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='issue'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_note_i AFTER INSERT ON KnowledgePage BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('note',new.title,new.content,new.id); END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_note_u AFTER UPDATE ON KnowledgePage BEGIN UPDATE global_fts SET title=new.title, body=new.content WHERE ref_id=new.id AND type='note'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_note_d AFTER DELETE ON KnowledgePage BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='note'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_email_i AFTER INSERT ON SmartEmail BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('email',new.subject,COALESCE(new.bodySnapshot,new.summary,''),new.id); END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_email_u AFTER UPDATE ON SmartEmail BEGIN UPDATE global_fts SET title=new.subject, body=COALESCE(new.bodySnapshot,new.summary,'') WHERE ref_id=new.id AND type='email'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_email_d AFTER DELETE ON SmartEmail BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='email'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_git_i AFTER INSERT ON GitCommit BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('git',new.message,new.author,new.id); END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_git_u AFTER UPDATE ON GitCommit BEGIN UPDATE global_fts SET title=new.message, body=new.author WHERE ref_id=new.id AND type='git'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_git_d AFTER DELETE ON GitCommit BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='git'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_report_i AFTER INSERT ON Report BEGIN INSERT INTO global_fts(type,title,body,ref_id) VALUES('report',new.title,new.content,new.id); END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_report_u AFTER UPDATE ON Report BEGIN UPDATE global_fts SET title=new.title, body=new.content WHERE ref_id=new.id AND type='report'; END`,
-      `CREATE TRIGGER IF NOT EXISTS fts_report_d AFTER DELETE ON Report BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='report'; END`,
-    ];
-    for (const sql of triggers) {
-      try {
-        await prisma.$executeRawUnsafe(sql);
-      } catch {}
-    }
-    // Initial population (INSERT OR IGNORE to skip duplicates)
-    await prisma.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'issue',title,COALESCE(description,''),id FROM Issue`,
-    );
-    await prisma.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'note',title,COALESCE(content,''),id FROM KnowledgePage`,
-    );
-    await prisma.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'email',subject,COALESCE(bodySnapshot,summary,''),id FROM SmartEmail`,
-    );
-    await prisma.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'git',message,author,id FROM GitCommit`,
-    );
-    await prisma.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO global_fts(type,title,body,ref_id) SELECT 'report',title,COALESCE(content,''),id FROM Report`,
-    );
-    console.warn('[Init] FTS5 search index ready');
-  } catch (e: any) {
-    console.error('[Init] FTS5 setup failed:', e.message);
-  }
-}
+// The FTS5 index used to be created and repopulated here, with `porter unicode61` as
+// the tokenizer and an unconditional `INSERT OR IGNORE ... SELECT` on every boot.
+// Two problems with that: porter unicode61 treats a run of Han/Kana as ONE token, so
+// no Chinese query shorter than the indexed run could ever match; and FTS5 has no
+// unique constraint, so the "ignore duplicates" population appended a full copy of the
+// corpus on every launch — 498,107 index rows for 1,616 source rows, 95% of the
+// database. It now lives in lib/ftsIndex.ts, which re-checks its own preconditions on
+// every boot (see the header comment there for why it is deliberately not a versioned
+// migration).
 
 // Run DB migration FIRST, then start server (avoids race: query before column exists)
 const PORT = parseInt(process.env.API_PORT || '3091', 10);
@@ -905,7 +904,9 @@ ensureSchema()
     }
     return ensureSeed();
   })
-  .then(initFTS5)
+  // Must stay before startBackgroundTasks() and before listen(): the rebuild runs its
+  // DDL in one transaction, and nothing may query global_fts while it is mid-swap.
+  .then(() => ensureSearchIndexes())
   .then(() => {
     console.warn('[Init] Database ready');
     startBackgroundTasks();

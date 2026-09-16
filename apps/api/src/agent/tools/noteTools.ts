@@ -1,6 +1,5 @@
 import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
-import { generateNoteVector } from '../utils/vector.js';
 import { searchNotesSemantic } from '../utils/search.js';
 
 /** Create a knowledge base note/wiki page */
@@ -9,7 +8,10 @@ export async function createNote(args: Record<string, any>): Promise<{ id: strin
   const page = await prisma.knowledgePage.create({
     data: { projectId: DEFAULT_PROJECT_ID, title: args.title, content: args.content || null, category: args.category || 'general' },
   });
-  generateNoteVector(page.id); // fire-and-forget semantic embedding
+  // No embedding call here. The `embed_note_i` trigger queues this row, and the drain
+  // loop embeds it within a minute. The fire-and-forget helper that used to live on this
+  // line was both narrower (it covered 2 of ~24 writers) and worse (it swallowed every
+  // error, and an update never recomputed the vector).
   return { id: page.id, title: page.title, category: page.category };
 }
 

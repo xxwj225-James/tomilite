@@ -12,7 +12,11 @@ esbuild.build({
   target: 'node20',
   format: 'cjs',
   outfile: path.join(root, 'apps', 'api', 'dist', 'server.cjs'),
-  external: ['@prisma/client'],
+  // `@huggingface/transformers` must stay external: it loads native ONNX binaries and
+  // .onnx/.json assets at runtime by path, none of which survive bundling. Marking it
+  // external emits a literal `require` and stops esbuild descending into the package, so
+  // its transitive `onnxruntime-node` / `sharp` are left alone too.
+  external: ['@prisma/client', '@huggingface/transformers'],
   alias: {
     '@tomatolite/database': path.join(root, 'packages', 'database', 'src', 'index.ts'),
     '@tomatolite/email': path.join(root, 'packages', 'email', 'src', 'index.ts'),

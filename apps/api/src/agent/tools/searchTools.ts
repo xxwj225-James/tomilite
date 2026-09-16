@@ -2,6 +2,7 @@ import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { agentLog } from '../utils/logger.js';
 import { getProxyUrl } from '../utils/proxy.js';
+import { ftsTerms, toFtsMatch, unsearchableTerms } from '../../lib/fts.js';
 
 /**
  * Brave Search API. Requires BRAVE_API_KEY in the environment — there is no UI or
@@ -189,21 +190,11 @@ export async function searchLocalData(
 ): Promise<Array<{ type: string; id?: string; title: string; snippet: string }>> {
   const q: string = args.query ? String(args.query).trim() : '';
   if (!q) return [];
-  const unique = [...new Set(q.split(/\s+/).filter((w: string) => w.length > 0))];
+  const unique = ftsTerms(q);
   if (unique.length === 0) return [];
-  try {
-    const ftsQuery = unique.join(' OR ');
-    const rows = (await prisma.$queryRawUnsafe(
-      'SELECT type, title, body, ref_id, rank FROM global_fts WHERE global_fts MATCH ? ORDER BY rank LIMIT 15',
-      ftsQuery,
-    )) as Array<{ type: string; title: string; body: string; ref_id: string }>;
-    return rows.map((r) => ({
-      type: r.type,
-      id: r.ref_id,
-      title: (r.title || '').substring(0, 120),
-      snippet: (r.body || '').substring(0, 200),
-    }));
-  } catch {
+
+  /** LIKE path — for queries the index structurally cannot serve. */
+  const containsSearch = async () => {
     const results: Array<{ type: string; title: string; snippet: string }> = [];
     const termOr = unique.flatMap((t: string) => [{ title: { contains: t } }, { description: { contains: t } }]);
     const issues = await prisma.issue.findMany({ where: { projectId: DEFAULT_PROJECT_ID, OR: termOr }, take: 10 });
@@ -228,5 +219,32 @@ export async function searchLocalData(
       results.push({ type: 'report', title: r.title, snippet: (r.content || '').substring(0, 200) });
     }
     return results.slice(0, 15);
+  };
+
+  // toFtsMatch quotes every term — raw input containing `-` or a lone `"` would
+  // otherwise be parsed as fts5 syntax and throw.
+  const match = toFtsMatch(q);
+  let rows: Array<{ type: string; title: string; body: string; ref_id: string }> = [];
+  let ftsFailed = false;
+  if (match) {
+    try {
+      rows = (await prisma.$queryRawUnsafe(
+        'SELECT type, title, body, ref_id, rank FROM global_fts WHERE global_fts MATCH ? ORDER BY rank LIMIT 15',
+        match,
+      )) as typeof rows;
+    } catch (e) {
+      ftsFailed = true;
+      agentLog('[search_local_data] FTS failed:', e instanceof Error ? e.message : String(e));
+    }
   }
+  // An empty result does not necessarily mean "nothing there": a term shorter than 3
+  // characters can never match the trigram index, so fall back to LIKE.
+  if (rows.length === 0 && (ftsFailed || unsearchableTerms(q).length > 0)) return containsSearch();
+
+  return rows.map((r) => ({
+    type: r.type,
+    id: r.ref_id,
+    title: (r.title || '').substring(0, 120),
+    snippet: (r.body || '').substring(0, 200),
+  }));
 }

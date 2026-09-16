@@ -15,6 +15,12 @@ export interface AgentContext {
 export interface SystemPromptParams extends AgentContext {
   preferenceHint: string;
   learnHint: string;
+  /**
+   * Knowledge-base notes retrieved for THIS message (agent/core/knowledgeRecall).
+   * '' when nothing scored high enough — an empty hint must add no tokens.
+   * Optional so existing callers keep compiling.
+   */
+  knowledgeHint?: string;
   intentHint: string;
   workspaceRoots: string[];
   baseUrl: string;
@@ -25,6 +31,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   const {
     preferenceHint,
     learnHint,
+    knowledgeHint,
     intentHint,
     workspaceRoots,
     baseUrl,
@@ -142,7 +149,7 @@ Reply ONCE after all tools: "✅ TL-28, TL-29 created". CRITICAL:
 3. After tool execution, just confirm briefly. Do not restate the content.
 ${editorContext}
 
-${learnHint}
+${learnHint}${knowledgeHint}
 
 Always end your response with ONE short, helpful suggestion like:
 - '"Need me to create a task? 📝"'

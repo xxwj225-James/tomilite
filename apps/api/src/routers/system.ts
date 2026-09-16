@@ -3,6 +3,8 @@ import { prisma } from '@tomilite/database';
 import { onConsentChanged } from '../lib/telemetry.js';
 import { homedir } from 'node:os';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
+import { EMBED_DIMS, embedModelId, embedModelStatus, isModelInstalled } from '../lib/embed/index.js';
+import { enqueueAllStale, embedBootSweep } from '../lib/embed/queue.js';
 
 const CURRENT_VERSION = '1.0.0';
 
@@ -209,5 +211,58 @@ Just the sentence. Nothing else.`,
       update: { value: input.lang },
     });
     return { ok: true };
+  }),
+
+  /**
+   * Semantic-search status. Read-only and cheap — this is what makes an autonomous
+   * background download debuggable without a log file: model state, queue depth, how
+   * many rows actually carry a usable vector, and the last error.
+   */
+  embedStatus: publicProcedure.query(async () => {
+    const status = await embedModelStatus();
+    const cfg = await prisma.systemConfig.findMany({
+      where: { key: { in: ['embed.status', 'embed.lastError'] } },
+    });
+    const value = (k: string) => cfg.find((c) => c.key === k)?.value ?? null;
+    let pending = 0;
+    let embedded = 0;
+    try {
+      // Both live in raw DDL, so both are absent until ensureSearchIndexes() has run.
+      const q = await prisma.$queryRawUnsafe<Array<{ n: number }>>('SELECT count(*) AS n FROM embed_queue');
+      pending = Number(q[0]?.n ?? 0);
+      const v = await prisma.$queryRawUnsafe<Array<{ n: number }>>(
+        `SELECT count(*) AS n FROM (
+           SELECT id FROM KnowledgePage WHERE vector IS NOT NULL
+           UNION ALL SELECT id FROM Report WHERE vector IS NOT NULL
+         )`,
+      );
+      embedded = Number(v[0]?.n ?? 0);
+    } catch {
+      /* indexes not built yet */
+    }
+    return {
+      status,
+      modelId: embedModelId(),
+      dims: EMBED_DIMS,
+      downloaded: isModelInstalled(),
+      pending,
+      embedded,
+      lastError: value('embed.lastError'),
+    };
+  }),
+
+  /**
+   * Re-embed everything. This is the recompute entry point after a model change, and the
+   * manual retry when the automatic backfill gave up on a row (`force` resets `attempts`,
+   * the only way a poison-pilled row gets another chance).
+   *
+   * The sweep is deliberately not awaited: with the model missing it downloads 135 MB,
+   * and a tRPC call that blocks for minutes reads as a hang. It reports what it queued.
+   */
+  reembed: publicProcedure.mutation(async () => {
+    await prisma.systemConfig.deleteMany({ where: { key: 'embed.backfillVersion' } });
+    const queued = await enqueueAllStale(true);
+    embedBootSweep().catch(() => {});
+    return { ok: true, queued };
   }),
 });

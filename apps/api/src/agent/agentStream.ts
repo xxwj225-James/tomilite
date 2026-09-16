@@ -13,6 +13,7 @@ import { getInjectedTools } from './mcp/inject.js';
 
 import { classifyGuard } from './core/guard.js';
 import { getLearnHint, getPreferenceHint } from './core/selfLearning.js';
+import { getKnowledgeHint } from './core/knowledgeRecall.js';
 import { buildSystemPrompt } from './prompts/systemPrompt.js';
 import { runAgentLoop } from './core/agentEngine.js';
 
@@ -140,14 +141,21 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
     // ─── Guard: intent classification ───
     const guardResult = await classifyGuard(config, message, context, send);
 
-    // ─── Self-learning: past mistakes + preferences ───
-    const [learnHint, preferenceHint] = await Promise.all([getLearnHint(), getPreferenceHint()]);
+    // ─── Self-learning: past mistakes + preferences + knowledge base ───
+    // Knowledge recall runs off the cleaned user message, not the raw one, so
+    // the "[Note editor OPEN: …]" prefix cannot pollute the search terms.
+    const [learnHint, preferenceHint, knowledgeHint] = await Promise.all([
+      getLearnHint(),
+      getPreferenceHint(),
+      getKnowledgeHint(guardResult.cleanMsg || message),
+    ]);
 
     // ─── Build system prompt ───
     const systemPrompt = buildSystemPrompt({
       ...context,
       preferenceHint,
       learnHint,
+      knowledgeHint,
       intentHint: guardResult.intentHint,
       workspaceRoots: getWorkspaceRoots(),
       baseUrl: config.baseUrl,
