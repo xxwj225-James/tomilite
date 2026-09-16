@@ -10,7 +10,7 @@ TomiLite is a local-first desktop AI workspace. You talk in plain language, and 
 
 **[⬇ Download for Windows](https://github.com/xxwj225-James/tomilite/releases/latest)** · [What Tomi can do](#what-can-tomi-do) · [Features](#features) · [Documentation](docs/) · [Website](https://tomatovector.com)
 
-<!-- TODO: replace this static screenshot with a 30s demo GIF — (1) type "创建一个任务：重构登录模块" → task appears on the board; (2) record a meeting → minutes + one-click action item → task -->
+<!-- TODO: hero demo GIF — record a short clip of: type "创建一个任务：重构登录模块" → the task appears on the board. (The meeting demo GIFs already live in the section below.) -->
 ![TomiLite — chat-first AI agent](docs/images/home.jpg)
 
 ## Why TomiLite?
@@ -23,10 +23,21 @@ TomiLite gives your AI a persistent workspace — your tasks, notes, knowledge b
 
 Record a meeting, and get minutes with action items — without the audio ever being uploaded:
 
-1. **Record** — microphone + system audio mixed into one track
-2. **Transcribe locally** — the bundled [whisper.cpp](https://github.com/ggml-org/whisper.cpp) binary does the speech-to-text on your machine: no API call, no upload
-3. **Summarize with AI** — summary, decisions and action items, with honest `Speaker 1/2/3` labels (no invented names, because no voice-print identification is performed)
-4. **Act on it** — one click turns any action item into a task on your board; minutes can be emailed through your own SMTP
+**1. Record** — microphone + system audio mixed into one track
+
+![Record a meeting](docs/images/meeting-1.gif)
+
+**2. Transcribe locally** — the bundled [whisper.cpp](https://github.com/ggml-org/whisper.cpp) binary does the speech-to-text on your machine: no API call, no upload
+
+![Local transcription](docs/images/meeting-2.gif)
+
+**3. Summarize with AI** — summary, decisions and action items, with honest `Speaker 1/2/3` labels (no invented names, because no voice-print identification is performed)
+
+![AI minutes and action items](docs/images/meeting-3.gif)
+
+**4. Act on it** — one click turns any action item into a task on your board; minutes can be emailed through your own SMTP
+
+![Action item becomes a task](docs/images/meeting-4.gif)
 
 Most meeting-AI tools upload your audio and bill by the minute. TomiLite's audio never leaves your computer — only the transcript text reaches your LLM, and only when you ask for a summary. Recording and transcription work even with **no LLM configured at all**.
 
