@@ -55,18 +55,28 @@ carries an `overrides` block that pins those transitives to a patched release:
 | `js-yaml`                  | `^4.3.2`  | pulled in by `electron-updater`, `eslint`, `electron-builder`                                                    |
 | `nodemailer`               | `^9.1.1`  | `imapflow` and `mailparser` **pin exact versions** (`9.0.1`, `9.0.5`) — an override is the only way to move them |
 | `baseline-browser-mapping` | `^2.11.0` | nested under `browserslist`                                                                                      |
+| `image-size`               | `^2.0.4`  | `pptxgenjs` still declares `^1.2.1`; the patched release is a major jump, so only an override reaches it         |
 
 `browserslist` itself is a **devDependency** rather than an override: npm does not apply
 an override to a package that another dependency consumes as a _peer_ (`update-browserslist-db`
 peers on it), so pinning it at the root is the only lever that works.
 
-**Accepted risk — `image-size`.** Two advisories (ICNS infinite loop; JXL/HEIF infinite
-loops) cover every published version up to and including the latest, `2.0.2`, so there is
-nothing to upgrade to and `pptxgenjs` (its only consumer here) has not moved off it. The
-vulnerable parsers run only on `addImage`; our single `pptxgenjs` call site
-(`exportToPptx` → `markdownToDeck` in `apps/api/src/agent/tools/reportTools.ts`) draws
-slides with `addSlide` / `addText` only, so the affected code is never reached. Revisit
-when `pptxgenjs` ships a release with a fixed `image-size`.
+Direct dependencies are bumped in the manifest instead:
+
+| Package                         | From       | To         | Fixes                                                                       |
+| ------------------------------- | ---------- | ---------- | --------------------------------------------------------------------------- |
+| `@huggingface/transformers`     | `4.2.0`    | `4.3.0`    | inherits `onnxruntime-node` 1.30.0 (clears `adm-zip` < 0.6.0) and `sharp`     |
+| `sharp`                         | `^0.34.5`  | `^0.35.4`  | libvips CVEs + libheif; also the version `transformers` 4.3.0 requires        |
+| `mailparser` (`packages/email`) | `^3.9.15`  | `^3.9.28`  | moves `html-to-text` to 10.0.1, which depends on `deepmerge-ts` 8.x          |
+
+**`image-size` — was accepted risk, now fixed.** Two advisories (ICNS infinite loop;
+JXL/HEIF infinite loops) covered every version published up to `2.0.2`, so this was
+recorded here as accepted risk. The patched `2.0.4` is now published, and the override
+above pins it; `pptxgenjs` (its only consumer here) still declares `^1.2.1`, so a plain
+bump is not possible. The vulnerable parsers run only on `addImage`, and our single
+`pptxgenjs` call site (`exportToPptx` → `markdownToDeck` in
+`apps/api/src/agent/tools/reportTools.ts`) draws slides with `addSlide` / `addText` only —
+so even before the pin the affected code was never reached.
 
 Note that a dependency fix only reaches users after the next **release**: the API server
 is bundled into `apps/api/dist/server.cjs` at pack time and that directory is gitignored.
