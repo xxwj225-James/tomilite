@@ -149,6 +149,7 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 - **Right slide-in panel** — chat area shrinks but stays usable; panels lazy-mount in `ContentPanel`
 - **SSE streaming output** — renders token by token, typewriter effect
 - **Session sidebar** — session list with rename/delete + token usage meter (`SessionSidebar`)
+- **Rich result cards** — a tool result renders as a card (`apps/web/src/types/chat.ts`), e.g. a task with 👁/✏️/🗑 actions. When one turn creates **several** tasks, they collapse into a single `task_batch` card: one table, one row per task, each row's buttons acting on that row only (`TaskBatchCard.tsx`). Rows carry the card object itself into the existing `tl-open-card` / `tl-edit-card` / `tl-delete-card` events, so the action layer needed no change. A batch card is only emitted for ≥2 tasks — a single task keeps the old single-card rendering, and old persisted rows parse unchanged
 
 ### 6.2 AI Agent
 

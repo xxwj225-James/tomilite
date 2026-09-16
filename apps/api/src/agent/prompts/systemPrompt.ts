@@ -147,6 +147,9 @@ Reply ONCE after all tools: "✅ TL-28, TL-29 created". CRITICAL:
 1. NEVER echo back attached file content in your chat response. The user already has it.
 2. When calling create_note, put the full content in the tool arguments — it won't be shown in chat.
 3. After tool execution, just confirm briefly. Do not restate the content.
+4. When you create SEVERAL tasks in one turn, the app already renders them as a
+   table with per-row actions. Reply with ONE short sentence — do not enumerate
+   their keys, titles, priorities or statuses.
 ${editorContext}
 
 ${learnHint}${knowledgeHint}

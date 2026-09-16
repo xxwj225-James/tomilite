@@ -108,13 +108,26 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
     const card = deleteTarget;
     setDeleteTarget(null);
     setDeleting(true);
+    // The deleted entity lives either on the message's own card (single) or as
+    // one row of a 'task_batch' table — in the latter case only that row is
+    // marked, and the table itself stays interactive.
+    const isThisCard = (c?: ChatCard) =>
+      !!c && ((!!card.id && c.id === card.id) || (!!card.key && c.key === card.key));
+    const markDeleted = (c: ChatCard): ChatCard | null => {
+      if (isThisCard(c)) return { ...c, disabled: true, status: 'deleted' };
+      if (c.items?.some(isThisCard))
+        return { ...c, items: c.items.map(it => (isThisCard(it) ? { ...it, disabled: true, status: 'deleted' } : it)) };
+      return null;
+    };
+    const msgHoldsCard = (m: { card?: ChatCard } | undefined) =>
+      !!m && (isThisCard(m.card) || !!m.card?.items?.some(isThisCard));
     // Export cards have no DB record — just disable the chat card
     const isExport = card.type === 'export_xlsx' || card.type === 'export_doc';
     const doDisable = () => {
       if (card.type === 'task') { bumpTask(); /* Clear editor if deleted task is currently open */ if (editingTask?.issueNumber && card.key === `TL-${editingTask.issueNumber}`) { setEditingTask(null); window.dispatchEvent(new CustomEvent('tl-close-task-editor')); } }
       else if (card.type === 'note') { bumpNote(); if (editingNote?.id === card.id) { setEditingNote(null); window.dispatchEvent(new CustomEvent('tl-close-note-editor')); } }
       else if (card.type === 'report') { bumpReport(); if ((editingReport as any)?.id === card.id) { setEditingReport(null); window.dispatchEvent(new CustomEvent('tl-close-report-editor')); } }
-      setMessages(prev => prev.map(m => { if ((card.id && m.card?.id === card.id) || (card.key && m.card?.key === card.key)) { const updatedCard = JSON.stringify({ ...m.card, disabled: true, status: 'deleted' }); if (m.id) { api.chat.updateMessage({ id: m.id as string, card: updatedCard }).catch((e: any) => console.warn('[deleteCard] updateMessage FAILED:', e?.message || e)); } else { console.warn('[deleteCard] m.id missing — card state NOT persisted, cardId=' + card.id); } return { ...m, card: { ...m.card, disabled: true, status: 'deleted' } }; } return m; }));
+      setMessages(prev => prev.map(m => { if (!m.card) return m; const updated = markDeleted(m.card); if (!updated) return m; if (m.id) { api.chat.updateMessage({ id: m.id as string, card: JSON.stringify(updated) }).catch((e: any) => console.warn('[deleteCard] updateMessage FAILED:', e?.message || e)); } else { console.warn('[deleteCard] m.id missing — card state NOT persisted, cardId=' + card.id); } return { ...m, card: updated }; }));
     };
     if (isExport) {
       doDisable();
@@ -125,7 +138,7 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
       // Defer setMessages + setDeleting to flush React 19 batch — otherwise deleting spinner never renders
       setTimeout(() => {
         setMessages(prev => {
-          const idx = prev.findIndex(m => m && (card.id && m.card?.id === card.id) || (card.key && m.card?.key === card.key));
+          const idx = prev.findIndex(m => msgHoldsCard(m));
           const copy = [...prev];
           copy.splice(idx >= 0 ? idx + 1 : copy.length, 0, { id: msgId, role: 'assistant' as const, text });
           return copy;
@@ -143,7 +156,7 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
       const msgId = crypto.randomUUID();
       saveMsg({ id: msgId, role: 'assistant', text, card: undefined } as any);
       setMessages(prev => {
-        const idx = prev.findIndex(m => m && (card.id && m.card?.id === card.id) || (card.key && m.card?.key === card.key));
+        const idx = prev.findIndex(m => msgHoldsCard(m));
         const copy = [...prev];
         copy.splice(idx >= 0 ? idx + 1 : copy.length, 0, { id: msgId, role: 'assistant' as const, text });
         return copy;

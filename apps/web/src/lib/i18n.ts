@@ -1593,6 +1593,10 @@ const I18N = {
     zh: '⚠️ 发现 {n} 个相似{entity}',
     ja: '⚠️ {entity}が{n}件類似しています',
   },
+  'chat.batchCreated': { en: '✅ {n} tasks created', zh: '✅ 已创建 {n} 个任务', ja: '✅ {n}件のタスクを作成しました' },
+  'chat.batchKey': { en: 'Key', zh: '编号', ja: 'キー' },
+  'chat.batchActions': { en: 'Actions', zh: '操作', ja: '操作' },
+  'chat.rowDeleted': { en: 'Deleted', zh: '已删除', ja: '削除済み' },
 
   // ═══ Dialogs ═══
   'dialog.unsavedMessage': {

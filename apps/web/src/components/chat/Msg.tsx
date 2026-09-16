@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import { useLang } from '@/stores/LangContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import type { StagedEdit, ChatCard } from '@/types/chat';
+import { TaskBatchCard } from './TaskBatchCard';
 
 // Local i18n helpers — converted to keyed t() in the i18n refactor phase
 function _t(key: string, lang: string) {
@@ -283,6 +284,8 @@ export function Msg({
               </button>
             </div>
           </div>
+        ) : card && card.type === 'task_batch' ? (
+          <TaskBatchCard card={card} thinking={thinking} />
         ) : (
           card && (
             <div

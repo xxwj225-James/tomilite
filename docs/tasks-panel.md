@@ -53,6 +53,22 @@ The planned `J`/`K`/`Enter`/`N`/`Space`/`Escape` shortcuts were not built.
 - Search box, type filter, priority filter (persisted to DB via `systemConfig` `taskSort` / `taskFilter`), sortable columns.
 - New Issue creation (toolbar button → blank TasksEditor form), edit/delete, batch select + batch delete.
 
+### 9. Batch Task Creation from Chat — per-row actions
+
+When the agent creates **several** tasks in one turn, the chat no longer shows a pile
+of prose with only the last task actionable. They render as one `task_batch` card —
+a table (key / title / priority / status / actions) where each row's 👁 查看 ·
+✏️ 编辑 · 🗑 删除 dispatches the existing `tl-open-card` / `tl-edit-card` /
+`tl-delete-card` events with **that row** as the payload. Every button therefore
+reaches `TasksEditor` for the right task, and deleting a row greys that row out.
+No backend or database change was involved.
+
+- `apps/web/src/components/chat/TaskBatchCard.tsx` — the table (horizontally
+  scrollable, since the chat column is narrow)
+- `apps/web/src/hooks/useSendMessage.ts` — accumulates `create_issue` /
+  `force_create_issue` results for the turn and emits the batch card from the 2nd task on
+- One turn can only carry one card: export > dedup-blocked > batch > single
+
 ## Files Shipped
 
 | File                                        | Change                                                                                                          |
@@ -70,3 +86,6 @@ The planned `J`/`K`/`Enter`/`N`/`Space`/`Escape` shortcuts were not built.
 4. Dismiss the drag hint → banner stays gone after reload (tl-task-drag-hint)
 5. Resize columns → widths persist after reload (tl-task-cols)
 6. No email rows appear in the list or counts (badge is on the sidebar Email menu)
+7. Ask the agent to "create 3 tasks" → **one table with 3 rows** in the chat; row 2's
+   编辑 opens the 2nd task in `TasksEditor`, and row 1's 删除 removes only the 1st
+   (re-check `SELECT issueNumber, title FROM Issue ORDER BY issueNumber DESC LIMIT 5`)

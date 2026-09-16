@@ -97,6 +97,10 @@ export function useSendMessage({
   const setMessages = chatHook.setMessages;
   const lastToolArgsRef = useRef<string>('');
   const cardRef = useRef<ChatCard | undefined>(undefined);
+  // Every task created in THIS turn, in order. `cardRef` only ever holds the
+  // newest one, so a "create 4 tasks" turn used to leave 3 of them with no
+  // buttons in the chat. >=2 entries render as one table (type 'task_batch').
+  const taskCardsRef = useRef<ChatCard[]>([]);
   const forceCreateRef = useRef<any>(null); // pending force-create args // survive stream end
   const forceAssistantIdxRef = useRef<number>(0); // pre-computed assistantIdx for text-confirm force-create
   const sendMessageRef = useRef<(payload?: string, noteActionPayload?: string) => void>(undefined);
@@ -144,6 +148,7 @@ export function useSendMessage({
     // Block sending while context compression is running — the compress full-replace would wipe the new message
     if (compressing) return;
     cardRef.current = undefined; // reset cardRef for new message
+    taskCardsRef.current = [];
     // Lock thread — all setMessages + saveMsg in this stream write to THIS thread
     const lockedSid = chatHook.activeSessionId;
     const setMessages = chatHook.getMessagesSetter(lockedSid);
@@ -904,21 +909,29 @@ export function useSendMessage({
                   pendingArgs: { ...r.pendingArgs, _tool: forceTool },
                 };
               } else if ((data.tool === 'create_issue' || data.tool === 'force_create_issue') && r.key) {
-                let toolArgs: any = {};
-                try {
-                  toolArgs = JSON.parse(lastToolArgsRef.current || '{}');
-                } catch {}
-                msgCard = {
+                // Use the tool RESULT for the description, not the tool ARGS:
+                // lastToolArgsRef is written at :731 behind a `currentEvent !==
+                // 'tool_call'` guard, and tool_call events never carry args, so
+                // it is always '' — every task card rendered so far had a blank
+                // description even though createIssue returns the real one.
+                const item: ChatCard = {
                   type: 'task',
                   id: r.id || r.key,
                   key: r.key,
                   title: r.title || '',
                   status: r.status || 'todo',
-                  description: toolArgs.description || '',
+                  description: r.description || '',
                   priority: r.priority,
-                  storyPoints: toolArgs.storyPoints,
                   issueType: r.type || 'task',
                 };
+                taskCardsRef.current.push(item);
+                // One task keeps the familiar single card; two or more become a
+                // table. msgCard is rebuilt on every SSE event, so this is also
+                // what streams the growing table into the live message.
+                msgCard =
+                  taskCardsRef.current.length > 1
+                    ? { type: 'task_batch', title: '', items: [...taskCardsRef.current] }
+                    : item;
               } else if ((data.tool === 'create_note' || data.tool === 'force_create_note') && r.id) {
                 let noteArgs: any = {};
                 try {
@@ -973,11 +986,24 @@ export function useSendMessage({
           fullText = t('chat.noAiContent', lang);
         }
       }
+      // Only one card survives per message. Priority: export (a file the user
+      // must save) > blocked (needs a click to resolve) > task table (>=2 tasks
+      // created this turn) > whatever single card came last.
+      const isExportCard =
+        cardRef.current?.type === 'export_xlsx' ||
+        cardRef.current?.type === 'export_doc' ||
+        cardRef.current?.type === 'export_pdf' ||
+        cardRef.current?.type === 'export_ppt';
+      const batchCard: ChatCard | undefined =
+        taskCardsRef.current.length > 1
+          ? { type: 'task_batch', title: '', items: [...taskCardsRef.current] }
+          : undefined;
+      const finalCard = isExportCard || cardRef.current?.blocked ? cardRef.current : (batchCard ?? cardRef.current);
       const finalMsg: any = {
         id: crypto.randomUUID(),
         role: 'assistant' as const,
         text: displayText || fullText,
-        card: cardRef.current,
+        card: finalCard,
         reasoningContent: reasoningContent || undefined,
       };
       const _elog = (window as any).electronAPI?.log;
