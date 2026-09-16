@@ -80,6 +80,7 @@ Before modifying code, check whether the following modules are involved. If so, 
 | API routes / tRPC procedures | `apps/api/src/routers/*.ts` + `apps/web/src/lib/api.ts` |
 | i18n | All `I18N` objects in `apps/web/src/*` |
 | Security | `docs/SECURITY.md` |
+| README / feature messaging | `README.md` **and** `README.zh.md` — edit both, never one alone |
 
 ---
 

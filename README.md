@@ -1,5 +1,7 @@
 # TomiLite
 
+**English** | [中文](README.zh.md)
+
 **Your AI can finally act on your real work — not just chat about it.**
 
 TomiLite is a local-first desktop AI workspace. You talk in plain language, and the agent creates tasks, writes notes, triages email, records and summarizes meetings, and generates reports — against your own data, stored in a local SQLite database on your machine.
