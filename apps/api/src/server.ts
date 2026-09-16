@@ -33,6 +33,7 @@ import {
   backfillMeetingDecisions,
 } from './routers/meeting';
 import { checkMeetingReminders } from './lib/meeting/reminders.js';
+import { runDistillationSweep } from './lib/chatDistill.js';
 import { ensureSearchIndexes, reclaimIndexSpace } from './lib/ftsIndex.js';
 import { embedWarmup } from './lib/embed/index.js';
 import { drainEmbedQueue, embedBootSweep } from './lib/embed/queue.js';
@@ -478,6 +479,16 @@ function startBackgroundTasks() {
     checkMeetingReminders().catch(() => {});
   }, 60_000);
 
+  // Chat → knowledge distillation. The run itself re-checks both gates (idle
+  // ≥3min, ≥6 new messages), so a 5-minute tick is plenty; a faster one would
+  // only add DB churn and gateway pressure for nothing.
+  setTimeout(() => {
+    runDistillationSweep().catch(() => {});
+  }, 3 * 60_000);
+  setInterval(() => {
+    runDistillationSweep().catch(() => {});
+  }, 5 * 60_000);
+
   // Morning & Evening standup — check every 60 seconds
   setInterval(() => {
     checkAndGenerateMorning().catch(() => {});
@@ -554,7 +565,7 @@ function startBackgroundTasks() {
 // ⚠️ OTA migration: increment EVERY TIME you change prisma/schema.prisma
 // Only ADDITIVE changes (new columns/tables). Never rename or drop.
 // ensureSchema() → detects old version → prisma db push → preserves all user data
-const SCHEMA_VERSION = 22; // Meeting decisions as rows + follow-up draft & reminders
+const SCHEMA_VERSION = 23; // Chat auto-distillation watermark + KnowledgePage provenance
 
 // ─── Ensure database schema is up to date (runs db push only when needed) ───
 async function ensureSchema() {
@@ -726,6 +737,22 @@ async function ensureSchema() {
       version: 22,
       sql: 'CREATE INDEX IF NOT EXISTS "MeetingActionItem_status_dueDate_idx" ON "MeetingActionItem"("status", "dueDate")',
     },
+    // ─── v23: chat → knowledge auto-distillation ───
+    // KnowledgePage gains provenance so a distilled note can be told apart from
+    // a user-written one AND found again for the next merge (sourceId = session).
+    { version: 23, sql: 'ALTER TABLE "KnowledgePage" ADD COLUMN "source" TEXT' },
+    { version: 23, sql: 'ALTER TABLE "KnowledgePage" ADD COLUMN "sourceId" TEXT' },
+    {
+      version: 23,
+      sql: 'CREATE INDEX IF NOT EXISTS "KnowledgePage_source_sourceId_idx" ON "KnowledgePage"("source", "sourceId")',
+    },
+    // ChatSession gains the distillation watermark (distillCursor = createdAt of
+    // the newest distilled message, copied verbatim), the last-attempt stamp for
+    // the backoff, and the per-run accounting.
+    { version: 23, sql: 'ALTER TABLE "ChatSession" ADD COLUMN "distillCursor" TEXT' },
+    { version: 23, sql: 'ALTER TABLE "ChatSession" ADD COLUMN "distillAt" TEXT' },
+    { version: 23, sql: 'ALTER TABLE "ChatSession" ADD COLUMN "distillMeta" TEXT' },
+    { version: 23, sql: 'CREATE INDEX IF NOT EXISTS "ChatSession_updatedAt_idx" ON "ChatSession"("updatedAt")' },
   ];
 
   for (const m of migrations) {

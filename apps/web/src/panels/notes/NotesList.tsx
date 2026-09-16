@@ -69,7 +69,7 @@ export function NotesList(p: Props) {
             <input type="checkbox" checked={p.selectedIds.has(n.id)} onClick={e => e.stopPropagation()} onChange={() => p.toggleSelect(n.id)}
               style={{ margin: 0, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0, width: 18 }} />
             <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title || t('notes.untitled')}</span>
-            <span style={{ width: 100, fontSize: 11, textAlign: 'center', color: 'var(--muted)', flexShrink: 0 }}>{n.category || 'general'}</span>
+            <span style={{ width: 100, fontSize: 11, textAlign: 'center', color: 'var(--muted)', flexShrink: 0 }}>{n.category === 'chat' ? tt2('notes.categoryChat', lang) : n.category || 'general'}</span>
             <span style={{ width: 100, fontSize: 11, textAlign: 'right', color: 'var(--muted)', flexShrink: 0 }}>{n.updatedAt?.substring(0, 10)}</span>
           </div>
         ))}

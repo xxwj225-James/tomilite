@@ -170,8 +170,12 @@ model KnowledgePage {
   status    String @default("active")
   createdAt String @default(dbgenerated("(datetime('now','localtime'))"))
   updatedAt String @default(dbgenerated("(datetime('now','localtime'))"))
+  source    String? // 'chat_distill' = written by background distillation; NULL = user-written
+  sourceId  String? // ChatSession.id — one rolling note per session, merged on each run
 
   project Project @relation(fields: [projectId], references: [id])
+
+  @@index([source, sourceId])
 }
 
 // ═══ Daily Motto ═══
@@ -610,9 +614,16 @@ model ChatSession {
   title        String @default("New Chat")
   tokenPercent Int    @default(0)
   createdAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+  // NOTE: written in UTC by chat.ts (unlike every other timestamp's localtime
+  // default) — the distillation idle check depends on that, see chatDistill.ts.
   updatedAt    String @default(dbgenerated("(datetime('now','localtime'))"))
+  distillCursor String? // createdAt of the newest distilled message — copied verbatim
+  distillAt     String? // last distillation attempt (UTC) — backoff gate
+  distillMeta   String? // JSON run accounting {at,msgs,inTokens,outTokens,costCny,model,noteId,ok,err}
 
   messages ChatMessage[]
+
+  @@index([updatedAt])
 }
 
 // ═══ Chat Messages ═══

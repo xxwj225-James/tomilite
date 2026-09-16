@@ -108,7 +108,7 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 | `Issue`                                                            | Task management (type, status, priority, storyPoints, sortOrder...) |
 | `Board` / `BoardColumn` / `BoardCard`                              | Kanban                                                              |
 | `Sprint` / `Comment` / `IssueChangelog`                            | Sprint planning, comments, change history                           |
-| `KnowledgePage`                                                    | Wiki/notes                                                          |
+| `KnowledgePage`                                                    | Wiki/notes; `source`/`sourceId` mark machine-written rows (chat distillation) vs. user-authored |
 | `PersonalNote`                                                     | Notes                                                               |
 | `FocusSession`                                                     | Focus sessions                                                      |
 | `GitWorkDir` / `GitRepo` / `GitCommitRef` / `GitCommit`            | Git integration                                                     |
@@ -119,7 +119,7 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 | `UserHealthSnapshot`                                               | Health history                                                      |
 | `DailyMotto`                                                       | Daily motto cache                                                   |
 | `Report`                                                           | Reports (daily/weekly)                                              |
-| `ChatSession` / `ChatMessage`                                      | Chat sessions + messages                                            |
+| `ChatSession` / `ChatMessage`                                      | Chat sessions + messages; `distillCursor`/`distillAt`/`distillMeta` are the distillation watermark + run accounting. **`updatedAt` is written in UTC here, unlike every other `localtime` timestamp** |
 | `LlmProviderMaster` / `LlmProvider` / `LlmConfig`                  | LLM configuration                                                   |
 | `SystemConfig` / `KnowledgeCache` / `Integration` / `FeedbackItem` | Misc                                                                |
 
@@ -392,6 +392,31 @@ Project-wide overview; the LLM synthesizes a 3-sentence summary + recommended re
 > `porter unicode61` tokenizer this was also the only option for CJK input: it treated a
 > whole run of Han/Kana as ONE token, so `迁移决定` matched while `迁移` and `决定` both
 > returned 0.
+
+### 6.14 Chat → Knowledge Distillation
+
+Conversations are folded into the knowledge base automatically, so an agent
+working on the same project across many sessions does not start from zero.
+
+**Write path** (`apps/api/src/lib/chatDistill.ts`) — a background sweep, not a queue:
+
+- A session becomes a candidate once it has been idle ≥3 min **and** has ≥6 new
+  messages past its watermark; at most 3 sessions are processed per sweep, serially
+- The window (≤40 messages) plus the session's existing note go to the LLM, which
+  returns `{"worthSaving":false}` or a merged `{title, content}`; the prompt is told
+  to drop chit-chat, restatements, and anything already in the note
+- **One rolling note per session** (`KnowledgePage` where `source='chat_distill'`,
+  `sourceId=<ChatSession.id>`, `category='chat'`), rewritten on each run
+- The watermark (`ChatSession.distillCursor`) advances **only after a successful
+  write** — a crash or a bad response replays that window instead of losing it.
+  `worthSaving:false` also advances it, or the same window would be re-billed forever
+- Runs through `resolveLLM()` + `chat()`, so hosted-gateway spend is metered exactly
+  like any other call; tokens and ¥ are recorded in `distillMeta` and reported to
+  telemetry as aggregate counters only (see `docs/telemetry.md`)
+- **Spend brakes**: 30-min per-session backoff, and a `quota_exhausted` /
+  `feature_closed` / `account_disabled` reply from the gateway parks the whole job for
+  6 h (`SystemConfig['distill.pausedUntil']`) — background work must never burn a
+  metered trial's last quota. `SystemConfig['distill.enabled'] = '0'` disables it
 
 ---
 

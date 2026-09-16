@@ -93,6 +93,10 @@ const I18N: Record<string, Record<string, string>> = {
   'health.trend.steady': { en: '➡️ Steady and consistent — keep it up!', zh: '➡️ 稳定向前 — 持之以恒！', ja: '➡️ 安定して継続中 — その調子！' },
   'email.noLinkedTask': { en: 'No linked task', zh: '无关联任务', ja: '関連タスクがありません' },
 
+  // ═══ Chat → knowledge distillation ═══
+  'distill.noteTitle': { en: 'Chat summary — {title}', zh: '会话纪要 — {title}', ja: '会話メモ — {title}' },
+  'distill.untitled': { en: 'Untitled chat', zh: '未命名会话', ja: '無題の会話' },
+
   'standup.morningTableHeader': {
     en: '| Priority | Key | Task |\n|----------|-----|------|',
     zh: '| 优先级 | Key | 任务 |\n|--------|-----|------|',

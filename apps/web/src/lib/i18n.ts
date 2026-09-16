@@ -460,6 +460,8 @@ const I18N = {
   },
   'notes.title': { en: 'Title', zh: '标题', ja: 'タイトル', th: 'ชื่อเรื่อง', mi: 'Taitara', ru: 'Заголовок' },
   'notes.category': { en: 'Category', zh: '分类', ja: 'カテゴリ', th: 'หมวดหมู่', mi: 'Kāwai', ru: 'Категория' },
+  // Marker for notes written by the background chat distillation (category 'chat')
+  'notes.categoryChat': { en: '💬 Chat summary', zh: '💬 会话纪要', ja: '💬 会話メモ' },
   'notes.updated': { en: 'Updated', zh: '更新', ja: '更新', th: 'อัปเดต', mi: 'Whakahoutia', ru: 'Обновлено' },
   'notes.clickToSort': {
     en: 'Click to sort',

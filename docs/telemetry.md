@@ -25,6 +25,10 @@ Only when you have opted in:
 - **Item counts per day** — tasks created & done, notes, reports, emails processed, chat sessions & user messages, focus sessions & minutes, git commits, MCP tool executions
 - **AI tools used** — the name of a built-in agent tool that actually ran (`tool.*`), e.g. `create_task`, `web_search`
 - **Manual exports** — which export format you saved (`export.pdf`, `export.xlsx`, …)
+- **Chat-to-note distillation** (`chat_distill`) — one event per distillation run, carrying only
+  aggregate numbers: how many messages were folded in, input/output tokens, the cost the gateway
+  reported (hosted mode only; empty under BYOK), whether the run went through the hosted gateway,
+  and whether it produced a note
 - **Environment** — app version, OS + arch, interface language, and an **anonymous random install ID** (a UUID generated locally, with no link to you)
 
 ## What is NEVER collected
