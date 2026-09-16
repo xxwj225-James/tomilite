@@ -17,3 +17,7 @@ packages/database/prisma/generated/
 # Stray output from ad-hoc `npm run … > run_out.txt 2> run_err.txt` debugging.
 run_out.txt
 run_err.txt
+# Local demo-data seeder: hardcodes this machine's DB path and a one-off demo
+# narrative, and writes Meeting with a raw 32-column INSERT that breaks on any
+# schema change. Run it from the repo root; it is not part of the app.
+/seed-demo-meeting.mjs
