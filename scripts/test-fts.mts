@@ -4,9 +4,12 @@
 //
 // Runs entirely against a COPY of the database under C:/tmp/tl/verify/ — never the
 // live one. Mirrors the convention of scripts/test-imap.cjs and scripts/test-stream.cjs
-// (scripts/ is not in build.files, so nothing here ships). Not covered by eslint
-// (which only globs scripts/**/*.js) or by any tsconfig (which include only src/), so
-// it is run explicitly via tsx rather than as part of `npm run check`.
+// (scripts/ is not in build.files, so nothing here ships). CI's eslint run does cover
+// this file: typescript-eslint's recommended set is spread without a `files` key, so it
+// applies here, while the relaxed block that turns off no-explicit-any matches only
+// scripts/**/*.js — which is why the types below are spelled out instead of `any`. No
+// tsconfig includes it (each workspace's includes only src/), so it is run explicitly via
+// tsx, not as part of `npm run check`.
 //
 // Every assertion is a real query against the real schema, so this doubles as
 // documentation of the two bugs being fixed:
@@ -69,13 +72,16 @@ const one = (sql: string, ...p: unknown[]) => {
   const row = db.prepare(sql).get(...(p as never[]));
   return row ? Number(Object.values(row)[0]) : 0;
 };
-const all = (sql: string, ...p: unknown[]) => db.prepare(sql).all(...(p as never[])) as Record<string, any>[];
+const all = (sql: string, ...p: unknown[]) =>
+  db.prepare(sql).all(...(p as never[])) as Array<Record<string, unknown>>;
 const ftsCount = (m: string) => one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ?', m);
 /** Hits restricted to one source type — the notes corpus is what the UI searches. */
 const ftsCountOf = (m: string, type: string) =>
   one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND type = ?', m, type);
 const ftsSql = () => {
-  const r = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='global_fts'").get() as any;
+  const r = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='global_fts'")
+    .get() as { sql?: string } | undefined;
   return r ? String(r.sql) : '';
 };
 const countTriggers = (like: string) =>
@@ -107,7 +113,8 @@ check('the same text is one token under porter and matchable under trigram', () 
   s.exec("CREATE VIRTUAL TABLE p USING fts5(body, tokenize='porter unicode61')");
   s.exec("CREATE VIRTUAL TABLE t USING fts5(body, tokenize='trigram')");
   for (const tbl of ['p', 't']) s.exec(`INSERT INTO ${tbl}(body) VALUES ('数据库迁移')`);
-  const n = (tbl: string, q: string) => s.prepare(`SELECT count(*) n FROM ${tbl} WHERE ${tbl} MATCH ?`).get(q) as any;
+  const n = (tbl: string, q: string) =>
+    s.prepare(`SELECT count(*) n FROM ${tbl} WHERE ${tbl} MATCH ?`).get(q) as { n: number };
   const rows = {
     porterWhole: n('p', '数据库迁移').n,
     porterSub: n('p', '数据库').n,
@@ -137,7 +144,8 @@ check('an UNINDEXED column is not matchable at all', () => {
   // terms at all" — the point is that exactly one schema difference flips the result.
   s.exec("CREATE VIRTUAL TABLE u2 USING fts5(type, title, body, ref_id, tokenize='trigram')");
   for (const t of ['u', 'u2']) s.exec(`INSERT INTO ${t}(type,title,body,ref_id) VALUES('zzz','','','r1')`);
-  const n = (t: string, q: string) => (s.prepare(`SELECT count(*) n FROM ${t} WHERE ${t} MATCH ?`).get(q) as any).n;
+  const n = (t: string, q: string) =>
+    (s.prepare(`SELECT count(*) n FROM ${t} WHERE ${t} MATCH ?`).get(q) as { n: number }).n;
   const rows = { indexed: n('u2', 'zzz'), bare: n('u', 'zzz'), quoted: n('u', '"zzz"'), refId: n('u', '"r1"') };
   s.close();
   console.log(
@@ -422,11 +430,12 @@ if (!existsSync(prismaCli) || !existsSync(schemaPath)) {
       cwd: USERDATA,
     });
     pushOk = true;
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Both streams: the list of tables it wants to drop goes to stdout, the terminating
     // error to stderr. server.ts:782 logs only stderr, so in production the reason the
     // push failed is never recorded — worth seeing here.
-    pushError = `${e.stdout || ''}${e.stderr || ''}` || String(e.message);
+    const err = e as { stdout?: string; stderr?: string; message?: string };
+    pushError = `${err.stdout || ''}${err.stderr || ''}` || String(err.message);
   }
   console.log(`       db push: ${pushOk ? 'succeeded' : 'refused'}`);
   for (const line of pushError.split('\n')) {

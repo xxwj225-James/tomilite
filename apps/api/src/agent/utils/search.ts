@@ -158,18 +158,22 @@ export async function searchNotesSemantic(query: string, limit = 5) {
     }
   }
 
-  return [...fused.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([id]) => {
-      const p = byId.get(id)!;
-      return {
-        // The id used to be dropped here, which left the agent unable to open a note it
-        // had just found and reported.
-        id: p.id,
-        title: p.title,
-        snippet: (p.content || '').substring(0, 200),
-        score: Number(fused.get(id)!.toFixed(6)),
-      };
+  const ranked: Array<{ id: string; title: string; snippet: string; score: number }> = [];
+  for (const [id, score] of [...fused.entries()].sort((a, b) => b[1] - a[1])) {
+    if (ranked.length >= limit) break;
+    // Every fused id came from byId — list 1 filters on byId.has() and list 2 is built from
+    // pages — so this never fires. It stands where a non-null assertion used to, and unlike
+    // the assertion it cannot turn an unexpected id into a crash.
+    const p = byId.get(id);
+    if (!p) continue;
+    ranked.push({
+      // The id used to be dropped here, which left the agent unable to open a note it
+      // had just found and reported.
+      id: p.id,
+      title: p.title,
+      snippet: (p.content || '').substring(0, 200),
+      score: Number(score.toFixed(6)),
     });
+  }
+  return ranked;
 }
