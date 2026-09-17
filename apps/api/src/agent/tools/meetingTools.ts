@@ -18,7 +18,15 @@ const MINUTES_LIMIT = 4000;
 const FOLLOWUP_LIMIT = 1500;
 const SUMMARY_SNIPPET = 240;
 
-const minutes = (ms: number) => Math.round(ms / 60_000);
+/**
+ * `durationMs` is the only duration on the row. Minutes alone rounds a 4-second
+ * test recording to `0`, which reads as "no data" — so seconds come too, and
+ * minutes keep one decimal instead of rounding four minutes down to nothing.
+ */
+const durations = (ms: number) => ({
+  durationSeconds: Math.round(ms / 1000),
+  durationMinutes: Number((ms / 60_000).toFixed(1)),
+});
 
 /**
  * What the panel shows, and therefore what the model sees. Deliberately excludes
@@ -76,7 +84,7 @@ export async function listMeetings(args: Record<string, any>): Promise<unknown> 
     count: rows.length,
     meetings: rows.map((m) => ({
       ...m,
-      durationMinutes: minutes(m.durationMs),
+      ...durations(m.durationMs),
       summarySnippet: (m.summary || '').substring(0, SUMMARY_SNIPPET),
       segmentCount: m._count.segments,
       decisionCount: m._count.decisionItems,
@@ -116,7 +124,7 @@ export async function getMeeting(args: Record<string, any>): Promise<unknown> {
       ...meta,
       id: meeting.id,
       title: meeting.title,
-      durationMinutes: minutes(meeting.durationMs),
+      ...durations(meeting.durationMs),
       segmentCount,
       hasAudio: !!audioFile && !meeting.audioDeletedAt,
     },
