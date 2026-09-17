@@ -33,6 +33,7 @@ import {
   backfillMeetingDecisions,
 } from './routers/meeting';
 import { checkMeetingReminders } from './lib/meeting/reminders.js';
+import { sweepMeetingAudioRetention } from './lib/meeting/retention.js';
 import { runDistillationSweep } from './lib/chatDistill.js';
 import { ensureSearchIndexes, reclaimIndexSpace } from './lib/ftsIndex.js';
 import { embedWarmup } from './lib/embed/index.js';
@@ -454,12 +455,9 @@ function startBackgroundTasks() {
   setTimeout(() => {
     embedBootSweep().catch(() => {});
   }, 90_000);
-  setInterval(
-    () => {
-      drainEmbedQueue(60).catch(() => {});
-    },
-    60_000,
-  );
+  setInterval(() => {
+    drainEmbedQueue(60).catch(() => {});
+  }, 60_000);
 
   // Meetings interrupted by a crash/force-quit would otherwise sit at
   // "transcribing…" forever. Flip them to a retryable state on boot.
@@ -478,6 +476,17 @@ function startBackgroundTasks() {
   setInterval(() => {
     checkMeetingReminders().catch(() => {});
   }, 60_000);
+
+  // Meeting audio retention — delete audio past each meeting's own window.
+  // Retention is measured in days, so an hourly tick is already far finer than
+  // the field's resolution; the first run waits 10 minutes so a slow startup
+  // (index rebuild, model warmup) is not competing with filesystem work.
+  setTimeout(() => {
+    sweepMeetingAudioRetention().catch(() => {});
+  }, 10 * 60_000);
+  setInterval(() => {
+    sweepMeetingAudioRetention().catch(() => {});
+  }, 60 * 60_000);
 
   // Chat → knowledge distillation. The run itself re-checks both gates (idle
   // ≥3min, ≥6 new messages), so a 5-minute tick is plenty; a faster one would

@@ -333,7 +333,11 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
       setStarting(true);
       let createdId = '';
       try {
-        const created = await api.meeting.create({ source, lang: 'auto' });
+        // No lang / retentionDays here: the server resolves both from the
+        // Settings → Meetings defaults, which were previously written and then
+        // never read by anything. Passing `lang: 'auto'` here would keep
+        // overriding the user's choice.
+        const created = await api.meeting.create({ source });
         if (!created?.ok) {
           setRecError(nowStr('meeting.record.uploadFailed'));
           return;
@@ -523,7 +527,11 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
       const est: any = await api.meeting.estimate(selectedId).catch(() => null);
       setEstimate(est);
       setEstimating(false);
-      if (est?.hostedTrial) {
+      // `hosted`, not `hostedTrial`: the estimate has never had a `hostedTrial`
+      // field, so this test was always false and the confirm dialog never opened —
+      // a hosted trial spent its quota with no prompt, which is the exact failure
+      // the two-step dance above exists to prevent.
+      if (est?.hosted) {
         setConfirmForce(force);
         setConfirmAi(true);
       } else {

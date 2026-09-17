@@ -661,7 +661,9 @@ export function MeetingEditor({ s }: { s: MeetingState }) {
               <span className="text-ink-muted" style={{ fontSize: 10 }}>
                 {t('meeting.ai.byokNote', lang, {
                   tokens: est.estInputTokens ?? 0,
-                  model: est.hostedTrial ? est.synthModel : est.synthModel,
+                  // Was `est.hostedTrial ? est.synthModel : est.synthModel` — the same
+                  // phantom field as the confirm gate, on both branches.
+                  model: est.synthModel,
                 })}
               </span>
             )

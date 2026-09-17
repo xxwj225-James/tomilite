@@ -587,22 +587,26 @@ export const meetingRouter = router({
       z.object({
         title: z.string().optional(),
         source: z.enum(['mic', 'mic+system']).default('mic+system'),
-        lang: z.string().default('auto'),
+        // Optional, not defaulted: an omitted value means "use the Settings →
+        // Meetings default", which is read below. A `.default('auto')` here
+        // would shadow the user's configured language forever.
+        lang: z.string().optional(),
         whisperModel: z.string().default(DEFAULT_MODEL),
-        retentionDays: z.number().min(0).default(30),
+        retentionDays: z.number().min(0).optional(),
       }),
     )
     .mutation(async ({ input }) => {
       const consent = await prisma.systemConfig.findUnique({ where: { key: CONSENT_KEY } });
+      const cfg = await meetingDefaults();
       const row = await prisma.meeting.create({
         data: {
           id: randomUUID(),
           title: input.title?.trim() || defaultTitle(),
           source: input.source,
           status: 'recording',
-          lang: input.lang,
+          lang: input.lang || cfg.lang || 'auto',
           whisperModel: input.whisperModel,
-          retentionDays: input.retentionDays,
+          retentionDays: input.retentionDays ?? cfg.retentionDays ?? 30,
           consentAcknowledgedAt: consent?.value || null,
         },
       });
@@ -1090,6 +1094,21 @@ export const meetingRouter = router({
 });
 
 // ─── Helpers ───
+
+/**
+ * The Settings → Meetings defaults (`meeting.defaults`, written by MeetingTab).
+ * Read on every create so the retention and language fields there actually
+ * govern new recordings instead of being written and forgotten — before this,
+ * the panel hard-coded `lang: 'auto'` and never sent a retention value at all.
+ */
+async function meetingDefaults(): Promise<{ lang?: string; retentionDays?: number }> {
+  try {
+    const cfg = await prisma.systemConfig.findUnique({ where: { key: 'meeting.defaults' } });
+    return cfg?.value ? JSON.parse(cfg.value) : {};
+  } catch {
+    return {};
+  }
+}
 
 function parseArray(json: string | null): unknown[] {
   if (!json) return [];

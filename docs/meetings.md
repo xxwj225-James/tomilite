@@ -118,7 +118,7 @@ Idempotency is a double persistence boundary, so a retry never pays twice:
 
 If the JSON fails to parse, the code falls back to three separate pro-model calls — more expensive, but it produces a result, and `stageLog` records which path ran. DeepSeek / Moonshot get `thinking: { type: 'disabled' }` (mirroring `email.ts`), including the MAP stage, which is extraction work where thinking is wasted tokens.
 
-`meeting.estimate` returns `{ chars, estInputTokens, mapCalls, mapModel, synthModel, hostedTrial }` where **`estInputTokens ≈ CJK chars / 1.5 + latin words / 4`** — a single chars/N divisor under-counts Chinese by roughly 2.5×, and this app is Chinese-first. Every number in the UI is prefixed "approx." and never presented as a quota.
+`meeting.estimate` returns `{ chars, estInputTokens, mapCalls, mapModel, synthModel, hosted }` where **`estInputTokens ≈ CJK chars / 1.5 + latin words / 4`** — a single chars/N divisor under-counts Chinese by roughly 2.5×, and this app is Chinese-first. Every number in the UI is prefixed "approx." and never presented as a quota.
 
 On a hosted trial the summarize call must carry `confirmHosted: true`; without it the server returns `{ok:false, error:'confirm_required'}` so a programmatic call cannot silently spend money. BYOK skips the dialog and shows the estimate as small grey text.
 
@@ -168,7 +168,20 @@ The privacy disclosure in Settings is deliberately three separate lines rather t
                   (through the TomiVector gateway on a hosted trial)
 ```
 
-Retention defaults to 30 days (`0` = keep forever). The field is written in this phase; the automatic cleanup job that acts on it is not.
+Retention defaults to 30 days (`0` = keep forever), and it is now enforced rather than advertised: `sweepMeetingAudioRetention()` (`apps/api/src/lib/meeting/retention.ts`) runs 10 minutes after boot and hourly thereafter, deleting the WAV and its sidecar for every meeting past its own window and stamping `audioDeletedAt`. It skips a recording in progress and one whose transcription is queued or running — both are still using the file — and only ever removes the **audio**: transcript, summary, decisions, minutes and action items stay, because they are small, they are what the meeting is worth afterwards, and removing them is what the explicit delete button is for. The cutoff is computed with the same day arithmetic as the `audioExpiresAt` the panel displays, so the badge cannot promise a date the sweep does not keep.
+
+`retentionDays` and `lang` are per meeting, taken from Settings → Meetings at creation time (`meeting.defaults`). They were previously written by that tab and read by nobody: the panel hard-coded `lang: 'auto'` and never sent a retention value at all, so the engine status, the language dropdown and the retention field all had no effect on new recordings.
+
+### 10. Agent access
+
+Meetings were reachable from the panel and nowhere else, so a question about them in chat had no data source at all — the agent's only route was reading source files, and on Windows the read-only shell whitelist cannot even run `ls` or `grep`. Two read-only tools close that hole:
+
+| Tool            | Returns                                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_meetings` | Newest first: id, title, status, duration, stage status, summary snippet, decision count, open action-item count. Filters: `query`, `status`, `includeArchived`, `limit`.                            |
+| `get_meeting`   | One meeting in full: summary, decisions with their rationale, action items with owner and due date, minutes, and the follow-up draft. Transcript only with `includeTranscript: true`, and truncated. |
+
+Both are strictly read-only — nothing writes, sends or deletes, and the follow-up remains a draft the user sends from the panel. Pipeline internals (`chunkSummaries`, `speakers`, `stageLog`, the legacy `decisions` column) are not selected: context is the scarce resource in a turn. Archived meetings are excluded unless asked for, and dismissed decisions and action items are returned with their status rather than filtered out, since "we decided not to" is an answer.
 
 ## Files Shipped
 
@@ -197,6 +210,11 @@ Retention defaults to 30 days (`0` = keep forever). The field is written in this
 | `apps/web/src/panels/meeting/MeetingEditor.tsx`     | **New** — progress, transcript / minutes / actions tabs                                    |
 | `apps/web/src/panels/meeting/RecorderBar.tsx`       | **New** — timer, meters, dead-stream and degraded banners                                  |
 | `apps/web/src/components/chat/MeetingIndicator.tsx` | **New** — shell-wide recording banner                                                      |
+| `apps/api/src/lib/meeting/retention.ts`             | **New** — hourly audio-retention sweep, per-meeting window                                 |
+| `apps/api/src/agent/tools/meetingTools.ts`          | **New** — `list_meetings` / `get_meeting`, read-only                                       |
+| `apps/api/src/agent/tools/registry.ts`              | Two tool schemas + labels                                                                  |
+| `apps/api/src/agent/tools/dispatcher.ts`            | Two dispatch cases                                                                         |
+| `apps/api/src/agent/prompts/systemPrompt.ts`        | `MEETING LOOKUP` line — the data is in the DB, not in a repository                         |
 | `apps/web/src/panels/settings/MeetingTab.tsx`       | **New** — privacy block, engine status, models, defaults, consent record                   |
 | `apps/web/src/lib/api.ts`                           | `meeting.*` client methods                                                                 |
 | `apps/web/src/lib/i18n.ts`                          | `meeting.*` keys (en / zh / ja)                                                            |
@@ -224,3 +242,7 @@ Retention defaults to 30 days (`0` = keep forever). The field is written in this
 11. Create a task from an action item → `Issue` created (`TL-N`), `issueId` written back, the row updates in place, and navigating to Tasks selects it. Click again → `already_linked`.
 12. Click through the transcript while it says `Speaker 1` / `Speaker 2` — no names anywhere, disclaimer visible, role hints styled as guesses.
 13. Delete a meeting → segments and action items are gone too, and the WAV is removed from disk.
+14. Set retention to 0 → the sweep leaves the audio alone. Set it to 1 and backdate a meeting's `createdAt` past the window → the next sweep removes `<id>.wav` and its `.meta.json`, writes `audioDeletedAt`, and leaves the transcript, summary and decisions intact. A meeting whose `transcribeStatus` is `running` is skipped.
+15. In Settings → Meetings, set the default language to `en` and retention to `7` → record → the new `Meeting` row has `lang: 'en'` and `retentionDays: 7`.
+16. Ask the chat agent "这个会议做了哪些决定" → it calls `list_meetings` and `get_meeting` and answers from the rows. A second `get_meeting` on the same meeting is what the follow-up question needs; neither call reads source files.
+17. On a hosted trial, press Generate → the confirmation dialog appears **before** any tokens are spent (`meeting.estimate` returns `hosted: true`), and the estimate line names the synthesis model.
