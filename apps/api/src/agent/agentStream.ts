@@ -16,6 +16,8 @@ import { getLearnHint, getPreferenceHint } from './core/selfLearning.js';
 import { getKnowledgeHint } from './core/knowledgeRecall.js';
 import { buildSystemPrompt } from './prompts/systemPrompt.js';
 import { runAgentLoop } from './core/agentEngine.js';
+import { MAX_ITERATIONS } from './utils/constants.js';
+import { t } from '../lib/i18n.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SSE Stream Handler — main entry point for AI agent interactions
@@ -199,7 +201,20 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
 
     // ─── Run agent loop ───
     const result = await runAgentLoop(config, messages, allActiveTools, send, context, guardResult);
-    sendDone(send, result.content, result.iterations, remainingTokens);
+    // An empty reply is a real outcome (a tool loop can end with nothing to say), but
+    // `sendDone` renders '' as the literal "(no response)", which is a debug string
+    // wearing a user-facing sentence. Say what happened, in the user's language.
+    const content = result.content.trim()
+      ? result.content
+      : t(result.usedTools ? 'agent.toolCapReached' : 'agent.emptyReply', lang, { n: String(MAX_ITERATIONS) });
+    if (!result.content.trim()) {
+      console.error('[AgentStream] empty reply', {
+        iterations: result.iterations,
+        usedTools: result.usedTools,
+        msgCount: messages.length,
+      });
+    }
+    sendDone(send, content, result.iterations, remainingTokens);
   } catch (e: any) {
     console.error('[AgentStream] Error:', e.message);
     // Forward the gateway code (feature_closed / quota_exhausted / ...) so the

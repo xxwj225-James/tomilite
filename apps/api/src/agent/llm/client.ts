@@ -138,6 +138,7 @@ export async function streamLLM(
 
   let content = '';
   let reasoningContent = '';
+  let finishReason = ''; // 'stop' | 'length' | 'tool_calls' — see the parser note below
   let inThinkingTag = false; // suppress token output inside <thinking> blocks
   let reasoningBuf = ''; // flushed immediately via flushReasoning()
   const flushReasoning = () => {
@@ -166,6 +167,11 @@ export async function streamLLM(
       if (d === '[DONE]') continue;
       try {
         const json = JSON.parse(d);
+        // Only the last chunk before [DONE] carries a non-null finish_reason. Nothing
+        // read it, so a reply cut off by max_tokens during thinking was indistinguishable
+        // from a model that simply had no content to add — both arrive as content: ''.
+        const fr = json.choices?.[0]?.finish_reason;
+        if (fr) finishReason = fr;
         const delta = json.choices?.[0]?.delta;
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
@@ -317,7 +323,11 @@ export async function streamLLM(
       ' contentLen=' +
       content.length +
       ' toolCalls=' +
-      toolCalls.length,
+      toolCalls.length +
+      ' finishReason=' +
+      (finishReason || 'none') +
+      ' maxTokens=' +
+      String(body.max_tokens),
   );
   send('debug', {
     model,

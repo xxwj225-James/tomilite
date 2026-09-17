@@ -100,7 +100,7 @@ export async function runAgentLoop(
   send: SSESender,
   context: AgentContext,
   guardResult: GuardResult,
-): Promise<{ content: string; iterations: number }> {
+): Promise<{ content: string; iterations: number; usedTools: boolean }> {
   const { needsWebSearch, guardIntent, lastGuardRaw, cleanMsg } = guardResult;
   const { unsavedNote, noteEditorOpen, taskEditorOpen, newTaskFormOpen } = context;
   const isQwen = isQwenProvider(config.baseUrl);
@@ -572,9 +572,21 @@ export async function runAgentLoop(
       role: 'user',
       content: "Please provide a final response summarizing what you've found or done. Be concise.",
     });
-    const { content: final } = await streamLLMWithRetry(config, messages, activeTools, send, true);
-    fullContent = final || fullContent;
+    // No tools on the last call. With them offered, a model that is still mid-plan
+    // answers "summarize what you found" with another tool call — which this line
+    // then discards (only `content` is read, the call is never executed), leaving
+    // fullContent empty. That empty string is what used to reach the user as the
+    // literal "(no response)". Same reasoning as the Qwen confirm path above.
+    const summary = await streamLLMWithRetry(config, messages, [], send, true);
+    fullContent = summary.content || fullContent;
+    if (!fullContent) {
+      // Worth knowing precisely, because the two causes need different fixes: the
+      // model returned nothing at all, or it tried to keep using tools.
+      agentLog(
+        `[AgentLoop] exhausted at ${iterations} iterations with no content, toolCalls=${summary.toolCalls.length}`,
+      );
+    }
   }
 
-  return { content: fullContent, iterations };
+  return { content: fullContent, iterations, usedTools: calledTools.size > 0 };
 }
