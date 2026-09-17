@@ -26,6 +26,28 @@ jobs:
       - name: Build & package installer
         run: npm run pack
 
+      # The release body is a pair of links to the notes rather than the notes
+      # themselves: the text lives in docs/release-notes/<tag>.md (and .zh.md) so the
+      # release page stays scannable and the reader picks a language.
+      - name: Compose release body
+        shell: bash
+        run: |
+          base="https://github.com/${{ github.repository }}/blob/main/docs/release-notes"
+          tag="${{ github.ref_name }}"
+          body="$RUNNER_TEMP/release-body.md"
+          {
+            echo "# TomiLite $tag"
+            echo
+            printf '**Release notes / 发布说明** — [English](%s/%s.md)' "$base" "$tag"
+            # The Chinese note is optional here: link it when it exists rather than
+            # failing the release over a translation, or shipping a link that 404s.
+            if [ -f "docs/release-notes/$tag.zh.md" ]; then
+              printf ' · [中文](%s/%s.zh.md)' "$base" "$tag"
+            fi
+            echo
+          } > "$body"
+          cat "$body"
+
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
         with:
@@ -33,5 +55,5 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.blockmap
             dist-electron/latest.yml
-          body_path: docs/release-notes/${{ github.ref_name }}.md
+          body_path: ${{ runner.temp }}/release-body.md
           generate_release_notes: true
