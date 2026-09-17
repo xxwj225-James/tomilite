@@ -23,6 +23,7 @@ import {
   deleteEmail,
 } from './emailTools.js';
 import { listMeetings, getMeeting } from './meetingTools.js';
+import { fetchUrl } from './fetchTools.js';
 import { shellExec } from '../utils/shell.js';
 import { mcpCall } from '../utils/mcp.js';
 import { parseMcpToolName } from '../mcp/inject.js';
@@ -95,6 +96,8 @@ async function dispatchTool(tool: string, args: Record<string, any>): Promise<an
       return dismissEmail(args);
     case 'delete_email':
       return deleteEmail(args);
+    case 'fetch_url':
+      return fetchUrl(args);
     case 'list_meetings':
       return listMeetings(args);
     case 'get_meeting':

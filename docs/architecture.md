@@ -22,7 +22,7 @@ TomiLite is an AI productivity tool for indie developers. Minimalist design, zer
 | Backend API  | Node.js + tRPC                                                                                      | Lightweight, no Java dependency      |
 | Database     | SQLite (Prisma ORM)                                                                                 | Single file, zero config             |
 | AI           | DeepSeek Cloud API (SSE streaming)                                                                  | Low cost, good results               |
-| Search       | FTS5 full-text search (trigram + `LIKE` fallback for short terms) + local ONNX embeddings            | Replaces pgvector, zero dependencies |
+| Search       | FTS5 full-text search (trigram + `LIKE` fallback for short terms) + local ONNX embeddings           | Replaces pgvector, zero dependencies |
 | Desktop      | Electron                                                                                            | Cross-platform installer             |
 | Code sharing | npm workspaces (`@tomilite/database`, `@tomilite/email`, `@tomilite/shared`, `@tomilite/shared-ui`) | Shared packages                      |
 
@@ -103,25 +103,25 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 
 33 models; key tables:
 
-| Model                                                              | Purpose                                                             |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `Issue`                                                            | Task management (type, status, priority, storyPoints, sortOrder...) |
-| `Board` / `BoardColumn` / `BoardCard`                              | Kanban                                                              |
-| `Sprint` / `Comment` / `IssueChangelog`                            | Sprint planning, comments, change history                           |
-| `KnowledgePage`                                                    | Wiki/notes; `source`/`sourceId` mark machine-written rows (chat distillation) vs. user-authored |
-| `PersonalNote`                                                     | Notes                                                               |
-| `FocusSession`                                                     | Focus sessions                                                      |
-| `GitWorkDir` / `GitRepo` / `GitCommitRef` / `GitCommit`            | Git integration                                                     |
-| `SmartEmail`                                                       | Email triage (AI summary, reply draft, linked issue)                |
-| `ApiKey`                                                           | Inbound API Key (stored as SHA-256 hash)                            |
-| `McpServer` / `McpAuditLog`                                        | MCP server config + audit                                           |
-| `AiDecisionFeedback`                                               | Self-learning feedback                                              |
-| `UserHealthSnapshot`                                               | Health history                                                      |
-| `DailyMotto`                                                       | Daily motto cache                                                   |
-| `Report`                                                           | Reports (daily/weekly)                                              |
+| Model                                                              | Purpose                                                                                                                                                                                               |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Issue`                                                            | Task management (type, status, priority, storyPoints, sortOrder...)                                                                                                                                   |
+| `Board` / `BoardColumn` / `BoardCard`                              | Kanban                                                                                                                                                                                                |
+| `Sprint` / `Comment` / `IssueChangelog`                            | Sprint planning, comments, change history                                                                                                                                                             |
+| `KnowledgePage`                                                    | Wiki/notes; `source`/`sourceId` mark machine-written rows (chat distillation) vs. user-authored                                                                                                       |
+| `PersonalNote`                                                     | Notes                                                                                                                                                                                                 |
+| `FocusSession`                                                     | Focus sessions                                                                                                                                                                                        |
+| `GitWorkDir` / `GitRepo` / `GitCommitRef` / `GitCommit`            | Git integration                                                                                                                                                                                       |
+| `SmartEmail`                                                       | Email triage (AI summary, reply draft, linked issue)                                                                                                                                                  |
+| `ApiKey`                                                           | Inbound API Key (stored as SHA-256 hash)                                                                                                                                                              |
+| `McpServer` / `McpAuditLog`                                        | MCP server config + audit                                                                                                                                                                             |
+| `AiDecisionFeedback`                                               | Self-learning feedback                                                                                                                                                                                |
+| `UserHealthSnapshot`                                               | Health history                                                                                                                                                                                        |
+| `DailyMotto`                                                       | Daily motto cache                                                                                                                                                                                     |
+| `Report`                                                           | Reports (daily/weekly)                                                                                                                                                                                |
 | `ChatSession` / `ChatMessage`                                      | Chat sessions + messages; `distillCursor`/`distillAt`/`distillMeta` are the distillation watermark + run accounting. **`updatedAt` is written in UTC here, unlike every other `localtime` timestamp** |
-| `LlmProviderMaster` / `LlmProvider` / `LlmConfig`                  | LLM configuration                                                   |
-| `SystemConfig` / `KnowledgeCache` / `Integration` / `FeedbackItem` | Misc                                                                |
+| `LlmProviderMaster` / `LlmProvider` / `LlmConfig`                  | LLM configuration                                                                                                                                                                                     |
+| `SystemConfig` / `KnowledgeCache` / `Integration` / `FeedbackItem` | Misc                                                                                                                                                                                                  |
 
 ---
 
@@ -153,7 +153,9 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 
 ### 6.2 AI Agent
 
-- **~30 built-in tools** (`apps/api/src/agent/tools/registry.ts` + `emailTools.ts`): issues (`create_issue`, `force_create_issue`, `get_issue`, `list_issues`, `update_issue`, `suggest_issue_edit`), notes (`create_note`, `update_note`, `list_notes`, `search_notes`, `suggest_note_edit`, `force_create_note`), reports (`create_report`, `update_report`, `get_report`, `list_reports`, `delete_report`, `suggest_report_edit`, `polish_report`, `summarize_report`, `expand_report`, `translate_report`, `force_create_report`), email (`list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email`), search (`search_local_data`, `web_search`, plus `brave_search` when a Brave key is present), git (`list_git_commits`, `list_workspaces`), stats/exec (`get_stats`, `shell_exec`), export (`export_to_excel`, `export_to_doc`), plus MCP-injected tools as `mcp__<server>__<tool>` (capped at 25)
+- **~35 built-in tools** (`apps/api/src/agent/tools/registry.ts` + `emailTools.ts`): issues (`create_issue`, `force_create_issue`, `get_issue`, `list_issues`, `update_issue`, `suggest_issue_edit`), notes (`create_note`, `update_note`, `list_notes`, `search_notes`, `suggest_note_edit`, `force_create_note`), reports (`create_report`, `update_report`, `get_report`, `list_reports`, `delete_report`, `suggest_report_edit`, `polish_report`, `summarize_report`, `expand_report`, `translate_report`, `force_create_report`), email (`list_emails`, `edit_email_reply`, `send_email_reply`, `read_email_original`, `dismiss_email`, `delete_email`), search (`search_local_data`, `web_search`, `fetch_url`, plus `brave_search` when a Brave key is present), meetings (`list_meetings`, `get_meeting`), git (`list_git_commits`, `list_workspaces`), stats/exec (`get_stats`, `shell_exec`), export (`export_to_excel`, `export_to_doc`), plus MCP-injected tools as `mcp__<server>__<tool>` (capped at 25)
+- **`fetch_url`** (`agent/tools/fetchTools.ts`) is the only tool that opens a page: `web_search` queries Bing and returns `{title, url, snippet}` without ever fetching a result, so before this, "read what this link says" had no answer at all. It is http/https only, refuses local and private addresses **on every redirect hop** (the API exempts localhost from its token check, so a fetched page must not be able to reach this app's own tRPC surface), enforces a 15 s deadline plus download and returned-text caps, and strips markup to readable text. GitHub repo/blob/tree URLs are rewritten to the raw and contents endpoints, because github.com renders those pages client-side and their HTML contains neither the README nor the file listing; relative markdown links in a README are made absolute so the one link that answers the question can actually be followed
+
 - **LLM Function Calling**: streaming + tool calls; tools are pruned based on open editors, and any tool that cannot work in the current environment is withheld rather than offered and failed (e.g. `brave_search` without a key)
 - **Fallback strategy**: no API Key → `LlmBanner` soft-gate banner blocks sending until configured (no wasted API call)
 
@@ -176,7 +178,7 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
 - **LLM polish**: optional DeepSeek analysis
 
 **The index** (`apps/api/src/lib/ftsIndex.ts`) is built and repaired by
-`ensureSearchIndexes()`, which runs on every boot *before* the server listens:
+`ensureSearchIndexes()`, which runs on every boot _before_ the server listens:
 
 - `global_fts` is a regular (non-contentless) fts5 table over five source tables —
   `Issue`, `KnowledgePage`, `SmartEmail`, `GitCommit`, `Report` — with `type` and `ref_id`
@@ -185,7 +187,7 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
 - **Tokenizer is `trigram`** (SQLite ≥3.34): any substring of ≥3 characters matches,
   which is what makes Chinese search work at all. The previous `porter unicode61`
   tokenizer treated a whole run of Han/Kana as ONE token, so a CJK query matched only when
-  it equalled an *entire* run in the row — `数据库迁移` matched a row whose text was
+  it equalled an _entire_ run in the row — `数据库迁移` matched a row whose text was
   exactly that, but never a row where the phrase appeared inside prose. Every substring
   query missed, which for a Chinese-speaking user meant search silently returned nothing
 - **A term shorter than 3 characters is structurally unsearchable.** 2-character Chinese
@@ -198,11 +200,11 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
   each term and doubles embedded quotes; it returns `null` when nothing is searchable.
   The three readers keep **OR** between terms, never AND, because all three sort by `rank`
 - **Rebuild, not migrate**: the DDL is swapped inside one `BEGIN IMMEDIATE` transaction
-  that drops all 21 triggers *before* the table, recreates the table unconditionally, and
+  that drops all 21 triggers _before_ the table, recreates the table unconditionally, and
   repopulates without `OR IGNORE`. The trigger ordering is load-bearing — a surviving
   `fts_*` trigger makes every `INSERT`/`UPDATE`/`DELETE` on its source table throw
-  `no such table: main.global_fts`. Dropping the *source* table cleans its triggers;
-  dropping the *fts* table does not
+  `no such table: main.global_fts`. Dropping the _source_ table cleans its triggers;
+  dropping the _fts_ table does not
 - **Populating once**: the old boot path ran five unconditional `INSERT OR IGNORE ... SELECT`
   statements. FTS5 tables have no unique constraint, so `OR IGNORE` never fired and every
   launch copied the whole corpus again — one real database had 498,107 index rows for
@@ -220,7 +222,7 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
 
 > **`db push` and the index:** Prisma does not know about `global_fts` or its five shadow
 > tables, so a `db push` proposes dropping all six and — because `server.ts:761` passes no
-> `--accept-data-loss` — is *refused*. A refused push changes nothing, so the index is
+> `--accept-data-loss` — is _refused_. A refused push changes nothing, so the index is
 > never at risk; `ensureSearchIndexes()` runs after `ensureSchema()` and self-heals
 > regardless. The consequence that does matter is on the schema side: `db push` only runs
 > when `SCHEMA_VERSION` is bumped, and it is refused whenever the index exists, so the
@@ -235,7 +237,7 @@ cannot answer a 2-character Chinese query at all (trigram's structural limit, ab
 Embeddings cover both. The vector machinery already existed in the codebase — a `vector`
 column, `cosineSimilarity`, `semanticRank`, `searchNotesSemantic` — but had never produced
 a vector: `embedText` called the LLM's `/embeddings` endpoint behind
-`!isDeepseekEndpoint(baseUrl)`, which matches DeepSeek *and* the hosted gateway and sat
+`!isDeepseekEndpoint(baseUrl)`, which matches DeepSeek _and_ the hosted gateway and sat
 alongside an explicit `anthropic` exclusion. That guard killed two of the five providers
 the app configures (DeepSeek, Anthropic) — DeepSeek being the default — and also killed the
 hosted gateway, which is not a provider but the trial/Pro path, so those users got `null`
@@ -280,7 +282,7 @@ zero.
   edits to any of them. `AFTER UPDATE OF title, content` means a status-only update does not
   re-embed, and because the queue is durable an interrupted backfill resumes.
 - **`drainEmbedQueue` refuses to run unless the model is usable** (`embedModelStatus() ===
-  'ready'`). Without that guard an unavailable model fails every row, and five drains later
+'ready'`). Without that guard an unavailable model fails every row, and five drains later
   the `MAX_ATTEMPTS = 5` ceiling would have deleted the entire queue — permanently, since
   the backfill stamp is already set. Nothing is consumed while the model is missing; the
   backlog waits.
@@ -295,13 +297,13 @@ zero.
   `global_fts` and cosine over stored vectors — and fuses them with reciprocal rank fusion,
   `k = 60`. BM25 rank and cosine have no common scale, and normalizing them would need
   per-corpus tuning that silently stops working as the corpus changes shape; RRF uses only
-  the *order* each list produced. Either list being empty degrades RRF to the other's order.
+  the _order_ each list produced. Either list being empty degrades RRF to the other's order.
 - **No similarity threshold anywhere, and that is measured rather than omitted.** On a real
   35-note corpus, e5 vectors are anisotropic enough that the score distribution cannot
   distinguish a good query from a bad one:
 
-  | query                  | top    | top−mean | top−2nd | z    |
-  | ---------------------- | ------ | -------- | ------- | ---- |
+  | query                   | top    | top−mean | top−2nd | z    |
+  | ----------------------- | ------ | -------- | ------- | ---- |
   | `数据库迁移` (real)     | 0.8391 | 0.0379   | 0.0029  | 1.41 |
   | `如何种植番茄` (absent) | 0.8606 | 0.0659   | 0.0129  | 1.80 |
   | `zzzzzzzz…` (gibberish) | 0.8486 | 0.0348   | 0.0076  | 2.84 |
@@ -312,7 +314,8 @@ zero.
   notes instead of none, which is the accepted cost of the same property that makes
   cross-lingual and 2-character queries work. (The old `semanticRank` gated on
   `score > 0.5`, a value calibrated for OpenAI embeddings that e5 satisfies for every
-  query; it now gates on whether the *candidates* have usable vectors at all.)
+  query; it now gates on whether the _candidates_ have usable vectors at all.)
+
 - **Degradation is total and quiet**: no model installed → `embedQuery` returns `null` →
   the embedding list is empty → RRF reduces to BM25 order → keyword search and every other
   feature is unaffected, with no error shown. `TL_EMBED_DISABLE=1` switches the whole
@@ -321,7 +324,7 @@ zero.
   `system.reembed` re-queues everything (and is the only path that resets `attempts`).
 - **Packaging**: `@huggingface/transformers` is `external` in `scripts/bundle-api.js` and
   `onnxruntime-web` plus the non-`win32/x64` ONNX runtimes are excluded in `build.files`.
-  `sharp` is a *production* dependency at `^0.34.5` — `transformers.node.cjs` requires it
+  `sharp` is a _production_ dependency at `^0.34.5` — `transformers.node.cjs` requires it
   unconditionally at top level, electron-builder installs only the production tree, and the
   range has to match the version transformers declares or npm keeps a second nested copy.
   Net cost: **+20–35 MiB** on the installer (ORT runtime only; the model is never bundled).
@@ -440,7 +443,7 @@ See `CLAUDE.md` (8 parts):
 | AI chat entry     | App.tsx Chat-First UI                                                                                                                                                                  |
 | SSE Streaming     | `/api/agent/stream`                                                                                                                                                                    |
 | AI Health Scorer  | `/api/health.personalHealth`                                                                                                                                                           |
-| pgvector Search   | FTS5 (trigram, CJK-capable) + local ONNX embeddings fused with RRF — see 6.4.1                                                                                                          |
+| pgvector Search   | FTS5 (trigram, CJK-capable) + local ONNX embeddings fused with RRF — see 6.4.1                                                                                                         |
 | AI Issue Review   | `/api/search.reviewIssue`                                                                                                                                                              |
 | Knowledge Map     | `/api/search.knowledgeMap`                                                                                                                                                             |
 | AI Evolution      | `/api/learn.*`                                                                                                                                                                         |
