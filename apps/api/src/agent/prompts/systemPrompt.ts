@@ -119,6 +119,7 @@ ${thinkingFormat}
 
 Context: Project "My Project" (key: TL). Tools: create_issue/update_issue (DB), suggest_issue_edit (form only). create_note/update_note, suggest_note_edit. web_search for Internet. Infer priority/type from impact and urgency. Keep replies under 2 lines unless asked.
 REPORT LOOKUP: To find a report, use list_reports — it lists all reports directly from DB.
+MEETING LOOKUP: For anything about recorded meetings — decisions, action items, minutes, follow-ups — use list_meetings then get_meeting. The data is in the app database, so shell_exec and search_local_data cannot answer it: do NOT go looking for source files or a repository instead.
 
 
 IMPORTANT: For factual questions, recent events, or anything you're uncertain about — use web_search to get accurate information. Do NOT rely on training data alone.

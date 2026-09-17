@@ -562,6 +562,46 @@ export const ALL_TOOLS: any[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'list_meetings',
+      description:
+        'List recorded meetings (newest first) with duration, transcription/summary status, a summary snippet and counts of decisions and open action items. Use this FIRST for any question about meetings, decisions, action items or meeting minutes — never read source files or the database to answer those. Follow up with get_meeting for the detail.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Optional keyword filter on the meeting title' },
+          status: {
+            type: 'string',
+            enum: ['recording', 'recorded', 'archived'],
+            description: 'Optional status filter',
+          },
+          includeArchived: { type: 'boolean', description: 'Include archived meetings (default false)' },
+          limit: { type: 'number', default: 10, description: 'Max results (1-50, default 10)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_meeting',
+      description:
+        'Read one meeting in full: summary, decisions (each with its recorded rationale), action items with owner/due date/status, the generated minutes, and the follow-up email draft. Pass the id from list_meetings, or a title fragment. The transcript is omitted by default because it is long — set includeTranscript only when the exact wording matters.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Meeting id from list_meetings (preferred)' },
+          title: { type: 'string', description: 'Title fragment, used only when no id is given' },
+          includeTranscript: {
+            type: 'boolean',
+            description: 'Also return the transcript (truncated). Default false.',
+          },
+        },
+      },
+    },
+  },
 ];
 
 // ─── Pruning ───
@@ -652,4 +692,6 @@ export const toolLabels: Record<string, string> = {
   export_to_doc: 'Exporting to Word',
   export_to_pdf: 'Exporting to PDF',
   export_to_ppt: 'Exporting to PowerPoint',
+  list_meetings: 'Listing meetings',
+  get_meeting: 'Reading meeting',
 };

@@ -22,6 +22,7 @@ import {
   dismissEmail,
   deleteEmail,
 } from './emailTools.js';
+import { listMeetings, getMeeting } from './meetingTools.js';
 import { shellExec } from '../utils/shell.js';
 import { mcpCall } from '../utils/mcp.js';
 import { parseMcpToolName } from '../mcp/inject.js';
@@ -94,6 +95,10 @@ async function dispatchTool(tool: string, args: Record<string, any>): Promise<an
       return dismissEmail(args);
     case 'delete_email':
       return deleteEmail(args);
+    case 'list_meetings':
+      return listMeetings(args);
+    case 'get_meeting':
+      return getMeeting(args);
     case 'list_reports':
       return listReports(args);
     case 'get_report':
