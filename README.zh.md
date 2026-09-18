@@ -39,33 +39,33 @@ TomiLite 给你的 AI 一个持久化的工作区 —— 你的任务、笔记�
 
 用大白话跟 Tomi 聊 —— Agent 把你的话变成动作，结果实时出现在任务 / 笔记 / 邮件 / 日报面板里：
 
-| 你说                                      | Tomi 会做                            |
-| ----------------------------------------- | ------------------------------------ |
-| "创建一个任务：重构登录模块，优先级 high" | 在任务看板上建一个任务               |
-| "把任务改成进行中 / 更新这个任务"         | 更新状态、优先级、描述               |
-| "写一篇关于 API 设计的笔记"               | 在知识库创建 Markdown 笔记           |
-| "生成今天的日报"                          | 生成晨间任务简报 + 晚报              |
-| "总结未读邮件"                            | 读取邮件（IMAP）、分类、起草回复     |
-| "搜索知识库里关于缓存的内容"              | 语义搜索笔记                         |
-| "看看最近的 git 提交"                     | 读取你的 git 工作区                  |
-| "帮我分析 TL-3 这个任务"                  | 打开并分析指定 issue                 |
+| 你说                                      | Tomi 会做                        |
+| ----------------------------------------- | -------------------------------- |
+| "创建一个任务：重构登录模块，优先级 high" | 在任务看板上建一个任务           |
+| "把任务改成进行中 / 更新这个任务"         | 更新状态、优先级、描述           |
+| "写一篇关于 API 设计的笔记"               | 在知识库创建 Markdown 笔记       |
+| "生成今天的日报"                          | 生成晨间任务简报 + 晚报          |
+| "总结未读邮件"                            | 读取邮件（IMAP）、分类、起草回复 |
+| "搜索知识库里关于缓存的内容"              | 语义搜索笔记                     |
+| "看看最近的 git 提交"                     | 读取你的 git 工作区              |
+| "帮我分析 TL-3 这个任务"                  | 打开并分析指定 issue             |
 
 > 提示：应用内欢迎引导也提供了一键示例提示词。新会话是空的 —— 随便问 Tomi 什么，或者直接用上面的例子。
 
 ## 功能
 
-| 功能 | 说明 |
-| ---- | ---- |
-| 🎙 **本地会议纪要** | 录制 → 本机 whisper.cpp 转写 → AI 纪要 + 行动项 → 一键变任务。音频永不外传 |
-| 💬 **对话优先的 AI Agent** | 多会话聊天、并发任务；Agent 通过 function calling 调用工具（建/改任务、笔记、日报、网页搜索、git、shell） |
-| ✅ **任务看板** | TODO / In Progress / Done 分栏、拖拽改状态、列宽可调可排序、优先级与类型 |
-| 📝 **笔记与知识库** | Markdown 所见即所得编辑器（Milkdown），自动生成目录栏（目次）并高亮当前阅读位置；语义搜索；可导出 Excel / Word / PDF / PPT / HTML / MD |
-| 📧 **智能邮件处理** | AI 四分类、LLM 二次分组、AI 回复草稿、邮件↔任务关联（IMAP） |
-| 📊 **日报** | 晨间任务简报 + 晚报，AI 自动生成，可导出 Excel / Word / PDF / PPT |
-| 🔌 **MCP 服务端与客户端** | 把任务/笔记暴露给外部 AI 客户端（如 Claude Code），支持 API Key 鉴权 + 人工审批；也可连接其他 MCP 服务器，让 Agent 使用它们的工具 |
-| 🤖 **多 provider LLM** | DeepSeek、Qwen（DashScope）、Kimi（Moonshot）、OpenAI、Anthropic、Ollama |
-| 🌐 **官方托管试用** | 无需 API Key：在 **设置 → LLM → Hosted** 用邮箱登录，通过官方网关使用免费额度。自带 Key（BYOK）依然可用，一键切换 |
-| 🌍 **三语 · 4 套主题** | 中文 / 日本語 / English；Pipeline（深色）/ Hub（浅色）/ Canvas（纯白）/ Quantum（墨绿），全部基于 CSS 变量 |
+| 功能                       | 说明                                                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 🎙 **本地会议纪要**         | 录制 → 本机 whisper.cpp 转写 → AI 纪要 + 行动项 → 一键变任务。音频永不外传                                                             |
+| 💬 **对话优先的 AI Agent** | 多会话聊天、并发任务；Agent 通过 function calling 调用工具（建/改任务、笔记、日报、网页搜索、git、shell）                              |
+| ✅ **任务看板**            | TODO / In Progress / Done 分栏、拖拽改状态、列宽可调可排序、优先级与类型                                                               |
+| 📝 **笔记与知识库**        | Markdown 所见即所得编辑器（Milkdown），自动生成目录栏（目次）并高亮当前阅读位置；语义搜索；可导出 Excel / Word / PDF / PPT / HTML / MD |
+| 📧 **智能邮件处理**        | AI 四分类、LLM 二次分组、AI 回复草稿、邮件↔任务关联（IMAP）                                                                            |
+| 📊 **日报**                | 晨间任务简报 + 晚报，AI 自动生成，可导出 Excel / Word / PDF / PPT                                                                      |
+| 🔌 **MCP 服务端与客户端**  | 把任务/笔记暴露给外部 AI 客户端（如 Claude Code），支持 API Key 鉴权 + 人工审批；也可连接其他 MCP 服务器，让 Agent 使用它们的工具      |
+| 🤖 **多 provider LLM**     | DeepSeek、Qwen（DashScope）、Kimi（Moonshot）、OpenAI、Anthropic、Ollama                                                               |
+| 🌐 **官方托管试用**        | 无需 API Key：在 **设置 → LLM → Hosted** 用邮箱登录，通过官方网关使用免费额度。自带 Key（BYOK）依然可用，一键切换                      |
+| 🌍 **三语 · 4 套主题**     | 中文 / 日本語 / English；Pipeline（深色）/ Hub（浅色）/ Canvas（纯白）/ Quantum（墨绿），全部基于 CSS 变量                             |
 
 ## 🔒 隐私与遥测
 
@@ -103,13 +103,13 @@ npm run pack       # 构建并打包 Windows 安装包（electron-builder）
 
 ![多会话聊天](docs/images/home-sessions.jpg)
 
-![任务看板 —— 拖拽改状态](docs/images/tasks.jpg)
+![任务看板 —— 拖拽改状态](docs/images/tasks.gif)
 
 ![笔记 —— Markdown 所见即所得编辑器](docs/images/notes.jpg)
 
-![邮件 —— AI 分类与回复草稿](docs/images/email.jpg)
+![邮件 —— AI 分类与回复草稿](docs/images/email.gif)
 
-![日报 —— 晨间简报 + 晚报](docs/images/reports.jpg)
+![日报 —— 晨间简报 + 晚报](docs/images/reports.gif)
 
 ## 架构
 
@@ -148,6 +148,9 @@ packages/
 ## 🧩 生态
 
 - **🌐 TomiLite 浏览器扩展** —— [tomilite-browser-extension](https://github.com/xxwj225-James/tomilite-browser-extension)：Chrome / Edge 里的 AI 侧边栏，一键总结或翻译任意网页、把选中内容剪藏成任务与笔记、翻译视频字幕（bilibili / YouTube / HTML5 视频站），并与桌面端自动同步（localhost:3192）。📥 [下载](https://github.com/xxwj225-James/tomilite-browser-extension/releases)
+
+  ![TomiLite 浏览器扩展 —— 总结页面、翻译视频字幕并剪藏成任务与笔记](docs/images/extension.gif)
+
 - **🤖 DSH 插件** —— [tomilite-dsh-plugin](https://github.com/xxwj225-James/tomilite-dsh-plugin)：让你的 DeepSeek Harness Agent 访问本地 TomiLite 的任务、笔记与统计
 
 ## 支持
