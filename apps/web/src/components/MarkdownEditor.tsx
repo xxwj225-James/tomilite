@@ -59,7 +59,12 @@ const textColorMark = $mark('textColor', () => ({
     style: 'color',
     getAttrs: (v: string) => v ? { color: v } : null,
   }],
-  toDOM: (mark: any) => ['span', { style: `color:${mark.attrs.color || '#ef4444'}` }, 0],
+  // Renders as a class + custom property rather than an inline colour so the
+  // dark-mode layer can re-derive the swatch (see .md-fg in styles/index.css).
+  // The *stored* value is untouched: serializeInline still writes
+  // `color:<hex>` into the markdown and parseDOM still reads it back, so
+  // existing notes round-trip exactly as before.
+  toDOM: (mark: any) => ['span', { class: 'md-fg', style: `--fg:${mark.attrs.color || '#ef4444'}` }, 0],
 }));
 
 // @ts-expect-error Milkdown MarkSchema compat
@@ -69,7 +74,9 @@ const highlightMark = $mark('highlight', () => ({
     style: 'background-color',
     getAttrs: (v: string) => v ? { color: v } : null,
   }],
-  toDOM: (mark: any) => ['span', { style: `background-color:${mark.attrs.color || '#fecaca'}` }, 0],
+  // Same treatment as textColorMark — stored value unchanged, painting
+  // delegated to .md-hl so it can be re-derived per mode.
+  toDOM: (mark: any) => ['span', { class: 'md-hl', style: `--hl:${mark.attrs.color || '#fecaca'}` }, 0],
 }));
 
 // ─── Parse highlight.js HTML → token positions ───
@@ -897,7 +904,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       )}
       {promptState && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
-          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 16, border: '1px solid var(--edge)', minWidth: 360, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 16, border: '1px solid var(--edge)', minWidth: 360, boxShadow: 'var(--shadow-md)' }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{promptState.label}</div>
             <input ref={promptInputRef} className="form-input" style={{ fontSize: 12, marginBottom: 10 }} placeholder="https://" onKeyDown={e => { if (e.key === 'Enter') submitPrompt((e.target as HTMLInputElement).value); if (e.key === 'Escape') setPromptState(null); }} autoFocus />
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
@@ -910,7 +917,7 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       )}
       {colorPicker && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }} onClick={() => setColorPicker(null)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 14, border: '1px solid var(--edge)', boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 14, border: '1px solid var(--edge)', boxShadow: 'var(--shadow-md)' }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--ink)' }}>{colorPicker.label}</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               {(colorPicker.type === 'text' ? TEXT_COLORS : HIGHLIGHT_COLORS).map(c => (

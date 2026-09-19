@@ -28,7 +28,7 @@ import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
 import { TelemetryConsentDialog } from '@/components/TelemetryConsentDialog';
 import { setConsent as telSetConsent, track as telTrack } from '@/lib/telemetry';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { applyTheme, getTheme } from '@/lib/constants';
+import { applyTheme, getTheme, applyMode, getMode } from '@/lib/constants';
 import type { StagedEdit } from '@/types/chat';
 
 // ═══ MAIN APP ═══
@@ -41,6 +41,8 @@ export function App() {
   const lang = useLang();
   const setLang = useSetLang();
   const [theme, setTheme] = useState(getTheme());
+  // Light/dark is independent of `theme` — see lib/constants.ts
+  const [mode, setMode] = useState<string>(getMode());
   const [panel, setPanel] = useState<string | null>(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -360,6 +362,10 @@ export function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+  // Apply light/dark to <html data-mode> whenever it changes
+  useEffect(() => {
+    applyMode(mode);
+  }, [mode]);
   useEffect(() => {
     msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);
   }, [messages]);
@@ -536,6 +542,8 @@ export function App() {
                 setLangMenuOpen={setLangMenuOpen}
                 theme={theme}
                 setTheme={setTheme}
+                mode={mode}
+                setMode={setMode}
                 messagesCount={messages.length}
                 compressing={compressing}
                 onCompress={compressChat}

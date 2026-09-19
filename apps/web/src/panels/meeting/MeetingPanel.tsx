@@ -35,7 +35,7 @@ const modal: CSSProperties = {
   maxWidth: 520,
   maxHeight: '84vh',
   overflowY: 'auto',
-  boxShadow: '0 16px 48px rgba(0,0,0,0.25)',
+  boxShadow: 'var(--shadow-xl)',
   padding: '22px 22px 18px',
   display: 'flex',
   flexDirection: 'column',

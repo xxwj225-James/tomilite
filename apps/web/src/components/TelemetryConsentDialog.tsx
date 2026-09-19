@@ -26,7 +26,7 @@ const card: React.CSSProperties = {
   maxWidth: 520,
   maxHeight: '86vh',
   overflow: 'auto',
-  boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+  boxShadow: 'var(--shadow-xl)',
   padding: '24px 24px 20px',
   display: 'flex',
   flexDirection: 'column',

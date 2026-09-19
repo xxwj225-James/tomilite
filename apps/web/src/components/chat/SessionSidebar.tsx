@@ -51,7 +51,7 @@ export function SessionSidebar({ sessions, currentSessionId, editingSessionId, e
         return (
           <div style={{ padding: '6px 12px', borderTop: '1px solid var(--edge)', flexShrink: 0, cursor: isWarn ? 'pointer' : 'default' }} onClick={isWarn ? onCompress : undefined} title={hoverText}>
             <div style={{ height: 3, borderRadius: 2, background: 'var(--surface2)', overflow: 'hidden', marginBottom: 4 }}>
-              <div style={{ height: '100%', width: pct + '%', background: warnColor, borderRadius: 2, transition: 'width .3s' }} />
+              <div style={{ height: '100%', width: pct + '%', background: warnColor, borderRadius: 2, transition: 'width var(--dur-3) var(--ease-out)' }} />
             </div>
             <div style={{ fontSize: 9, color: warnColor, display: 'flex', justifyContent: 'space-between' }}>
               <span>{displayTokens >= 1000 ? Math.round(displayTokens / 1000) + 'k' : displayTokens} / {maxTokens >= 1000 ? Math.round(maxTokens / 1000) + 'k' : maxTokens} {t('chat.tokens', lang)}</span>

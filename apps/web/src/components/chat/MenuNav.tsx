@@ -26,7 +26,7 @@ export function MenuNav({ panel, notifyCount, mcpPending, updateAvailable, updat
       <span className="menu-item-icon">{ICONS[m.key]}</span>
       {t(MENU_LABEL[m.key], lang)}
       {m.key === 'email' && notifyCount > 0 && <span className="notif-badge">{notifyCount}</span>}
-      {m.key === 'mcp' && mcpPending > 0 && <span style={{ position: 'absolute', top: 2, right: 4, background: 'var(--amber)', color: '#fff', fontSize: 9, fontWeight: 700, minWidth: 15, height: 15, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{mcpPending}</span>}
+      {m.key === 'mcp' && mcpPending > 0 && <span style={{ position: 'absolute', top: 2, right: 4, background: 'var(--amber)', color: 'var(--on-warning)', fontSize: 9, fontWeight: 700, minWidth: 15, height: 15, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{mcpPending}</span>}
       {m.key === 'about' && updateAvailable && !updateSeen && <span className="notif-dot" />}
     </button>))}
       {/* Morning & Evening notification bubbles */}

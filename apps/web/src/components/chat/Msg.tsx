@@ -184,7 +184,7 @@ export function Msg({
                 fontSize: 9,
                 padding: '1px 6px',
                 borderRadius: 3,
-                background: 'rgba(148,163,184,.1)',
+                background: 'color-mix(in srgb, var(--muted) 12%, transparent)',
                 color: 'var(--muted)',
                 marginLeft: 6,
               }}
@@ -315,7 +315,7 @@ export function Msg({
                           ? 'var(--red-soft)'
                           : card.issueType === 'story'
                             ? 'var(--brand-soft)'
-                            : 'rgba(148,163,184,.15)',
+                            : 'color-mix(in srgb, var(--muted) 18%, transparent)',
                       color:
                         card.issueType === 'bug'
                           ? 'var(--red)'
@@ -334,7 +334,7 @@ export function Msg({
                       fontSize: 9,
                       padding: '1px 6px',
                       borderRadius: 3,
-                      background: card.status === 'done' ? 'rgba(34,197,94,.2)' : 'rgba(148,163,184,.15)',
+                      background: card.status === 'done' ? 'color-mix(in srgb, var(--green) 20%, transparent)' : 'color-mix(in srgb, var(--muted) 18%, transparent)',
                       color: card.status === 'done' ? 'var(--green)' : 'var(--ink)',
                       fontWeight: 500,
                     }}
@@ -364,7 +364,7 @@ export function Msg({
                       fontSize: 9,
                       padding: '1px 6px',
                       borderRadius: 3,
-                      background: 'rgba(148,163,184,.15)',
+                      background: 'color-mix(in srgb, var(--muted) 18%, transparent)',
                       color: 'var(--ink)',
                       fontWeight: 500,
                     }}
@@ -378,7 +378,7 @@ export function Msg({
                       fontSize: 9,
                       padding: '1px 6px',
                       borderRadius: 3,
-                      background: 'rgba(148,163,184,.15)',
+                      background: 'color-mix(in srgb, var(--muted) 18%, transparent)',
                       color: 'var(--ink)',
                       fontWeight: 500,
                     }}
@@ -684,7 +684,9 @@ export function Msg({
               borderRadius: 6,
               padding: '4px 12px',
               cursor: 'pointer',
-              color: 'var(--on-accent)',
+              // Amber is bright in every theme and both modes, so pinned needs
+              // dark ink; --on-accent (white) is only correct on --brand.
+              color: isPinned ? 'var(--on-warning)' : 'var(--on-accent)',
               fontWeight: 600,
             }}
             onClick={() => onPin(text)}

@@ -115,11 +115,40 @@ AI output language follows the UI language automatically.
 - User sets UI to Japanese → AI responds in Japanese
 - No separate "AI language" setting needed
 
-### 1.5 Themes
+### 1.5 Themes & Mode
 
-- `pipeline` (default dark), `hub` (light), `canvas` (white), `quantum` (dark green)
-- Apply via `data-theme` attribute on `<html>`
-- ALL colors through CSS variables — theme switch changes variable values only
+- Four themes — `pipeline` (default), `hub`, `canvas`, `quantum`. **All four are
+  light.** (This line used to call pipeline "default dark" and quantum "dark
+  green"; that never matched the implementation.)
+- Light/dark is a **separate axis**: any theme works in either mode.
+- Two attributes on `<html>`: `data-theme` for the theme, `data-mode`
+  (`light` | `dark`) for the mode. Both are applied by `theme-init.js` before
+  React renders, then kept in sync by `applyTheme()` / `applyMode()`
+  (`apps/web/src/lib/constants.ts`).
+- The dark layer is `:root[data-mode='dark']` in `styles/index.css`. The
+  `:root` prefix matters: it makes the selector (0,2,0), which outranks the
+  theme blocks' (0,1,0) regardless of source order.
+- ALL colors through CSS variables — theme switch changes variable values only.
+  Never a hardcoded hex in a component; derive tints with
+  `color-mix(in srgb, var(--token) N%, transparent)`.
+- `--on-accent` is the foreground for text on a `--brand` fill. It is **not**
+  always white — dark mode lifts `--brand` to a light tint and flips
+  `--on-accent` to near-black. Use `--on-warning` for text on `--amber`.
+- `--brand-hover` is **never** a hover background anywhere in this codebase — it
+  is only the second stop of `linear-gradient(135deg, var(--brand),
+  var(--brand-hover))`. Tune `--brand` and `--brand-hover` **together**: a stop
+  landing within ~dE76 2 of its partner silently flattens the gradient, and a
+  gradient whose stops differ in *lightness direction* from what the mode
+  expects reads as flat even when its dE76 is large.
+- `applyTheme()` / `applyMode()` must force a synchronous style+layout flush
+  (`void document.documentElement.offsetHeight`) right after changing the
+  attribute. A root attribute change invalidates every custom property at once
+  and Chromium resolves that incrementally; without the flush a composited frame
+  can ship mid-recalc and leave part of the UI painted with the old theme until
+  a window resize.
+- `color-scheme: dark` (set in the dark block) is what makes native browser
+  widgets — date/time picker icons, `<select>` popups, scrollbars — render
+  dark. CSS variables cannot reach those.
 
 ### 1.6 File Organization
 

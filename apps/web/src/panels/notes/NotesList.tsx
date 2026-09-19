@@ -43,7 +43,7 @@ export function NotesList(p: Props) {
         {/* Export format dialog */}
         {showExportDialog && (
           <><div className="menu-overlay" style={{ display: 'block', zIndex: 100 }} onClick={() => setShowExportDialog(false)} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 101, background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--edge)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', padding: 24, minWidth: 280, textAlign: 'center' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 101, background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--edge)', boxShadow: 'var(--shadow-lg)', padding: 24, minWidth: 280, textAlign: 'center' }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{tt2('export.title', lang)}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button className="btn btn-secondary btn-sm" style={{ justifyContent: 'center' }} onClick={() => { setShowExportDialog(false); p.handleExport('xlsx'); }}>{tt2('export.excel', lang)}</button>

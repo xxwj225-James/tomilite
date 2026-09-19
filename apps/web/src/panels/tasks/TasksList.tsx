@@ -458,7 +458,7 @@ export function TasksList(p: Record<string, unknown>) {
               fontWeight: 600,
               whiteSpace: 'nowrap',
               zIndex: 10,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              boxShadow: 'var(--shadow-md)',
             }}
           >
             {toast}
@@ -842,7 +842,7 @@ export function TasksList(p: Record<string, unknown>) {
           fontSize: 12,
           fontWeight: 600,
           pointerEvents: 'none',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          boxShadow: 'var(--shadow-md)',
           whiteSpace: 'nowrap',
           maxWidth: 300,
           overflow: 'hidden',

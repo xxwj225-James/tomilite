@@ -12,7 +12,10 @@
   --surface2: #f3f4f6;
   --edge: #e9ebf0;
   --ink: #1a1a1e;
-  --muted: #94949e;
+  /* #94949e measured 3.00:1 on --surface and 2.90:1 on --bg — both below AA
+     for the body text and icons this token is used for. #6f6f7a is 4.96:1
+     and 4.79:1. */
+  --muted: #6f6f7a;
   --surface-sidebar: #f4f5f7;
   --ink-sidebar: #6b6b75;
   --edge-sidebar: #e9ebf0;
@@ -23,8 +26,14 @@
   --radius: 10px;
 }
 [data-theme='hub'] {
-  --brand: #1877f2;
-  --brand-hover: #1464d0;
+  /* Facebook blue, darkened one step: white on #1877f2 was 4.23:1, below AA
+     for the message bubbles and .btn-brand fills that use this as a
+     background. #1466d6 is 5.38:1 as a fill and 5.11:1 as ink on --bg. */
+  --brand: #1466d6;
+  /* Pushed darker in step with --brand: the pair has to stay dE76 >= ~15 apart
+     or the brand gradient flattens (the old #1464d0 would now be dE 2.3 from
+     --brand). #0f4fa8 is dE 15.0, matching the other three themes. */
+  --brand-hover: #0f4fa8;
   --bg: #f8f9fb;
   --surface: #fff;
   --surface2: #f0f2f5;
@@ -40,8 +49,12 @@
   --blue: #1877f2;
 }
 [data-theme='canvas'] {
-  --brand: #1a73e8;
-  --brand-hover: #1557b0;
+  /* Google blue, nudged one step darker. #1a73e8 passed AA as a fill at
+     4.51:1 but with no margin at all — 0.01 above the line, so any future
+     token tweak would silently break it. #1968d4 is 5.29:1; --brand-hover
+     moves with it to keep the gradient at dE 18.5 (was 18.1). */
+  --brand: #1968d4;
+  --brand-hover: #124f9e;
   --bg: #fff;
   --surface: #fafafa;
   --surface2: #f5f5f5;
@@ -93,24 +106,128 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* Shadow scale (colored, not pure black) */
+  /* Shadow scale — re-tuned per mode (see [data-mode='dark']) */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.1);
 
-  /* Transitions */
-  --transition-fast: 0.12s ease;
-  --transition-base: 0.2s ease;
-  --transition-slow: 0.3s ease;
+  /* Motion — durations */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 260ms;
+  --dur-4: 400ms;
+
+  /* Motion — easing curves. Enter/exit uses ease-out, state changes use
+     ease-in-out; never the browser default `ease`. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Motion — travel distances */
+  --move-sm: 4px;
+  --move-md: 8px;
+  --move-lg: 16px;
+
+  /* Legacy aliases. Kept so the ~17 existing var(--transition-*) call sites
+     pick up the new curves without being rewritten. */
+  --transition-fast: var(--dur-1) var(--ease-out);
+  --transition-base: var(--dur-2) var(--ease-out);
+  --transition-slow: var(--dur-3) var(--ease-out);
 
   /* Semantic additions */
-  --brand-soft: rgba(99, 102, 241, 0.08);
+  --brand-soft: color-mix(in srgb, var(--brand) 8%, transparent);
   --red: #ef4444;
-  --red-soft: rgba(239, 68, 68, 0.1);
+  --red-soft: color-mix(in srgb, var(--red) 10%, transparent);
   --on-accent: #ffffff;
+
+  /* Text sitting on a *warning*-coloured fill (--amber chips and badges).
+     --on-accent cannot serve here: --amber is a bright hue in every theme and
+     in both modes, so white on it is only ~2.2:1. Dark ink is the correct
+     pairing everywhere, which is why this token never flips with the mode. */
+  --on-warning: #1a1a1a;
 }
+
+/* ═══ Mode Layer — dark ═══
+   Orthogonal to [data-theme]. The four light theme blocks above are untouched;
+   this block only restates the neutral surfaces, shadows and derived tints.
+   `:root[...]` is (0,2,0) — it outranks every theme block's (0,1,0) regardless
+   of source order. Dropping the `:root` prefix would make it (0,1,0) and it
+   would only win by appearing later in the file, which is fragile and silent.
+
+   `color-scheme: dark` is what makes the browser draw its OWN widgets dark:
+   the <input type="date"> calendar icon, <select> popup chrome, scrollbar
+   tracks. No amount of CSS variables reaches those. */
+:root[data-mode='dark'] {
+  --bg: #0d0f13;
+  --surface: #14171d;
+  --surface2: #1c2027;
+  --edge: #2a2f38;
+  --ink: #e8eaed;
+  --muted: #9aa0aa;
+  --surface-sidebar: #101319;
+  --ink-sidebar: #b6bcc6;
+  --edge-sidebar: #262b33;
+
+  /* Shadows carry the elevation now that surface/bg differ by only a few
+     percent of lightness — the light-mode shadow scale disappears on dark. */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.7);
+
+  --brand-soft: color-mix(in srgb, var(--brand) 12%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 14%, transparent);
+
+  color-scheme: dark;
+}
+
+/* Dark mode inverts the accent relationship: `--brand` is lifted to a light
+   tint so it stays legible as *ink* on a dark surface, which means the text
+   sitting *on* it must go dark. So --on-accent flips alongside --brand — the
+   two are a pair. (Flipping only one is what breaks the ~14 white-on-accent
+   call sites; flipping both together is what makes them correct for free.)
+
+   Verified per theme, both directions:
+     theme     --brand    on --surface   --on-accent on --brand
+     pipeline  #818cf8    6.02:1        6.46:1
+     hub       #60a5fa    7.13:1        7.65:1
+     canvas    #8ab4f8    8.52:1        9.14:1
+     quantum   #76b900    7.44:1        7.98:1
+
+   --brand-hover is never a hover *background* in this codebase — it is only
+   ever the second stop of `linear-gradient(135deg, var(--brand),
+   var(--brand-hover))` (8 CSS sites, 3 inline). Those stops have to carry the
+   whole gradient, and the first dark-mode set did not: measured on the real
+   rendered pixels, their lightness span sat at dL* 8-13, and because they
+   lighten the brand while *dropping* its chroma the sweep reads as the fill
+   fading out rather than as shading. (Light mode gets away with a smaller
+   span — dL* 6-13 — because it darkens a saturated colour and keeps the
+   chroma up, which is why the gradient looked right there and flat here.)
+
+   These stops roughly double the rendered span to dL* 12-18 while keeping
+   --on-accent far above AA:
+
+     theme     old stop   new stop   dE76 was -> now   --on-accent on new stop
+     pipeline  #a5b4fc    #bcc4fb    25.6 -> 36.4      11.35:1
+     hub       #93c5fd    #a8d3fe    20.5 -> 29.4      12.25:1
+     canvas    #aecbfa    #c6dcfc    14.7 -> 25.0      13.74:1
+     quantum   #8fd400    #b4ea5e    12.4 -> 20.8      12.33:1          */
+:root[data-theme='pipeline'][data-mode='dark'] { --brand: #818cf8; --brand-hover: #bcc4fb; }
+:root[data-theme='hub'][data-mode='dark']      { --brand: #60a5fa; --brand-hover: #a8d3fe; }
+:root[data-theme='canvas'][data-mode='dark']   { --brand: #8ab4f8; --brand-hover: #c6dcfc; }
+:root[data-theme='quantum'][data-mode='dark']  { --brand: #76b900; --brand-hover: #b4ea5e; }
+
+/* quantum's NVIDIA green is a bright fill in BOTH modes — white text on it is
+   1.9:1, which fails in light mode too. Dark ink is the correct pairing
+   (7.98:1); quantum is simply the one theme whose accent is light even in
+   light mode. The other three flip only in dark mode. Both selectors are
+   (0,2,0), so this one must stay BELOW the dark-mode one to win in both
+   modes — #1a1a1a is fine on the green either way. */
+:root[data-mode='dark'] { --on-accent: #0d0f13; }
+:root[data-theme='quantum'] { --on-accent: #1a1a1a; }
 
 /* ═══ Typography Scale ═══ */
 :root {
@@ -347,7 +464,7 @@ body {
   font-size: 10px;
   cursor: pointer;
   line-height: 16px;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -355,7 +472,7 @@ body {
 }
 .lang-btn--active {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 .lang-btn--inactive {
@@ -454,11 +571,11 @@ body {
   justify-content: center;
   border: none;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
 }
 .chat-send-btn--active {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-accent);
 }
 .chat-send-btn--idle {
   background: var(--surface2);
@@ -479,7 +596,7 @@ body {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out);
   flex-shrink: 0;
   align-self: center;
 }
@@ -559,7 +676,7 @@ body {
   cursor: pointer;
   font-weight: 500;
   font-family: inherit;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
   border: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   position: relative;
@@ -621,7 +738,7 @@ body {
   cursor: pointer;
   font-weight: 500;
   font-family: inherit;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
   border: none;
   border-radius: var(--radius-sm);
   letter-spacing: -0.01em;
@@ -694,7 +811,7 @@ body {
 }
 .msg-bubble--user {
   background: linear-gradient(135deg, var(--brand), var(--brand-hover));
-  color: #fff;
+  color: var(--on-accent);
   border-bottom-right-radius: var(--radius-sm);
 }
 .msg-bubble--assistant {
@@ -712,7 +829,7 @@ body {
   color: var(--ink);
 }
 .msg-bubble--user strong {
-  color: #fff;
+  color: var(--on-accent);
 }
 .msg-tool {
   display: inline-block;
@@ -747,7 +864,7 @@ body {
   height: 72px;
   border-radius: var(--radius-xl);
   background: linear-gradient(135deg, var(--brand), var(--brand-hover));
-  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--brand) 25%, transparent);
   margin-bottom: 24px;
 }
 .welcome-title {
@@ -775,7 +892,7 @@ body {
   box-shadow: var(--shadow-xs);
   color: var(--muted);
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: background var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base), color var(--transition-base), transform var(--transition-base);
 }
 .suggestion-chip:hover {
   box-shadow: var(--shadow-sm);
@@ -795,7 +912,12 @@ body {
   gap: 0;
   flex-wrap: nowrap;
   justify-content: flex-start;
+  /* x-only. With a bare `overflow-x: auto` the y axis computes to `auto` as
+     well, which made the nav a two-axis scroll container — a second scroll
+     layer along the edge the theme change repaints. The nav only ever needs
+     to scroll sideways. */
   overflow-x: auto;
+  overflow-y: hidden;
   flex-shrink: 0;
 }
 .menu-item {
@@ -811,7 +933,7 @@ body {
   border: none;
   background: transparent;
   min-width: 56px;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
   font-weight: 500;
   position: relative;
@@ -861,7 +983,7 @@ body {
   justify-content: center;
   opacity: 0.55;
   color: var(--muted);
-  transition: all var(--transition-fast);
+  transition: opacity var(--transition-fast), color var(--transition-fast);
 }
 .menu-item:hover .menu-item-icon,
 .menu-item--active .menu-item-icon {
@@ -869,31 +991,69 @@ body {
   opacity: 1;
 }
 
-/* ═══ Content Panel (right slide-in) ═══ */
+/* ═══ Content Panel (right slide-in) ═══
+   The panel is a flex sibling of the chat column, so opening it necessarily
+   re-lays-out the row — an overlay would have been the only way to avoid that,
+   and that changes the information architecture.
+
+   What was making the motion read as a jerk rather than a slide was three
+   properties that are NOT in the transition list, so they snapped on frame 1:
+
+     min-width: 0 → 380px     forced the row to its final geometry instantly,
+                              so the panel's contents reflowed violently while
+                              flex-basis was still animating
+     overflow: hidden → visible
+                              un-clipped the still-narrow panel, spilling its
+                              contents across the chat column mid-animation
+
+   Both now hold one value across both states. Only `flex-basis` and the shadow
+   animate. (`width: auto` was dropped — for a flex item with a non-auto
+   flex-basis, `width` is ignored anyway, so it only made the transition list
+   harder to reason about.) The header/body then fade and slide on
+   transform/opacity, which composite off the main thread. */
 .panel {
-  width: 0;
-  min-width: 0;
   flex: 0 0 0;
+  min-width: 0;
   overflow: hidden;
   background: var(--bg);
   display: flex;
   flex-direction: column;
   transition:
-    width 0.25s ease,
-    box-shadow 0.25s ease;
+    flex-basis var(--dur-3) var(--ease-out),
+    box-shadow var(--dur-3) var(--ease-out);
 }
 .panel--open {
-  width: auto;
   flex: 0 0 clamp(380px, 40%, 560px);
   box-shadow: var(--shadow-lg);
-  min-width: 380px;
-  flex-shrink: 0;
   z-index: 2;
-  overflow: visible;
 }
-.panel:not(.panel--open) .panel-header {
-  display: none;
+.panel-header,
+.panel-body {
+  transition:
+    opacity var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out),
+    visibility 0s linear 0s;
 }
+.panel:not(.panel--open) .panel-header,
+.panel:not(.panel--open) .panel-body {
+  opacity: 0;
+  transform: translateX(var(--move-lg));
+  /* `opacity: 0` on its own still leaves these in the paint tree as composited
+     layers for the whole life of the app. `visibility: hidden` takes them out
+     of it, so a closed panel costs nothing to paint and contributes no layer
+     the compositor can carry stale across a theme change. The delayed
+     visibility step is what keeps the fade-out visible; the open state above
+     restores it instantly (0s delay). */
+  visibility: hidden;
+  transition:
+    opacity var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out),
+    visibility 0s linear var(--dur-3);
+}
+/* The closed header used to be `display: none`. That made it snap into
+   existence on open, so it could not participate in the fade above — and it
+   was redundant: the panel is 0 wide with `overflow: hidden`, so the header is
+   already invisible and contributes no height to the row. */
 .panel-header {
   display: flex;
   align-items: center;
@@ -919,7 +1079,7 @@ body {
   cursor: pointer;
   padding: 4px;
   border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 .panel-close:hover {
   color: var(--ink);
@@ -986,12 +1146,31 @@ pre code.hljs {
 .hljs-regexp {
   color: #a5d6ff;
 }
-.hljs-selector-* {
+/* Was `.hljs-selector-*` — a class selector, where `*` carries no wildcard
+   meaning, so this rule could never match anything. Listing the real
+   highlight.js selector classes instead. */
+.hljs-selector-tag,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
   color: #ff7b72;
 }
 .km-content pre code.hljs {
   background: var(--surface2);
   color: var(--ink);
+}
+
+/* The code blocks keep their github-dark fill in both modes — that fill is
+   already dark, so the *text* stays readable when the app goes dark. What
+   stops working is the block's edge: #0d1117 against a #14171d surface is
+   about 1.05:1, so the block dissolves into the page. A border restores the
+   boundary without touching the syntax palette. Dark mode only — in light
+   mode the dark fill is its own boundary.
+   (`.km-content pre code.hljs` sets its own mode-aware fill and is excluded.) */
+:root[data-mode='dark'] pre code.hljs,
+:root[data-mode='dark'] .milkdown-editor pre {
+  border: 1px solid var(--edge);
 }
 
 /* ═══ Knowledge Map ═══ */
@@ -1027,7 +1206,7 @@ pre code.hljs {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--surface2);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast);
   cursor: default;
 }
 .km-content li:hover {
@@ -1171,7 +1350,7 @@ pre code.hljs {
   color: var(--ink);
   cursor: pointer;
   font-size: var(--text-xs);
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   border: none;
   box-shadow: var(--shadow-xs);
   font-family: inherit;
@@ -1192,22 +1371,22 @@ pre code.hljs {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all var(--transition-base);
+  transition: background var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base), color var(--transition-base), opacity var(--transition-base), transform var(--transition-base);
   letter-spacing: -0.01em;
   font-family: inherit;
 }
 .btn-brand {
   background: linear-gradient(135deg, var(--brand), var(--brand-hover));
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.25);
+  color: var(--on-accent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--brand) 25%, transparent);
 }
 .btn-brand:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 35%, transparent);
 }
 .btn-brand:active {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--brand) 20%, transparent);
 }
 .btn-secondary {
   background: var(--surface2);
@@ -1298,9 +1477,17 @@ pre code.hljs {
 }
 
 /* ═══ Notification & Pinned Bars ═══ */
+/* Was a hardcoded pale-yellow gradient (#fef9e7 → #fefce8) with `color:
+   var(--ink)`. In dark mode --ink becomes #e8eaed and lands on that same pale
+   yellow — about 1.1:1, i.e. invisible text. Deriving the wash from --amber
+   keeps the light-mode look and darkens correctly. */
 .pinned-bar {
-  background: linear-gradient(135deg, #fef9e7, #fefce8);
-  border-bottom: 1px solid #fde68a;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--amber) 10%, var(--surface)),
+    color-mix(in srgb, var(--amber) 6%, var(--surface))
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
   padding: var(--space-2) var(--space-3);
   display: flex;
   align-items: flex-start;
@@ -1311,8 +1498,12 @@ pre code.hljs {
   flex-shrink: 0;
 }
 .update-bar {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.04));
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--brand) 10%, transparent),
+    color-mix(in srgb, var(--brand) 4%, transparent)
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 20%, transparent);
   padding: 6px var(--space-3);
   display: flex;
   flex-direction: column;
@@ -1325,7 +1516,7 @@ pre code.hljs {
   top: 2px;
   right: 4px;
   background: var(--red);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 9px;
   font-weight: 700;
   min-width: 15px;
@@ -1418,7 +1609,11 @@ pre code.hljs {
 .md-preview blockquote {
   margin: 12px 0;
   padding: 14px 18px;
-  background: linear-gradient(135deg, var(--brand-soft), rgba(99, 102, 241, 0.02));
+  background: linear-gradient(
+    135deg,
+    var(--brand-soft),
+    color-mix(in srgb, var(--brand) 4%, transparent)
+  );
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-xs);
 }
@@ -1437,7 +1632,7 @@ pre code.hljs {
 }
 .md-preview th {
   background: linear-gradient(135deg, var(--brand), var(--brand-hover));
-  color: #fff;
+  color: var(--on-accent);
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -1502,7 +1697,7 @@ pre code.hljs {
   border-radius: 4px;
   font-size: 11px;
   color: var(--muted);
-  transition: all 0.1s;
+  transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
   white-space: nowrap;
 }
 .md-tbar button:hover {
@@ -1581,13 +1776,47 @@ pre code.hljs {
 .milkdown-editor blockquote {
   margin: 12px 0;
   padding: 14px 18px;
-  background: linear-gradient(135deg, var(--brand-soft), rgba(99, 102, 241, 0.02));
+  background: linear-gradient(
+    135deg,
+    var(--brand-soft),
+    color-mix(in srgb, var(--brand) 4%, transparent)
+  );
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-xs);
   color: var(--ink);
 }
 .milkdown-editor blockquote p {
   margin: 0;
+}
+
+/* ═══ Rich-text marks (text colour + highlight) ═══
+   The colour a user picks is stored in the *document* — it is serialized into
+   the note's markdown as `<span style="color:#ef4444">` and parsed back out of
+   that same HTML on load. So the stored value must stay a literal hex; it is
+   document data, not theming.
+
+   What changes is how those marks *paint*. The editor's toDOM emits these
+   classes plus a custom property instead of an inline colour, which lets the
+   mode layer re-derive the swatch without touching a single saved note.
+
+   The dark-mode remix is not cosmetic. The palette is chosen against white:
+   #fecaca (a pale pink highlight) keeps --ink readable on it in light mode,
+   but in dark mode --ink is #e8eaed and lands on that same pale pink at about
+   1.2:1 — unreadable. Pulling the highlight toward the dark surface and
+   pushing the text colour toward --ink restores both to 5.7:1 and 10:1+.
+   This is why a dark mode could not ship without it: the damage would be to
+   notes the user already saved. */
+.md-fg {
+  color: var(--fg);
+}
+.md-hl {
+  background: var(--hl);
+}
+:root[data-mode='dark'] .md-fg {
+  color: color-mix(in srgb, var(--fg) 55%, var(--ink));
+}
+:root[data-mode='dark'] .md-hl {
+  background: color-mix(in srgb, var(--hl) 35%, var(--surface));
 }
 .milkdown-editor table {
   border-collapse: collapse;
@@ -1606,7 +1835,7 @@ pre code.hljs {
 }
 .milkdown-editor th {
   background: linear-gradient(135deg, var(--brand), var(--brand-hover));
-  color: #fff;
+  color: var(--on-accent);
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -1715,7 +1944,7 @@ pre code.hljs {
   border-radius: 50%;
   background: var(--muted);
   opacity: 0.55;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), opacity var(--transition-fast), transform var(--transition-fast);
 }
 .toc-label {
   flex: 1;
@@ -1753,6 +1982,30 @@ pre code.hljs {
   border-radius: var(--radius-sm);
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Global, not per-component. Previously this block only covered the notes
+     table-of-contents, so every other animation kept playing — message
+     fade-ins, the panel slide, the robot's blink loop, the update bar. A user
+     who has asked the OS for less motion gets all of it, everywhere.
+
+     `!important` is deliberate: it has to beat inline `transition`/`animation`
+     styles, of which this codebase has many. The durations are collapsed to
+     1ms rather than set to `none` so that transitionend/animationend listeners
+     still fire and nothing waits forever for an event that never arrives. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Both of these are `infinite` loops. Collapsing the duration already parks
+     them on their resting keyframe (opacity 1 / scaleY 1), but saying so
+     explicitly keeps them from re-triggering if a rule is ever re-added. */
+  .tab-v-icon--sparkle,
+  .blink-eye {
+    animation: none !important;
+  }
   .toc-k,
   .toc-label {
     transition: none;

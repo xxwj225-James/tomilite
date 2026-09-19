@@ -46,7 +46,7 @@ export function UpdateBar({ updateAvailable, updateError, updateProgress, update
       {updateFilePath && <div style={{ fontSize: 9, color: 'var(--blue)', wordBreak: 'break-all', cursor: 'pointer', textDecoration: 'underline' }} onClick={onOpenFolder}>📁 {updateFilePath}</div>}
       {updateProgress > 0 && updateProgress < 100 && (
         <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 2, overflow: 'hidden', marginTop: 2 }}>
-          <div style={{ width: `${Math.round(updateProgress)}%`, height: '100%', background: 'var(--brand)', borderRadius: 2, transition: 'width 0.3s ease' }} />
+          <div style={{ width: `${Math.round(updateProgress)}%`, height: '100%', background: 'var(--brand)', borderRadius: 2, transition: 'width var(--dur-3) var(--ease-out)' }} />
         </div>
       )}
     </div>

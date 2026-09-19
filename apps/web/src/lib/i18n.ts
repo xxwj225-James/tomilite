@@ -134,6 +134,16 @@ const I18N = {
     mi: 'Whakawātea karere',
     ru: 'Очистить сообщения',
   },
+  'chat.modeToDark': {
+    en: 'Switch to dark mode',
+    zh: '切换到深色模式',
+    ja: 'ダークモードに切り替え',
+  },
+  'chat.modeToLight': {
+    en: 'Switch to light mode',
+    zh: '切换到浅色模式',
+    ja: 'ライトモードに切り替え',
+  },
   'chat.download': { en: 'Download', zh: '下载', ja: 'ダウンロード', th: 'ดาวน์โหลด', mi: 'Tikiake', ru: 'Скачать' },
   'chat.uploadFile': {
     en: 'Upload file',

@@ -4,13 +4,15 @@ import { LANGS, LANGS_FULL, THEMES, THEME_COLORS } from '@/lib/constants';
 import type { Lang } from '@/stores/languageStore';
 
 // ═══ Chat toolbar — language dropdown + theme dots + compress/clear ═══
-export function ChatToolbar({ lang, setLang, langMenuOpen, setLangMenuOpen, theme, setTheme, messagesCount, compressing, onCompress, onClear }: {
+export function ChatToolbar({ lang, setLang, langMenuOpen, setLangMenuOpen, theme, setTheme, mode, setMode, messagesCount, compressing, onCompress, onClear }: {
   lang: string;
   setLang: (l: Lang) => void;
   langMenuOpen: boolean;
   setLangMenuOpen: (v: boolean) => void;
   theme: string;
   setTheme: (t: string) => void;
+  mode: string;
+  setMode: (m: string) => void;
   messagesCount: number;
   compressing: boolean;
   onCompress: () => void;
@@ -23,7 +25,7 @@ export function ChatToolbar({ lang, setLang, langMenuOpen, setLangMenuOpen, them
         <div style={{ position: 'relative' }}>
           <button onClick={() => setLangMenuOpen(!langMenuOpen)} className="lang-btn lang-btn--active" style={{ padding: '2px 8px', fontSize: 10, gap: 3 }}>{LANGS_FULL[lang]} ▼</button>
           {langMenuOpen && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--edge)', borderRadius: 8, padding: 4, minWidth: 130, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface)', border: '1px solid var(--edge)', borderRadius: 8, padding: 4, minWidth: 130, boxShadow: 'var(--shadow-md)' }}>
               {LANGS.map(l => (
                 <button key={l} onClick={() => { setLang(l); setLangMenuOpen(false); fetch('/api/system.saveLanguage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: l }) }).catch(() => {}); }}
                   style={{ display: 'block', width: '100%', textAlign: 'left', padding: '4px 10px', fontSize: 11, border: 'none', borderRadius: 4, background: lang === l ? 'var(--surface2)' : 'transparent', color: lang === l ? 'var(--brand)' : 'var(--ink)', cursor: 'pointer', fontWeight: lang === l ? 600 : 400, fontFamily: 'inherit' }}>
@@ -37,6 +39,21 @@ export function ChatToolbar({ lang, setLang, langMenuOpen, setLangMenuOpen, them
         <div className="theme-dots" style={{ display: 'flex', gap: 3 }}>
           {THEMES.map(th => (<button key={th} onClick={() => setTheme(th)} title={th} className={cn('theme-dot', theme === th && 'theme-dot--active')} style={{ background: THEME_COLORS[th] }} />))}
         </div>
+        {/* Light/dark — independent of the theme dots to its left: any theme
+            can be shown in either mode. Icon shows the mode you'd switch TO. */}
+        <button
+          onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+          title={mode === 'dark' ? t('chat.modeToLight', lang) : t('chat.modeToDark', lang)}
+          aria-label={mode === 'dark' ? t('chat.modeToLight', lang) : t('chat.modeToDark', lang)}
+          className="theme-dot"
+          style={{ background: 'transparent', border: '1px solid var(--edge)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}
+        >
+          {mode === 'dark' ? (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+          ) : (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" /></svg>
+          )}
+        </button>
       </div>
       {/* Right: compress + clear */}
       {messagesCount > 0 && (

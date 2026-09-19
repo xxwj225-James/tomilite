@@ -95,7 +95,7 @@ export function EmailForm({ onSave, standalone = false }: Props) {
       </label>
       {testMsg && <p style={{ fontSize: 12, marginBottom: 6, color: testMsg.includes('✅') ? 'var(--green)' : 'var(--brand)' }}>{testMsg}</p>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
-        <button className="btn btn-sm" style={{ background: 'var(--brand)', color: '#fff', border: 'none' }} onClick={testConn} disabled={testing || !host.trim()}>{testing ? t('emailForm.testing', lang) : t('emailForm.testConnection', lang)}</button>
+        <button className="btn btn-sm" style={{ background: 'var(--brand)', color: 'var(--on-accent)', border: 'none' }} onClick={testConn} disabled={testing || !host.trim()}>{testing ? t('emailForm.testing', lang) : t('emailForm.testConnection', lang)}</button>
         {standalone && <button className="btn btn-brand btn-sm" onClick={handleSave} disabled={saving}>{saving ? t('emailForm.testing', lang) : saved ? t('emailForm.saved', lang) : t('emailForm.saveChanges', lang)}</button>}
       </div>
     </div>

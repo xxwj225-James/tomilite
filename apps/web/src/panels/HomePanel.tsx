@@ -163,7 +163,7 @@ export function HomePanel() {
     <div className="p-2" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 10, paddingBottom: 80 }}>
       {motto && (
         <div onClick={refreshMotto} title={lang === 'zh' ? '点击刷新' : lang === 'ja' ? 'クリックで更新' : 'Click to refresh'} style={{ padding: '12px 16px', borderRadius: 'var(--radius-md)', background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))', textAlign: 'center', cursor: 'pointer', opacity: mottoRefreshing ? 0.6 : 1, transition: 'opacity 0.2s' }}>
-          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, fontStyle: 'italic', color: '#fff' }}>{mottoRefreshing ? (lang === 'zh' ? '⏳ ...' : lang === 'ja' ? '⏳ ...' : '⏳ ...') : motto}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, fontStyle: 'italic', color: 'var(--on-accent)' }}>{mottoRefreshing ? (lang === 'zh' ? '⏳ ...' : lang === 'ja' ? '⏳ ...' : '⏳ ...') : motto}</div>
         </div>
       )}
 {/* Task Statistics */}
@@ -232,7 +232,7 @@ export function HomePanel() {
               <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 10, width: 60, color: 'var(--muted)' }}>{dimLabels[key] || key}</span>
                 <div style={{ flex: 1, height: 6, background: 'var(--surface2)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${val}%`, background: dimColors[key] || 'var(--brand)', borderRadius: 3 }} />
+                  <div style={{ height: '100%', width: `${val}%`, background: dimColors[key] || 'var(--brand)', borderRadius: 3, transition: 'width var(--dur-4) var(--ease-out)' }} />
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 600, width: 30, textAlign: 'right' }}>{val}</span>
               </div>

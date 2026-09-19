@@ -110,7 +110,7 @@ export function LlmForm({ onSave, standalone = false }: Props) {
       </div>
       {testResult && <p style={{ fontSize: 12, marginBottom: 6, color: testResult.includes('✅') ? 'var(--green)' : 'var(--brand)' }}>{testResult}</p>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
-        <button className="btn btn-sm" style={{ background: 'var(--brand)', color: '#fff', border: 'none' }} onClick={testConn} disabled={testing || !apiKey.trim()}>{testing ? t('testing') : t('testConn')}</button>
+        <button className="btn btn-sm" style={{ background: 'var(--brand)', color: 'var(--on-accent)', border: 'none' }} onClick={testConn} disabled={testing || !apiKey.trim()}>{testing ? t('testing') : t('testConn')}</button>
         {standalone && (
           <button className="btn btn-brand btn-sm" onClick={handleSave} disabled={saving}>{saving ? t('saving') : saved ? t('saved') : t('saveChanges')}</button>
         )}

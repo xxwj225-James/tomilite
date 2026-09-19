@@ -227,7 +227,7 @@ export function EmailTab() {
                 background: !provider ? 'var(--brand-soft)' : 'var(--surface2)', transition: 'all var(--transition-fast)',
                 display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit',
               }}>
-              <span style={{width:28,height:28,borderRadius:7,background:'var(--muted)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:600,flexShrink:0}}>+</span>
+              <span style={{width:28,height:28,borderRadius:7,background:'var(--brand)',color:'var(--on-accent)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:600,flexShrink:0}}>+</span>
               <span style={{fontSize:10,fontWeight:600,color:'var(--ink)'}}>{t('emailTab.custom', lang)}</span>
             </button>
           </div>

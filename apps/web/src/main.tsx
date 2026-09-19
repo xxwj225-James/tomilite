@@ -35,13 +35,13 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
             fontFamily: 'sans-serif',
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--surface)', marginBottom: 8 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--on-accent)', marginBottom: 8 }}>
             Something went wrong
           </div>
           <div
             style={{
               fontSize: 12,
-              color: 'rgba(255,255,255,0.8)',
+              color: 'color-mix(in srgb, var(--on-accent) 80%, transparent)',
               maxWidth: 400,
               textAlign: 'center',
               lineHeight: 1.6,
@@ -59,7 +59,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError:
               padding: '10px 24px',
               borderRadius: 10,
               border: 'none',
-              background: 'var(--surface)',
+              background: 'var(--on-accent)',
               color: 'var(--brand)',
               cursor: 'pointer',
               fontSize: 13,

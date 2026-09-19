@@ -278,7 +278,7 @@ export function AboutTab() {
                     height: '100%',
                     background: 'var(--brand)',
                     borderRadius: 2,
-                    transition: 'width 0.3s ease',
+                    transition: 'width var(--dur-3) var(--ease-out)',
                   }}
                 />
               </div>
