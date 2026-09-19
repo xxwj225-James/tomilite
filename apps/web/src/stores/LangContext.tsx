@@ -23,7 +23,9 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 
   const setLangStable = useCallback((l: Lang) => {
     setLang(l);
-    try { localStorage.setItem('tomilite-lang', l); } catch {}
+    try {
+      localStorage.setItem('tomilite-lang', l);
+    } catch {}
     // Sync to zustand for vendor pages (useT) and non-React code
     useLanguageStore.getState().setLang(l);
   }, []);
@@ -38,10 +40,16 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 }
 
+// The provider and its two consumer hooks live together because they close over
+// the same context object; splitting them into separate files would only move
+// the seam, and react-refresh's constraint is a dev-server nicety rather than a
+// correctness one. Both exports are flagged for that reason.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useLang(): Lang {
   return useContext(LangContext).lang;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSetLang() {
   return useContext(LangContext).setLang;
 }

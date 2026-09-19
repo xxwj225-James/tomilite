@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { useLang } from '@/stores/useLang';
@@ -11,10 +10,12 @@ import { marked } from 'marked';
 function translateSendError(errMsg: string, lang: string): string {
   if (!errMsg) return tt2('emailPanel.sendError.sendFailed', lang);
   const lower = errMsg.toLowerCase();
-  if (lower.includes('no recipients') || lower.includes('recipients defined')) return tt2('emailPanel.sendError.noRecipients', lang);
+  if (lower.includes('no recipients') || lower.includes('recipients defined'))
+    return tt2('emailPanel.sendError.noRecipients', lang);
   if (lower.includes('smtp') && lower.includes('config')) return tt2('emailPanel.sendError.smtpIncomplete', lang);
   if (lower.includes('password') || lower.includes('auth')) return tt2('emailPanel.sendError.noPassword', lang);
-  if (lower.includes('network') || lower.includes('fetch') || lower.includes('abort') || lower.includes('timeout')) return tt2('emailPanel.sendError.network', lang);
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('abort') || lower.includes('timeout'))
+    return tt2('emailPanel.sendError.network', lang);
   // Return raw error for unknown messages (already English from nodemailer/system)
   return errMsg;
 }
@@ -64,53 +65,83 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   // Load persisted email sort
   useEffect(() => {
     fetch('/api/system.getConfig?input=' + encodeURIComponent(JSON.stringify({ key: 'emailSort' })))
-      .then(r => r.json()).then(d => { if (d.result?.data) try { const v = JSON.parse(d.result.data); setEmailSortKey(v.key||'date'); setEmailSortDir(v.dir||'desc'); } catch {} }).catch(() => {});
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.result?.data)
+          try {
+            const v = JSON.parse(d.result.data);
+            setEmailSortKey(v.key || 'date');
+            setEmailSortDir(v.dir || 'desc');
+          } catch {}
+      })
+      .catch(() => {});
   }, []);
 
   // Save email sort on change
   useEffect(() => {
-    fetch('/api/system.setConfig', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: 'emailSort', value: JSON.stringify({ key: emailSortKey, dir: emailSortDir }) }) }).catch(() => {});
+    fetch('/api/system.setConfig', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'emailSort', value: JSON.stringify({ key: emailSortKey, dir: emailSortDir }) }),
+    }).catch(() => {});
   }, [emailSortKey, emailSortDir]);
 
   const toggleEmailSort = (key: 'date' | 'from' | 'subject') => {
-    if (emailSortKey === key) setEmailSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setEmailSortKey(key); setEmailSortDir('asc'); }
+    if (emailSortKey === key) setEmailSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setEmailSortKey(key);
+      setEmailSortDir('asc');
+    }
   };
-  const emailSortArrow = (key: string) => emailSortKey === key ? (emailSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const emailSortArrow = (key: string) => (emailSortKey === key ? (emailSortDir === 'asc' ? ' ▲' : ' ▼') : '');
 
   // ─── LLM sub-grouping (all categories) ───
-  const [subGroups, setSubGroups] = useState<Record<number, Array<{ groupKey: string; label: string; emailIds: string[] }>>>({});
+  const [subGroups, setSubGroups] = useState<
+    Record<number, Array<{ groupKey: string; label: string; emailIds: string[] }>>
+  >({});
   const [subGroupLoading, setSubGroupLoading] = useState<Record<number, boolean>>({});
   const subGroupsRef = useRef(subGroups);
   subGroupsRef.current = subGroups;
   // Track which categories have been attempted (even if LLM returned empty)
   const subGroupsFetchedRef = useRef<Set<number>>(new Set());
 
-  const loadSubGroups = useCallback(async (cat: number, emailIds: string[]) => {
-    if (subGroupsFetchedRef.current.has(cat)) return; // already attempted
-    if (!emailIds.length) return;
-    subGroupsFetchedRef.current.add(cat);
-    setSubGroupLoading(prev => ({ ...prev, [cat]: true }));
-    try {
-      const resp = await fetch('/api/email.subGroupByCategory', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailIds, category: cat, lang }),
-      });
-      const d = await resp.json();
-      const groups = d.result?.data?.groups;
-      if (groups && groups.length > 0) {
-        setSubGroups(prev => ({ ...prev, [cat]: groups }));
+  const loadSubGroups = useCallback(
+    async (cat: number, emailIds: string[]) => {
+      if (subGroupsFetchedRef.current.has(cat)) return; // already attempted
+      if (!emailIds.length) return;
+      subGroupsFetchedRef.current.add(cat);
+      setSubGroupLoading((prev) => ({ ...prev, [cat]: true }));
+      try {
+        const resp = await fetch('/api/email.subGroupByCategory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emailIds, category: cat, lang }),
+        });
+        const d = await resp.json();
+        const groups = d.result?.data?.groups;
+        if (groups && groups.length > 0) {
+          setSubGroups((prev) => ({ ...prev, [cat]: groups }));
+        }
+      } catch {
+        /* fall back to flat table */
       }
-    } catch { /* fall back to flat table */ }
-    setSubGroupLoading(prev => ({ ...prev, [cat]: false }));
-  }, [lang]);
+      setSubGroupLoading((prev) => ({ ...prev, [cat]: false }));
+    },
+    [lang],
+  );
 
   // Clear sub-group cache when emails refresh
-  useEffect(() => { setSubGroups({}); subGroupsFetchedRef.current = new Set(); }, [emailRefresh]);
+  useEffect(() => {
+    setSubGroups({});
+    subGroupsFetchedRef.current = new Set();
+  }, [emailRefresh]);
   // Also clear when emails array content changes
   const prevEmailIdsRef = useRef('');
   useEffect(() => {
-    const key = emails.map(e => e.id).sort().join(',');
+    const key = emails
+      .map((e) => e.id)
+      .sort()
+      .join(',');
     if (prevEmailIdsRef.current && prevEmailIdsRef.current !== key) {
       setSubGroups({});
       subGroupsFetchedRef.current = new Set();
@@ -124,12 +155,16 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   // ─── Data fetching (debounced, independent from Tasks) ───
   const fetchEmails = useCallback(async () => {
     try {
-      const r = await fetch('/api/email.listSmartEmails?input=' + encodeURIComponent(JSON.stringify({ unprocessedOnly: true, limit: 50 })));
+      const r = await fetch(
+        '/api/email.listSmartEmails?input=' + encodeURIComponent(JSON.stringify({ unprocessedOnly: true, limit: 50 })),
+      );
       const d = await r.json();
       const newEmails = d.result?.data || [];
       setEmails(newEmails);
       emailsRef.current = newEmails;
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -140,7 +175,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
       const status = d.result?.data || {};
       const anyConnected = typeof status === 'object' && Object.values(status).some((s: any) => s?.connected);
       setConnected(anyConnected);
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
     try {
       const r = await fetch('/api/email.getConfig');
       const d = await r.json();
@@ -155,7 +192,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
           setUserEmail(cfg.user || '');
         } catch {}
       }
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, []);
 
   // Initial fetch + debounced polling
@@ -168,20 +207,31 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   useEffect(() => {
     if (emailRefresh && emailRefresh > 0) {
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
-      fetchTimerRef.current = setTimeout(() => { fetchEmails(); fetchStatus(); }, 300);
+      fetchTimerRef.current = setTimeout(() => {
+        fetchEmails();
+        fetchStatus();
+      }, 300);
     }
-    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+    return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    };
   }, [emailRefresh, fetchEmails, fetchStatus]);
 
   // Refresh when panel becomes active
   useEffect(() => {
-    if (active) { fetchEmails(); fetchStatus(); }
+    if (active) {
+      fetchEmails();
+      fetchStatus();
+    }
   }, [active, fetchEmails, fetchStatus]);
 
   // Periodic check every 60s when panel is active
   useEffect(() => {
     if (!active) return;
-    const iv = setInterval(() => { fetchEmails(); fetchStatus(); }, 60000);
+    const iv = setInterval(() => {
+      fetchEmails();
+      fetchStatus();
+    }, 60000);
     return () => clearInterval(iv);
   }, [active, fetchEmails, fetchStatus]);
 
@@ -191,7 +241,10 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     setSelected(email);
     setSendError('');
     // Seed reply fields from original email
-    const extractEmail = (addr: string) => { const m = addr.match(/<([^>]+)>/); return m ? m[1] : addr; };
+    const extractEmail = (addr: string) => {
+      const m = addr.match(/<([^>]+)>/);
+      return m ? m[1] : addr;
+    };
     setSendTo(extractEmail(email.fromAddr || '') || '');
     setSendCC(email.cc || '');
     setSendSubject('Re: ' + (email.subject || '').replace(/^📥\s*/, ''));
@@ -200,9 +253,10 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     lastSavedDraftRef.current = existingDraft;
     // Mark as read — update local state + DB
     if (!email.isRead) {
-      setEmails(prev => prev.map(e => e.id === email.id ? { ...e, isRead: true } : e));
+      setEmails((prev) => prev.map((e) => (e.id === email.id ? { ...e, isRead: true } : e)));
       fetch('/api/email.markRead', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: email.id }),
       }).catch(() => {});
     }
@@ -219,7 +273,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
         const d = await r.json();
         const body = d.result?.data;
         setEmailFullBody(body || null); // store raw — sanitize at render time
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
       setEmailLoading(false);
     } else {
       setEmailFullBody(null);
@@ -229,19 +285,20 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
 
   // ─── Batch select ───
   const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
 
   const selectAllInView = useCallback((ids: string[]) => {
-    setSelectedIds(prev => {
-      const allSelected = ids.every(id => prev.has(id));
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
       if (allSelected) {
         const next = new Set(prev);
-        ids.forEach(id => next.delete(id));
+        ids.forEach((id) => next.delete(id));
         return next;
       }
       return new Set([...prev, ...ids]);
@@ -253,36 +310,48 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     setBatchDismissing(true);
     const ids = [...selectedIds];
     // Optimistic UI update — remove immediately, fire requests in background
-    setEmails(prev => prev.filter(e => !selectedIds.has(e.id)));
+    setEmails((prev) => prev.filter((e) => !selectedIds.has(e.id)));
     if (selected && selectedIds.has(selected.id)) setSelected(null);
     setSelectedIds(new Set());
     // Fire all requests in parallel (fire-and-forget)
-    Promise.all(ids.map(id =>
-      fetch('/api/email.markProcessed', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      }).catch(() => null)
-    )).finally(() => setBatchDismissing(false));
+    Promise.all(
+      ids.map((id) =>
+        fetch('/api/email.markProcessed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }).catch(() => null),
+      ),
+    ).finally(() => setBatchDismissing(false));
   }, [selectedIds, selected]);
 
   // ─── Dismiss ───
-  const dismissEmail = useCallback(async (id: string) => {
-    setDismissing(true);
-    try {
-      await fetch('/api/email.markProcessed', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-    } catch { /* non-critical, still remove from UI */ }
-    setEmails(prev => prev.filter(e => e.id !== id));
-    if (selected?.id === id) setSelected(null);
-    setDismissTarget(null);
-    setDismissing(false);
-  }, [selected?.id]);
+  const dismissEmail = useCallback(
+    async (id: string) => {
+      setDismissing(true);
+      try {
+        await fetch('/api/email.markProcessed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+      } catch {
+        /* non-critical, still remove from UI */
+      }
+      setEmails((prev) => prev.filter((e) => e.id !== id));
+      if (selected?.id === id) setSelected(null);
+      setDismissTarget(null);
+      setDismissing(false);
+    },
+    [selected?.id],
+  );
 
   // ─── Read full email ───
   const handleReadFullEmail = async () => {
-    if (!selected?.id) { console.warn('[Email] getBody: no selected.id'); return; }
+    if (!selected?.id) {
+      console.warn('[Email] getBody: no selected.id');
+      return;
+    }
     setEmailLoading(true);
     setEmailFullBody(null);
     try {
@@ -299,35 +368,41 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   };
 
   // ─── Generate AI reply draft ───
-  const startDraftGenerationInner = useCallback(async (email: any) => {
-    if (!email) return;
-    setDraftGenerating(true);
-    const controller = new AbortController();
-    draftAbortRef.current = controller;
-    try {
-      const resp = await fetch('/api/email.generateDraft', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: (email.subject || '').replace(/^📥\s*/, ''),
-          fromAddr: email.fromAddr || '',
-          body: email.summary || '',
-          lang,
-          issueId: email.issueId || undefined,
-          smartEmailId: email.id,
-        }),
-        signal: controller.signal,
-      });
-      const d = await resp.json();
-      const draft = d.result?.data?.draft || '';
-      if (draft && !controller.signal.aborted) {
-        setIsReplying(true);
-        setReplyText(draft);
-        lastSavedDraftRef.current = draft;
+  const startDraftGenerationInner = useCallback(
+    async (email: any) => {
+      if (!email) return;
+      setDraftGenerating(true);
+      const controller = new AbortController();
+      draftAbortRef.current = controller;
+      try {
+        const resp = await fetch('/api/email.generateDraft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subject: (email.subject || '').replace(/^📥\s*/, ''),
+            fromAddr: email.fromAddr || '',
+            body: email.summary || '',
+            lang,
+            issueId: email.issueId || undefined,
+            smartEmailId: email.id,
+          }),
+          signal: controller.signal,
+        });
+        const d = await resp.json();
+        const draft = d.result?.data?.draft || '';
+        if (draft && !controller.signal.aborted) {
+          setIsReplying(true);
+          setReplyText(draft);
+          lastSavedDraftRef.current = draft;
+        }
+      } catch {
+        /* aborted or network error */
       }
-    } catch { /* aborted or network error */ }
-    if (!controller.signal.aborted) setDraftGenerating(false);
-    draftAbortRef.current = null;
-  }, [lang]);
+      if (!controller.signal.aborted) setDraftGenerating(false);
+      draftAbortRef.current = null;
+    },
+    [lang],
+  );
 
   const startDraftGeneration = useCallback(() => {
     if (selected) startDraftGenerationInner(selected);
@@ -336,7 +411,10 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   const startManualReply = useCallback(() => {
     if (!selected) return;
     setIsReplying(true);
-    const extractEmail = (addr: string) => { const m = addr.match(/<([^>]+)>/); return m ? m[1] : addr; };
+    const extractEmail = (addr: string) => {
+      const m = addr.match(/<([^>]+)>/);
+      return m ? m[1] : addr;
+    };
     setSendTo(extractEmail(selected.fromAddr || '') || '');
     setSendCC(selected.cc || '');
     setSendSubject('Re: ' + (selected.subject || '').replace(/^📥\s*/, ''));
@@ -348,7 +426,11 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.text) { setIsReplying(true); setReplyText(detail.text); lastSavedDraftRef.current = detail.text; }
+      if (detail?.text) {
+        setIsReplying(true);
+        setReplyText(detail.text);
+        lastSavedDraftRef.current = detail.text;
+      }
     };
     window.addEventListener('tl-email-draft-update', handler);
     return () => window.removeEventListener('tl-email-draft-update', handler);
@@ -376,14 +458,23 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
       const cfgResp = await fetch('/api/email.getConfig');
       const cfgData = await cfgResp.json();
       const smtp = (cfgData.result?.data || []).find((c: any) => c.type === 'smtp');
-      if (!smtp) { setSendError(tt2('emailPanel.sendError.noSmtp', lang)); setSending(false); return; }
+      if (!smtp) {
+        setSendError(tt2('emailPanel.sendError.noSmtp', lang));
+        setSending(false);
+        return;
+      }
       const cfg = JSON.parse(smtp.config);
 
       const r = await fetch('/api/email.sendEmail', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: cfg.host, port: cfg.port, user: cfg.user, password: cfg.pass || cfg.password,
-          tls: cfg.port === 587, from: cfg.user,
+          host: cfg.host,
+          port: cfg.port,
+          user: cfg.user,
+          password: cfg.pass || cfg.password,
+          tls: cfg.port === 587,
+          from: cfg.user,
           to: sendCC ? `${sendTo}, ${sendCC}` : sendTo,
           cc: sendCC || undefined,
           subject: sendSubject,
@@ -394,7 +485,8 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
       if (rd.result?.data?.ok) {
         // Mark as processed
         await fetch('/api/email.markProcessed', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: selected.id }),
         });
         // If linked to issue, mark issue as done
@@ -422,9 +514,12 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   useEffect(() => {
     if (selected?.issueId) {
       // Fetch linked task info
-      api.issue.byId(selected.issueId).then((issue: any) => {
-        if (issue) setLinkedIssue(issue);
-      }).catch(() => {});
+      api.issue
+        .byId(selected.issueId)
+        .then((issue: any) => {
+          if (issue) setLinkedIssue(issue);
+        })
+        .catch(() => {});
     } else {
       setLinkedIssue(null);
     }
@@ -435,7 +530,8 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     setLinkingTask(true);
     try {
       const r = await fetch('/api/email.createLinkedTask', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ smartEmailId: selected.id, lang }),
         signal: AbortSignal.timeout(15000),
       });
@@ -448,7 +544,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
         // Refresh emails list so the table badge updates
         fetchEmails();
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setLinkingTask(false);
   }, [selected, lang, fetchEmails]);
 
@@ -458,7 +556,8 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     setUnlinking(true);
     try {
       const r = await fetch('/api/email.unlinkTask', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ smartEmailId: selected.id }),
         signal: AbortSignal.timeout(15000),
       });
@@ -468,7 +567,9 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
         setSelected({ ...selected, issueId: null });
         fetchEmails();
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setUnlinking(false);
     setUnlinkConfirm(false);
   }, [selected, fetchEmails]);
@@ -478,9 +579,18 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     if (!linkedIssue) return;
     window.dispatchEvent(new CustomEvent('tl-navigate', { detail: 'tasks' }));
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('tl-select-task', {
-        detail: { id: linkedIssue.id, key: `TL-${linkedIssue.issueNumber}`, title: linkedIssue.title, status: linkedIssue.status, priority: linkedIssue.priority, editMode: true },
-      }));
+      window.dispatchEvent(
+        new CustomEvent('tl-select-task', {
+          detail: {
+            id: linkedIssue.id,
+            key: `TL-${linkedIssue.issueNumber}`,
+            title: linkedIssue.title,
+            status: linkedIssue.status,
+            priority: linkedIssue.priority,
+            editMode: true,
+          },
+        }),
+      );
     }, 300);
   }, [linkedIssue]);
 
@@ -489,10 +599,13 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     if (selected && replyText !== lastSavedDraftRef.current) {
       try {
         await fetch('/api/email.saveDraft', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ issueId: selected.issueId || undefined, smartEmailId: selected.id, draft: replyText }),
         });
-      } catch { /* non-critical */ }
+      } catch {
+        /* non-critical */
+      }
       lastSavedDraftRef.current = replyText;
     }
     setIsReplying(false);
@@ -505,20 +618,21 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     if (!selected || selected.status === 'done') return;
     const dirty = replyText !== lastSavedDraftRef.current;
     (window as any).__tl_unsaved = dirty ? 'email' : null;
-    return () => { if ((window as any).__tl_unsaved === 'email') (window as any).__tl_unsaved = null; };
+    return () => {
+      if ((window as any).__tl_unsaved === 'email') (window as any).__tl_unsaved = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selected changes identity on list refresh; id is the real trigger
   }, [replyText, selected?.id]);
 
   // ─── Filtered emails ───
-  const filteredByCategory = activeCategory
-    ? emails.filter((e: any) => e.category === activeCategory)
-    : emails;
+  const filteredByCategory = activeCategory ? emails.filter((e: any) => e.category === activeCategory) : emails;
 
   const filteredEmails = emailSearch
-    ? filteredByCategory.filter((e: any) =>
-        (e.subject || '').toLowerCase().includes(emailSearch.toLowerCase()) ||
-        (e.fromAddr || '').toLowerCase().includes(emailSearch.toLowerCase()) ||
-        (e.summary || '').toLowerCase().includes(emailSearch.toLowerCase())
+    ? filteredByCategory.filter(
+        (e: any) =>
+          (e.subject || '').toLowerCase().includes(emailSearch.toLowerCase()) ||
+          (e.fromAddr || '').toLowerCase().includes(emailSearch.toLowerCase()) ||
+          (e.summary || '').toLowerCase().includes(emailSearch.toLowerCase()),
       )
     : filteredByCategory;
 
@@ -531,7 +645,7 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   };
 
   // Per-category stats for summary cards
-  const categoryStats = [1, 2, 3, 4].map(cat => {
+  const categoryStats = [1, 2, 3, 4].map((cat) => {
     const catEmails = emails.filter((e: any) => e.category === cat);
     const needsReply = catEmails.filter((e: any) => cat <= 2 && !e.isReplied && !e.issueId).length;
     const unread = catEmails.filter((e: any) => !e.isRead).length;
@@ -542,25 +656,87 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   // ─── AI Topic grouping per category ───
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    try { await fetchEmails(); await fetchStatus(); } finally { setRefreshing(false); }
+    try {
+      await fetchEmails();
+      await fetchStatus();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchEmails, fetchStatus]);
 
   return {
     // State
-    emails, filteredEmails, selected, setSelected, activeCategory, setActiveCategory,
-    replyText, setReplyText, isReplying, sendTo, setSendTo, sendCC, setSendCC, sendSubject, setSendSubject, lastSavedDraftRef, draftGenerating, sending, sendError, setSendError,
-    emailFullBody, setEmailFullBody, emailLoading, connected, configLoaded,
-    userEmail, refreshing, dismissTarget, setDismissTarget, dismissing, pendingBack, setPendingBack,
-    emailSearch, setEmailSearch, expandedCategory, setExpandedCategory, expandedGroup, setExpandedGroup,
-    subGroups, subGroupLoading, loadSubGroups,
-    selectedIds, setSelectedIds, toggleSelect, selectAllInView, batchDismiss, batchDismissing,
-    categoryCounts, categoryStats,
+    emails,
+    filteredEmails,
+    selected,
+    setSelected,
+    activeCategory,
+    setActiveCategory,
+    replyText,
+    setReplyText,
+    isReplying,
+    sendTo,
+    setSendTo,
+    sendCC,
+    setSendCC,
+    sendSubject,
+    setSendSubject,
+    lastSavedDraftRef,
+    draftGenerating,
+    sending,
+    sendError,
+    setSendError,
+    emailFullBody,
+    setEmailFullBody,
+    emailLoading,
+    connected,
+    configLoaded,
+    userEmail,
+    refreshing,
+    dismissTarget,
+    setDismissTarget,
+    dismissing,
+    pendingBack,
+    setPendingBack,
+    emailSearch,
+    setEmailSearch,
+    expandedCategory,
+    setExpandedCategory,
+    expandedGroup,
+    setExpandedGroup,
+    subGroups,
+    subGroupLoading,
+    loadSubGroups,
+    selectedIds,
+    setSelectedIds,
+    toggleSelect,
+    selectAllInView,
+    batchDismiss,
+    batchDismissing,
+    categoryCounts,
+    categoryStats,
     // Handlers
-    t, fetchEmails, refresh,
-    selectEmail, dismissEmail, handleReadFullEmail,
-    startDraftGeneration, startManualReply, handleSendReply,
-    handleLinkTask, handleUnlinkTask, openLinkedTask, linkingTask, linkedIssue, unlinkConfirm, setUnlinkConfirm, unlinking,
-    emailSortKey, emailSortDir, toggleEmailSort, emailSortArrow,
+    t,
+    fetchEmails,
+    refresh,
+    selectEmail,
+    dismissEmail,
+    handleReadFullEmail,
+    startDraftGeneration,
+    startManualReply,
+    handleSendReply,
+    handleLinkTask,
+    handleUnlinkTask,
+    openLinkedTask,
+    linkingTask,
+    linkedIssue,
+    unlinkConfirm,
+    setUnlinkConfirm,
+    unlinking,
+    emailSortKey,
+    emailSortDir,
+    toggleEmailSort,
+    emailSortArrow,
     saveDraftAndBack,
   };
 }

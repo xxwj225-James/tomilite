@@ -39,8 +39,8 @@ const MAX_ATTEMPTS = 5;
  *  semantic search is simply broken until it finishes, and 200 × 17 ms ≈ 3.5 s is a
  *  price worth paying once, 90 seconds after launch, rather than dribbling it out at
  *  10 rows a minute. */
-const DRAIN_PER_TICK = 60;
-const BOOT_DRAIN = 200;
+export const DRAIN_PER_TICK = 60;
+export const BOOT_DRAIN = 200;
 
 /** `kind` comes out of the database, so it is mapped to a table name here rather than
  *  interpolated — nothing read from a row may reach SQL as an identifier. */
@@ -191,7 +191,7 @@ export async function embedBootSweep(): Promise<void> {
     const waiting = pending[0]?.n ?? 0;
     if (waiting === 0) return;
 
-    if (await embedModelStatus() === 'absent') {
+    if ((await embedModelStatus()) === 'absent') {
       log(`model missing and ${waiting} rows queued — downloading in the background`);
       await setConfig(STATUS_KEY, 'downloading');
       setEmbedDownloading(true);

@@ -146,7 +146,6 @@ export function useNotesState(
       window.dispatchEvent(new CustomEvent('tl-select-note', { detail: pending }));
     }
   }, [active]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchNotes recreated per render; [noteRefresh] is the real trigger
   useEffect(() => {
     if (noteRefresh && noteRefresh > 0) {
       fetchNotes();
@@ -163,6 +162,10 @@ export function useNotesState(
           .catch(() => {});
       }
     }
+    // The directive has to sit on the dependency array, which is where the rule
+    // reports. It used to sit on the `useEffect(` line, so it suppressed nothing
+    // and was itself reported as unused.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchNotes is recreated per render; [noteRefresh] is the real trigger.
   }, [noteRefresh]);
   useEffect(() => {
     if (appliedEdit) {

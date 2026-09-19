@@ -33,13 +33,19 @@ export const THEMES = ['pipeline', 'hub', 'canvas', 'quantum'] as const;
 // The theme swatches. This is the table of theme *values*, not a place to read
 // one: `var(--brand)` resolves to whichever theme is currently active, so it
 // would paint all four dots the same colour.
-// eslint-disable-next-line no-restricted-syntax
+//
+// The literals are the point of this table, so the colour rule is off across it.
+// It used to carry an `eslint-disable-next-line` on the `export` line, but the
+// hexes are two lines further down — the directive suppressed nothing and was
+// itself reported as unused.
+/* eslint-disable no-restricted-syntax */
 export const THEME_COLORS: Record<string, string> = {
   pipeline: '#4338CA',
   hub: '#1466D6',
   canvas: '#1968D4',
   quantum: '#76B900',
 };
+/* eslint-enable no-restricted-syntax */
 export const LANGS = ['en', 'zh', 'ja'] as const;
 export const LANGS_FULL: Record<string, string> = { en: 'English', zh: '中文', ja: '日本語' };
 

@@ -2,17 +2,37 @@ import { useEffect, useRef, useState } from 'react';
 import { useLang } from '@/stores/useLang';
 import { t } from '@/lib/i18n';
 import { Milkdown, MilkdownProvider, useEditor, useInstance } from '@milkdown/react';
-import { Editor, rootCtx, defaultValueCtx, rootAttrsCtx, editorViewCtx, editorViewOptionsCtx } from '@milkdown/kit/core';
 import {
-  commonmark, toggleStrongCommand, toggleEmphasisCommand, toggleInlineCodeCommand,
-  wrapInHeadingCommand, wrapInBulletListCommand, wrapInOrderedListCommand,
-  wrapInBlockquoteCommand, createCodeBlockCommand, insertHrCommand,
-  toggleLinkCommand, insertImageCommand,
+  Editor,
+  rootCtx,
+  defaultValueCtx,
+  rootAttrsCtx,
+  editorViewCtx,
+  editorViewOptionsCtx,
+} from '@milkdown/kit/core';
+import {
+  commonmark,
+  toggleStrongCommand,
+  toggleEmphasisCommand,
+  toggleInlineCodeCommand,
+  wrapInHeadingCommand,
+  wrapInBulletListCommand,
+  wrapInOrderedListCommand,
+  wrapInBlockquoteCommand,
+  createCodeBlockCommand,
+  insertHrCommand,
+  toggleLinkCommand,
+  insertImageCommand,
 } from '@milkdown/kit/preset/commonmark';
 import {
-  gfm, toggleStrikethroughCommand, insertTableCommand,
-  deleteSelectedCellsCommand, setAlignCommand,
-  selectRowCommand, selectColCommand, selectTableCommand,
+  gfm,
+  toggleStrikethroughCommand,
+  insertTableCommand,
+  deleteSelectedCellsCommand,
+  setAlignCommand,
+  selectRowCommand,
+  selectColCommand,
+  selectTableCommand,
 } from '@milkdown/kit/preset/gfm';
 import { columnResizingPlugin } from '@milkdown/preset-gfm';
 import { history } from '@milkdown/kit/plugin/history';
@@ -37,17 +57,24 @@ import ini from 'highlight.js/lib/languages/ini';
 function _regLang(name: string, mod: any) {
   if (!hljs.getLanguage(name)) hljs.registerLanguage(name, mod);
 }
-_regLang('javascript', javascript); _regLang('js', javascript);
-_regLang('typescript', typescript); _regLang('ts', typescript);
-_regLang('python', python);         _regLang('py', python);
-_regLang('bash', bash);             _regLang('sh', bash);
+_regLang('javascript', javascript);
+_regLang('js', javascript);
+_regLang('typescript', typescript);
+_regLang('ts', typescript);
+_regLang('python', python);
+_regLang('py', python);
+_regLang('bash', bash);
+_regLang('sh', bash);
 _regLang('json', json);
 _regLang('css', css);
 _regLang('sql', sql);
-_regLang('xml', xml);               _regLang('html', xml);
+_regLang('xml', xml);
+_regLang('html', xml);
 _regLang('markdown', xml);
-_regLang('powershell', powershell); _regLang('ps1', powershell);
-_regLang('toml', ini);               _regLang('ini', ini);
+_regLang('powershell', powershell);
+_regLang('ps1', powershell);
+_regLang('toml', ini);
+_regLang('ini', ini);
 
 const HL_KEY = new PluginKey('hl');
 
@@ -55,27 +82,33 @@ const HL_KEY = new PluginKey('hl');
 // @ts-expect-error Milkdown MarkSchema compat
 const textColorMark = $mark('textColor', () => ({
   attrs: { color: {} },
-  parseDOM: [{
-    style: 'color',
-    getAttrs: (v: string) => v ? { color: v } : null,
-  }],
+  parseDOM: [
+    {
+      style: 'color',
+      getAttrs: (v: string) => (v ? { color: v } : null),
+    },
+  ],
   // Renders as a class + custom property rather than an inline colour so the
   // dark-mode layer can re-derive the swatch (see .md-fg in styles/index.css).
   // The *stored* value is untouched: serializeInline still writes
   // `color:<hex>` into the markdown and parseDOM still reads it back, so
   // existing notes round-trip exactly as before.
+  // eslint-disable-next-line no-restricted-syntax -- the fallback is the first entry of TEXT_COLORS: document data, not theming.
   toDOM: (mark: any) => ['span', { class: 'md-fg', style: `--fg:${mark.attrs.color || '#ef4444'}` }, 0],
 }));
 
 // @ts-expect-error Milkdown MarkSchema compat
 const highlightMark = $mark('highlight', () => ({
   attrs: { color: {} },
-  parseDOM: [{
-    style: 'background-color',
-    getAttrs: (v: string) => v ? { color: v } : null,
-  }],
+  parseDOM: [
+    {
+      style: 'background-color',
+      getAttrs: (v: string) => (v ? { color: v } : null),
+    },
+  ],
   // Same treatment as textColorMark — stored value unchanged, painting
   // delegated to .md-hl so it can be re-derived per mode.
+  // eslint-disable-next-line no-restricted-syntax -- the fallback is the first entry of HIGHLIGHT_COLORS: document data, not theming.
   toDOM: (mark: any) => ['span', { class: 'md-hl', style: `--hl:${mark.attrs.color || '#fecaca'}` }, 0],
 }));
 
@@ -87,8 +120,15 @@ function parseTokens(html: string): Array<{ from: number; to: number; cls: strin
   _hlDiv.innerHTML = html;
   let p = 0;
   (function walk(n: ChildNode, c: string) {
-    if (n.nodeType === 3) { const l = (n.textContent || '').length; if (c && l) tokens.push({ from: p, to: p + l, cls: c }); p += l; }
-    else if (n.nodeType === 1) { const el = n as HTMLElement; const nc = el.className && el.className !== 'hljs' ? el.className : c; for (let i = 0; i < el.childNodes.length; i++) walk(el.childNodes[i], nc); }
+    if (n.nodeType === 3) {
+      const l = (n.textContent || '').length;
+      if (c && l) tokens.push({ from: p, to: p + l, cls: c });
+      p += l;
+    } else if (n.nodeType === 1) {
+      const el = n as HTMLElement;
+      const nc = el.className && el.className !== 'hljs' ? el.className : c;
+      for (let i = 0; i < el.childNodes.length; i++) walk(el.childNodes[i], nc);
+    }
   })(_hlDiv, '');
   return tokens;
 }
@@ -104,10 +144,13 @@ function buildHLDecos(doc: any): DecorationSet {
       const lang = node.attrs?.language || '';
       let html: string;
       try {
-        html = (lang && hljs.getLanguage(lang))
-          ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
-          : hljs.highlightAuto(code).value;
-      } catch { return; }
+        html =
+          lang && hljs.getLanguage(lang)
+            ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+            : hljs.highlightAuto(code).value;
+      } catch {
+        return;
+      }
       const tokens = parseTokens(html);
       const start = pos + 1;
       const maxPos = pos + node.nodeSize - 1;
@@ -180,20 +223,44 @@ function getTableTools(lang: string): Tool[] {
   ];
 }
 
+// These hexes are not theming — they are the values written *into the note*
+// (`<span style="color:#ef4444">`, serialized as markdown) and read back out of
+// it on load. They have to stay literal: a saved note must keep the colour it
+// was given, whatever theme or mode is active when it is reopened. Only the
+// *painting* is delegated — see `toDOM` above and `.md-fg` / `.md-hl` in
+// styles/index.css, which re-derive the swatch per mode.
+/* eslint-disable no-restricted-syntax */
 const TEXT_COLORS: { hex: string; label: string }[] = [
-  { hex: '#ef4444', label: 'Red' }, { hex: '#f97316', label: 'Orange' },
-  { hex: '#eab308', label: 'Yellow' }, { hex: '#22c55e', label: 'Green' },
-  { hex: '#3b82f6', label: 'Blue' }, { hex: '#a855f7', label: 'Purple' },
-  { hex: '#ec4899', label: 'Pink' }, { hex: '#6b7280', label: 'Gray' },
-  { hex: '#ffffff', label: 'White' }, { hex: '#1e293b', label: 'Black' },
+  { hex: '#ef4444', label: 'Red' },
+  { hex: '#f97316', label: 'Orange' },
+  { hex: '#eab308', label: 'Yellow' },
+  { hex: '#22c55e', label: 'Green' },
+  { hex: '#3b82f6', label: 'Blue' },
+  { hex: '#a855f7', label: 'Purple' },
+  { hex: '#ec4899', label: 'Pink' },
+  { hex: '#6b7280', label: 'Gray' },
+  { hex: '#ffffff', label: 'White' },
+  { hex: '#1e293b', label: 'Black' },
 ];
 const HIGHLIGHT_COLORS: { hex: string; label: string }[] = [
-  { hex: '#fecaca', label: 'Red' }, { hex: '#fed7aa', label: 'Orange' },
-  { hex: '#fef08a', label: 'Yellow' }, { hex: '#bbf7d0', label: 'Green' },
-  { hex: '#bfdbfe', label: 'Blue' }, { hex: '#e9d5ff', label: 'Purple' },
-  { hex: '#fbcfe8', label: 'Pink' }, { hex: '#e2e8f0', label: 'Gray' },
-  { hex: '#ffffff', label: 'White' }, { hex: '#e2e8f0', label: 'Slate' },
+  { hex: '#fecaca', label: 'Red' },
+  { hex: '#fed7aa', label: 'Orange' },
+  { hex: '#fef08a', label: 'Yellow' },
+  { hex: '#bbf7d0', label: 'Green' },
+  { hex: '#bfdbfe', label: 'Blue' },
+  { hex: '#e9d5ff', label: 'Purple' },
+  { hex: '#fbcfe8', label: 'Pink' },
+  { hex: '#e2e8f0', label: 'Gray' },
+  { hex: '#ffffff', label: 'White' },
+  { hex: '#e2e8f0', label: 'Slate' },
 ];
+
+// The white swatch is invisible against a light panel, so it alone gets an
+// outline. Comparing against the stored palette value rather than the label
+// keeps this correct if the labels are ever translated. It sits inside the
+// disable block because it reads the same document-data literal the palettes do.
+const swatchBorder = (hex: string) => (hex === '#ffffff' ? '1px solid var(--edge)' : '1px solid transparent');
+/* eslint-enable no-restricted-syntax */
 
 function insertBlock(editor: any, before: string, after: string) {
   editor.action((ctx: any) => {
@@ -248,7 +315,7 @@ function serializeBlock(node: any): string {
     const lines: string[] = [];
     node.forEach((child: any) => {
       const s = serializeBlock(child);
-      if (s) s.split('\n').forEach(line => lines.push(line ? '> ' + line : '>'));
+      if (s) s.split('\n').forEach((line) => lines.push(line ? '> ' + line : '>'));
     });
     return lines.join('\n');
   }
@@ -288,9 +355,13 @@ function serializeList(node: any): string {
       if (serialized) lines.push(serialized);
     });
     const prefix = ordered ? `${idx++}. ` : '- ';
-    const itemText = lines.join('\n').split('\n').map((line, i) => {
-      return i === 0 ? prefix + line : '  ' + line;
-    }).join('\n');
+    const itemText = lines
+      .join('\n')
+      .split('\n')
+      .map((line, i) => {
+        return i === 0 ? prefix + line : '  ' + line;
+      })
+      .join('\n');
     items.push(itemText);
   });
   return items.join('\n');
@@ -305,13 +376,16 @@ function serializeTable(node: any): string {
     row.forEach((cell: any) => {
       let text = '';
       cell.forEach((child: any) => {
-        if (child.isText) { text += serializeInline(child); }
-        else if (child.isTextblock) {
+        if (child.isText) {
+          text += serializeInline(child);
+        } else if (child.isTextblock) {
           child.forEach((inline: any) => {
             if (inline.isText) text += serializeInline(inline);
             else text += inline.textContent || '';
           });
-        } else { text += child.textContent || ''; }
+        } else {
+          text += child.textContent || '';
+        }
       });
 
       const formattedText = text.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
@@ -327,11 +401,13 @@ function serializeTable(node: any): string {
     rows.push('| ' + cells.join(' | ') + ' |');
 
     if (rowIndex === 0) {
-      const sep = headerAlignments.map(a => {
-        if (a === 'center') return ':---:';
-        if (a === 'right') return '---:';
-        return ':---'; // left or default
-      }).join('|');
+      const sep = headerAlignments
+        .map((a) => {
+          if (a === 'center') return ':---:';
+          if (a === 'right') return '---:';
+          return ':---'; // left or default
+        })
+        .join('|');
       rows.push('| ' + sep + ' |');
     }
   });
@@ -343,7 +419,11 @@ function serializeInline(node: any): string {
   const marks = node.marks || [];
 
   let styleStr = '';
-  let isStrong = false, isEm = false, isCode = false, isStrike = false, linkHref = '';
+  let isStrong = false,
+    isEm = false,
+    isCode = false,
+    isStrike = false,
+    linkHref = '';
 
   for (const mark of marks) {
     if (mark.type.name === 'textColor') {
@@ -441,7 +521,8 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
             keydown: (_view: any, event: KeyboardEvent) => {
               if (event.key === 'Enter' || event.key === 'Tab' || event.key === 'Backspace' || event.key === 'Delete') {
                 const st = _view.state;
-                if (isInTable(st)) { }
+                if (isInTable(st)) {
+                }
               }
               return false;
             },
@@ -471,9 +552,12 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
               if (ce.clipboardData?.types?.includes('vscode-editor-data')) {
                 event.preventDefault();
                 const plain = (ce.clipboardData.getData('text/plain') || '')
-                  .replace(/<span\b[^>]*>/gi, '').replace(/<\/span>/gi, '')
-                  .replace(/<div\b[^>]*>/gi, '').replace(/<\/div>/gi, '')
-                  .replace(/<p\b[^>]*>/gi, '\n').replace(/<\/p>/gi, '');
+                  .replace(/<span\b[^>]*>/gi, '')
+                  .replace(/<\/span>/gi, '')
+                  .replace(/<div\b[^>]*>/gi, '')
+                  .replace(/<\/div>/gi, '')
+                  .replace(/<p\b[^>]*>/gi, '\n')
+                  .replace(/<\/p>/gi, '');
                 view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.text(plain)));
                 return true;
               }
@@ -484,97 +568,149 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         });
       })
       .use(commonmark)
-      .use($prose(() => proseKeymap({
-        'Enter': (state: any, dispatch: any) => {
-          if (!isInTable(state)) return false;
-          if (dispatch) dispatch(state.tr.insertText('\n', state.selection.from));
-          return true;
-        },
-      })))
+      .use(
+        $prose(() =>
+          proseKeymap({
+            Enter: (state: any, dispatch: any) => {
+              if (!isInTable(state)) return false;
+              if (dispatch) dispatch(state.tr.insertText('\n', state.selection.from));
+              return true;
+            },
+          }),
+        ),
+      )
       .use(gfm)
       .use(columnResizingPlugin)
       // 使用 NodeView 完全接管 Cell 视图更新
-      .use($prose(() => {
-        return new Plugin({
-          props: {
-            nodeViews: {
-              table_cell: (node) => new CellNodeView(node, false),
-              table_header: (node) => new CellNodeView(node, true),
+      .use(
+        $prose(() => {
+          return new Plugin({
+            props: {
+              nodeViews: {
+                table_cell: (node) => new CellNodeView(node, false),
+                table_header: (node) => new CellNodeView(node, true),
+              },
             },
-          },
-        });
-      }))
-      .use($prose(() => new Plugin({
-        view(editorView: any) {
-          let _startY = 0, _startHeights: number[] = [], _cells: HTMLElement[] = [];
-          const onMove = (e: MouseEvent) => {
-            const cell = (e.target as HTMLElement).closest('td,th') as HTMLElement | null;
-            if (!cell) { editorView.dom.style.cursor = ''; return; }
-            const r = cell.getBoundingClientRect();
-            if (e.clientY > r.bottom - 6) { editorView.dom.style.cursor = 'row-resize'; return; }
-            if (editorView.dom.style.cursor === 'row-resize') editorView.dom.style.cursor = '';
-          };
-          const onDown = (e: MouseEvent) => {
-            if (e.button !== 0) return;
-            const cell = (e.target as HTMLElement).closest('td,th') as HTMLElement | null;
-            if (!cell) return;
-            const r = cell.getBoundingClientRect();
-            if (e.clientY > r.bottom - 6) {
-              e.preventDefault(); e.stopPropagation();
-              const row = cell.closest('tr') as HTMLElement;
-              _cells = Array.from(row.querySelectorAll('td,th'));
-              _startHeights = _cells.map(c => c.getBoundingClientRect().height);
-              _startY = e.clientY;
-              editorView.setProps({ editable: () => false });
-              const onUp = () => {
-                document.removeEventListener('mousemove', onDrag);
-                document.removeEventListener('mouseup', onUp);
-                editorView.setProps({ editable: () => true });
-              };
-              const onDrag = (ev: MouseEvent) => {
-                const delta = ev.clientY - _startY;
-                _cells.forEach((c, i) => c.style.setProperty('height', Math.max(20, _startHeights[i] + delta) + 'px', 'important'));
-              };
-              document.addEventListener('mousemove', onDrag);
-              document.addEventListener('mouseup', onUp);
-            }
-          };
-          editorView.dom.addEventListener('mousemove', onMove);
-          editorView.dom.addEventListener('mousedown', onDown, true);
-          return { destroy() { editorView.dom.removeEventListener('mousemove', onMove); editorView.dom.removeEventListener('mousedown', onDown, true); } };
-        },
-      })))
+          });
+        }),
+      )
+      .use(
+        $prose(
+          () =>
+            new Plugin({
+              view(editorView: any) {
+                let _startY = 0,
+                  _startHeights: number[] = [],
+                  _cells: HTMLElement[] = [];
+                const onMove = (e: MouseEvent) => {
+                  const cell = (e.target as HTMLElement).closest('td,th') as HTMLElement | null;
+                  if (!cell) {
+                    editorView.dom.style.cursor = '';
+                    return;
+                  }
+                  const r = cell.getBoundingClientRect();
+                  if (e.clientY > r.bottom - 6) {
+                    editorView.dom.style.cursor = 'row-resize';
+                    return;
+                  }
+                  if (editorView.dom.style.cursor === 'row-resize') editorView.dom.style.cursor = '';
+                };
+                const onDown = (e: MouseEvent) => {
+                  if (e.button !== 0) return;
+                  const cell = (e.target as HTMLElement).closest('td,th') as HTMLElement | null;
+                  if (!cell) return;
+                  const r = cell.getBoundingClientRect();
+                  if (e.clientY > r.bottom - 6) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const row = cell.closest('tr') as HTMLElement;
+                    _cells = Array.from(row.querySelectorAll('td,th'));
+                    _startHeights = _cells.map((c) => c.getBoundingClientRect().height);
+                    _startY = e.clientY;
+                    editorView.setProps({ editable: () => false });
+                    const onUp = () => {
+                      document.removeEventListener('mousemove', onDrag);
+                      document.removeEventListener('mouseup', onUp);
+                      editorView.setProps({ editable: () => true });
+                    };
+                    const onDrag = (ev: MouseEvent) => {
+                      const delta = ev.clientY - _startY;
+                      _cells.forEach((c, i) =>
+                        c.style.setProperty('height', Math.max(20, _startHeights[i] + delta) + 'px', 'important'),
+                      );
+                    };
+                    document.addEventListener('mousemove', onDrag);
+                    document.addEventListener('mouseup', onUp);
+                  }
+                };
+                editorView.dom.addEventListener('mousemove', onMove);
+                editorView.dom.addEventListener('mousedown', onDown, true);
+                return {
+                  destroy() {
+                    editorView.dom.removeEventListener('mousemove', onMove);
+                    editorView.dom.removeEventListener('mousedown', onDown, true);
+                  },
+                };
+              },
+            }),
+        ),
+      )
       .use(textColorMark)
       .use(highlightMark)
       .use(history)
-      .use($prose(() => new Plugin({
-        key: new PluginKey('tableActiveTracker'),
-        view() {
-          return { update(v: any) { const next = isInTable(v.state); setTableActive(prev => prev === next ? prev : next); } };
-        },
-      })))
-      .use($prose(() => new Plugin({
-        key: HL_KEY,
-        state: {
-          init() { return DecorationSet.empty; },
-          apply(tr, old) {
-            const meta = tr.getMeta(HL_KEY);
-            if (meta?.decos) return meta.decos;
-            return old.map(tr.mapping, tr.doc);
-          },
-        },
-        props: { decorations(s: any) { return this.getState(s); } },
-      })))
-      .use($prose(() => proseKeymap({
-        'Shift-Enter': (state: any, dispatch: any) => {
-          const { $from } = state.selection;
-          if ($from.parent.type.name === 'code_block') {
-            if (dispatch) dispatch(state.tr.insertText('\n', $from.pos).scrollIntoView());
-            return true;
-          }
-          return false;
-        },
-      })));
+      .use(
+        $prose(
+          () =>
+            new Plugin({
+              key: new PluginKey('tableActiveTracker'),
+              view() {
+                return {
+                  update(v: any) {
+                    const next = isInTable(v.state);
+                    setTableActive((prev) => (prev === next ? prev : next));
+                  },
+                };
+              },
+            }),
+        ),
+      )
+      .use(
+        $prose(
+          () =>
+            new Plugin({
+              key: HL_KEY,
+              state: {
+                init() {
+                  return DecorationSet.empty;
+                },
+                apply(tr, old) {
+                  const meta = tr.getMeta(HL_KEY);
+                  if (meta?.decos) return meta.decos;
+                  return old.map(tr.mapping, tr.doc);
+                },
+              },
+              props: {
+                decorations(s: any) {
+                  return this.getState(s);
+                },
+              },
+            }),
+        ),
+      )
+      .use(
+        $prose(() =>
+          proseKeymap({
+            'Shift-Enter': (state: any, dispatch: any) => {
+              const { $from } = state.selection;
+              if ($from.parent.type.name === 'code_block') {
+                if (dispatch) dispatch(state.tr.insertText('\n', $from.pos).scrollIntoView());
+                return true;
+              }
+              return false;
+            },
+          }),
+        ),
+      );
     return ed;
   }, []);
 
@@ -588,8 +724,11 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       if (!view) return;
       const s = view.state.schema;
       const roleMap: Record<string, string> = {
-        table: 'table', table_row: 'row', table_header_row: 'row',
-        table_cell: 'cell', table_header: 'header_cell',
+        table: 'table',
+        table_row: 'row',
+        table_header_row: 'row',
+        table_cell: 'cell',
+        table_header: 'header_cell',
       };
       Object.entries(roleMap).forEach(([name, role]) => {
         if (s.nodes[name]) (s.nodes[name].spec as any).tableRole = role;
@@ -612,7 +751,9 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
           const view = ctx.get(editorViewCtx);
           if (view) view.setProps({ editable: () => !readOnly });
         });
-      } catch (e) { console.error('[MarkdownEditor] setProps editable failed:', e); }
+      } catch (e) {
+        console.error('[MarkdownEditor] setProps editable failed:', e);
+      }
     }
   }, [readOnly, editor, loading]);
 
@@ -641,7 +782,9 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
           lastMdRef.current = md;
           onChange(md);
         }
-      } catch (e) { console.error('[MarkdownEditor] polling failed:', e); }
+      } catch (e) {
+        console.error('[MarkdownEditor] polling failed:', e);
+      }
     }, 300);
     return () => clearInterval(iv);
   }, [editor, loading, onChange, readOnly]);
@@ -663,7 +806,9 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
           lastMdRef.current = value;
           editor.action(replaceAll(value || ''));
         }
-      } catch (e) { console.error('[MarkdownEditor] replaceAll failed:', e); }
+      } catch (e) {
+        console.error('[MarkdownEditor] replaceAll failed:', e);
+      }
     }
   }, [value, editor, loading]);
 
@@ -710,7 +855,9 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
           const from = s ? s.from : view.state.selection.from;
           const to = s ? s.to : view.state.selection.to;
           if (from !== to) selText = view.state.doc.textBetween(from, to);
-        } catch { selText = ''; }
+        } catch {
+          selText = '';
+        }
         callCommand(insertImageCommand.key, { src: url, alt: selText })(ctx);
       }
 
@@ -748,9 +895,13 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       if (t.label === '+↥') {
         const isHeaderRow = $head.node($head.depth - 2)?.type?.name === 'table_header_row';
         if (!isHeaderRow) callCommand('AddRowBefore')(ctx);
-      } else if (t.label === '+↧') { callCommand('AddRowAfter')(ctx); }
-      else if (t.label === '+⇤') { callCommand('AddColBefore')(ctx); }
-      else if (t.label === '+⇥') { callCommand('AddColAfter')(ctx); }
+      } else if (t.label === '+↧') {
+        callCommand('AddRowAfter')(ctx);
+      } else if (t.label === '+⇤') {
+        callCommand('AddColBefore')(ctx);
+      } else if (t.label === '+⇥') {
+        callCommand('AddColAfter')(ctx);
+      }
       // ── Delete row ──
       else if (t.label === '⌫R') {
         const dom = view.domAtPos($head.pos);
@@ -839,7 +990,18 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       } else if (t.label === '█') {
         setColorPicker({ type: 'bg', label: 'Highlight' });
         return;
-      } else if (t.label === '+↥' || t.label === '+↧' || t.label === '+⇤' || t.label === '+⇥' || t.label === '⌫R' || t.label === '⌫C' || t.label === '⛶' || t.label === '⟵' || t.label === '⟺' || t.label === '⟶') {
+      } else if (
+        t.label === '+↥' ||
+        t.label === '+↧' ||
+        t.label === '+⇤' ||
+        t.label === '+⇥' ||
+        t.label === '⌫R' ||
+        t.label === '⌫C' ||
+        t.label === '⛶' ||
+        t.label === '⟵' ||
+        t.label === '⟺' ||
+        t.label === '⟶'
+      ) {
         execTableCmd(editor, t);
         return;
       } else if (t.cmd) {
@@ -852,7 +1014,9 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
       const md = colorGetMarkdown(editor) || '';
       lastMdRef.current = md;
       onChange?.(md);
-    } catch (e: any) { console.error('[handleTool]', t.label, e?.message || e); }
+    } catch (e: any) {
+      console.error('[handleTool]', t.label, e?.message || e);
+    }
   };
 
   const pickLocalFile = () => {
@@ -880,22 +1044,61 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
             {tools.map((t, i) => (
               <span key={t.label} style={{ display: 'contents' }}>
                 {(i === 4 || i === 7 || i === 11 || i === 13 || i === 15) && <span className="md-sep" />}
-                <button onMouseDown={e => { e.preventDefault(); handleTool(t); }} title={t.title}
-                  style={t.label === 'A' ? { color: '#ef4444', fontWeight: 700 } : t.label === '█' ? { color: '#f59e0b', fontWeight: 700 } : undefined}
-                >{t.label}</button>
+                <button
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleTool(t);
+                  }}
+                  title={t.title}
+                  style={
+                    t.label === 'A'
+                      ? { color: 'var(--red)', fontWeight: 700 }
+                      : t.label === '█'
+                        ? { color: 'var(--amber)', fontWeight: 700 }
+                        : undefined
+                  }
+                >
+                  {t.label}
+                </button>
               </span>
             ))}
           </div>
-          <div style={{ padding: '2px 8px', fontSize: 9, color: 'var(--muted)', borderBottom: '1px solid var(--edge)', textAlign: 'center' }}>
-            <span>{lang === 'zh' ? 'Ctrl+Enter 退出代码块' : lang === 'ja' ? 'Ctrl+Enter でコードブロックを抜ける' : 'Ctrl+Enter to exit code block'}</span>
+          <div
+            style={{
+              padding: '2px 8px',
+              fontSize: 9,
+              color: 'var(--muted)',
+              borderBottom: '1px solid var(--edge)',
+              textAlign: 'center',
+            }}
+          >
+            <span>
+              {lang === 'zh'
+                ? 'Ctrl+Enter 退出代码块'
+                : lang === 'ja'
+                  ? 'Ctrl+Enter でコードブロックを抜ける'
+                  : 'Ctrl+Enter to exit code block'}
+            </span>
           </div>
           {tableActive && (
-            <div className="md-tbar" style={{ borderTop: '1px solid var(--edge)', padding: '2px 8px' }} key={`table-${lang || 'en'}`}>
+            <div
+              className="md-tbar"
+              style={{ borderTop: '1px solid var(--edge)', padding: '2px 8px' }}
+              key={`table-${lang || 'en'}`}
+            >
               <span style={{ fontSize: 10, color: 'var(--muted)', marginRight: 6, fontWeight: 600 }}>TABLE</span>
               {tableTools.map((t, i) => (
                 <span key={t.label} style={{ display: 'contents' }}>
                   {(i === 4 || i === 7) && <span className="md-sep" />}
-                  <button onMouseDown={e => { e.preventDefault(); handleTool(t); }} title={t.title}>{t.label}</button>
+                  <button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleTool(t);
+                    }}
+                    title={t.title}
+                  >
+                    {t.label}
+                  </button>
                 </span>
               ))}
             </div>
@@ -903,31 +1106,127 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
         </>
       )}
       {promptState && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
-          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 16, border: '1px solid var(--edge)', minWidth: 360, boxShadow: 'var(--shadow-md)' }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.3)',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 8,
+              padding: 16,
+              border: '1px solid var(--edge)',
+              minWidth: 360,
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{promptState.label}</div>
-            <input ref={promptInputRef} className="form-input" style={{ fontSize: 12, marginBottom: 10 }} placeholder="https://" onKeyDown={e => { if (e.key === 'Enter') submitPrompt((e.target as HTMLInputElement).value); if (e.key === 'Escape') setPromptState(null); }} autoFocus />
+            <input
+              ref={promptInputRef}
+              className="form-input"
+              style={{ fontSize: 12, marginBottom: 10 }}
+              placeholder="https://"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitPrompt((e.target as HTMLInputElement).value);
+                if (e.key === 'Escape') setPromptState(null);
+              }}
+              autoFocus
+            />
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-              {promptState.type === 'image' && <button className="btn btn-sm" style={{ background: 'var(--surface2)' }} onClick={pickLocalFile}>📁 Local file</button>}
-              <button className="btn btn-sm" style={{ background: 'var(--surface2)' }} onClick={() => setPromptState(null)}>Cancel</button>
-              <button className="btn btn-brand btn-sm" onClick={() => { if (promptInputRef.current) submitPrompt(promptInputRef.current.value); }}>OK</button>
+              {promptState.type === 'image' && (
+                <button className="btn btn-sm" style={{ background: 'var(--surface2)' }} onClick={pickLocalFile}>
+                  📁 Local file
+                </button>
+              )}
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--surface2)' }}
+                onClick={() => setPromptState(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-brand btn-sm"
+                onClick={() => {
+                  if (promptInputRef.current) submitPrompt(promptInputRef.current.value);
+                }}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>
       )}
       {colorPicker && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }} onClick={() => setColorPicker(null)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 14, border: '1px solid var(--edge)', boxShadow: 'var(--shadow-md)' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--ink)' }}>{colorPicker.label}</div>
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.3)',
+          }}
+          onClick={() => setColorPicker(null)}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: 8,
+              padding: 14,
+              border: '1px solid var(--edge)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--ink)' }}>
+              {colorPicker.label}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              {(colorPicker.type === 'text' ? TEXT_COLORS : HIGHLIGHT_COLORS).map(c => (
-                <button key={c.hex} title={c.label} onClick={() => applyColor(c.hex, colorPicker.type)}
-                  style={{ width: 22, height: 22, borderRadius: 4, background: c.hex, border: c.hex === '#ffffff' ? '1px solid var(--edge)' : '1px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+              {(colorPicker.type === 'text' ? TEXT_COLORS : HIGHLIGHT_COLORS).map((c) => (
+                <button
+                  key={c.hex}
+                  title={c.label}
+                  onClick={() => applyColor(c.hex, colorPicker.type)}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 4,
+                    background: c.hex,
+                    border: swatchBorder(c.hex),
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                />
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'space-between', alignItems: 'center' }}>
-              <button className="btn btn-sm" style={{ background: 'var(--surface2)', fontSize: 11 }} onClick={() => { setColorPicker(null); }}>Cancel</button>
-              <button className="btn btn-sm" style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)' }}
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--surface2)', fontSize: 11 }}
+                onClick={() => {
+                  setColorPicker(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)' }}
                 onClick={() => {
                   if (!editor) return;
                   editor.action((ctx: any) => {
@@ -936,9 +1235,8 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
                     const { state } = view;
                     const { from, to } = state.selection;
                     if (from !== to) {
-                      const markType = colorPicker.type === 'text'
-                        ? state.schema.marks.textColor
-                        : state.schema.marks.highlight;
+                      const markType =
+                        colorPicker.type === 'text' ? state.schema.marks.textColor : state.schema.marks.highlight;
                       view.dispatch(state.tr.removeMark(from, to, markType));
                     }
                     view.focus();
@@ -947,7 +1245,10 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
                   const md = colorGetMarkdown(editor) || '';
                   lastMdRef.current = md;
                   onChange?.(md);
-                }}>Reset</button>
+                }}
+              >
+                Reset
+              </button>
             </div>
           </div>
         </div>
@@ -959,7 +1260,17 @@ function MilkdownInner({ value, onChange, readOnly }: Props) {
 
 export function MarkdownEditor({ value, onChange, readOnly, height }: Props) {
   return (
-    <div style={{ border: '1px solid var(--edge)', borderRadius: 8, height: height || '400px', minHeight: '250px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div
+      style={{
+        border: '1px solid var(--edge)',
+        borderRadius: 8,
+        height: height || '400px',
+        minHeight: '250px',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
       <MilkdownProvider>
         <MilkdownInner value={value} onChange={onChange} readOnly={readOnly} />
       </MilkdownProvider>

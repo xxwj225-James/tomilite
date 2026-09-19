@@ -37,13 +37,13 @@ All CSS variables are defined in `apps/web/src/styles/index.css`. Four themes: *
 Mode is orthogonal to theme: any of the four themes renders in either mode. It
 lives in its own attribute and its own storage key.
 
-| | |
-| --- | --- |
-| Attribute | `<html data-mode="light" \| "dark">` |
-| Storage key | `tomilite-mode` (theme uses `tomilite-theme`) |
-| API | `applyMode()` / `getMode()` in `apps/web/src/lib/constants.ts` |
-| Default | `light` — existing users see no change |
-| Applied before paint | `apps/web/public/theme-init.js` (synchronous, in `<head>`) |
+|                      |                                                                |
+| -------------------- | -------------------------------------------------------------- |
+| Attribute            | `<html data-mode="light" \| "dark">`                           |
+| Storage key          | `tomilite-mode` (theme uses `tomilite-theme`)                  |
+| API                  | `applyMode()` / `getMode()` in `apps/web/src/lib/constants.ts` |
+| Default              | `light` — existing users see no change                         |
+| Applied before paint | `apps/web/public/theme-init.js` (synchronous, in `<head>`)     |
 
 **How the layer is built.** `:root[data-mode='dark']` restates only the neutral
 surfaces, the shadow scale and the derived tints. The four light theme blocks
@@ -59,51 +59,51 @@ source order — fragile, and it fails silently.
 few percent of lightness on dark.
 
 **Accent inversion.** `--brand` and `--on-accent` move as a pair. Dark mode
-lifts `--brand` to a light tint so it stays legible as *ink* on a dark surface —
-which means text sitting *on* it must go dark. Per theme, verified in both
+lifts `--brand` to a light tint so it stays legible as _ink_ on a dark surface —
+which means text sitting _on_ it must go dark. Per theme, verified in both
 directions:
 
-| Theme | dark `--brand` | on `--surface` | `--on-accent` on `--brand` |
-| --- | --- | --- | --- |
-| pipeline | `#818cf8` | 6.02:1 | 6.46:1 |
-| hub | `#60a5fa` | 7.13:1 | 7.65:1 |
-| canvas | `#8ab4f8` | 8.52:1 | 9.14:1 |
-| quantum | `#76b900` (unchanged) | 7.44:1 | 7.98:1 |
+| Theme    | dark `--brand`        | on `--surface` | `--on-accent` on `--brand` |
+| -------- | --------------------- | -------------- | -------------------------- |
+| pipeline | `#818cf8`             | 6.02:1         | 6.46:1                     |
+| hub      | `#60a5fa`             | 7.13:1         | 7.65:1                     |
+| canvas   | `#8ab4f8`             | 8.52:1         | 9.14:1                     |
+| quantum  | `#76b900` (unchanged) | 7.44:1         | 7.98:1                     |
 
 Changing only one of the pair is what breaks the ~14 "white text on the brand
 fill" call sites; changing both together makes them correct for free.
 
 `quantum` is the exception that proves the rule: its NVIDIA green is a bright
-fill in *both* modes, so white text on it is 1.9:1 even in light mode. It gets
+fill in _both_ modes, so white text on it is 1.9:1 even in light mode. It gets
 `--on-accent: #1a1a1a` unconditionally.
 
-**Gradient stops.** `--brand-hover` is never a hover *background* anywhere in the
+**Gradient stops.** `--brand-hover` is never a hover _background_ anywhere in the
 codebase — it is only the second stop of `linear-gradient(135deg, var(--brand),
 var(--brand-hover))` (8 CSS sites, 3 inline). The first dark-mode set made that
 gradient disappear. Measured on the real rendered pixels, its sweep spanned only
-dL* 8-13, and because a dark stop *lightens* the brand while dropping its chroma
+dL* 8-13, and because a dark stop _lightens_ the brand while dropping its chroma
 the fill reads as fading out rather than as shading. Light mode carries a
 comparable span (dL* 6-13) and reads fine — it darkens a saturated colour and
 keeps the chroma up. Same span, opposite direction, opposite result; the numbers
 alone do not tell you which one you have.
 
-| Theme | dark `--brand` | `--brand-hover` | dE76 | `--on-accent` on the stop |
-| --- | --- | --- | --- | --- |
-| pipeline | `#818cf8` | `#bcc4fb` | 36.4 | 11.35:1 |
-| hub | `#60a5fa` | `#a8d3fe` | 29.4 | 12.25:1 |
-| canvas | `#8ab4f8` | `#c6dcfc` | 25.0 | 13.74:1 |
-| quantum | `#76b900` | `#b4ea5e` | 20.8 | 12.33:1 |
+| Theme    | dark `--brand` | `--brand-hover` | dE76 | `--on-accent` on the stop |
+| -------- | -------------- | --------------- | ---- | ------------------------- |
+| pipeline | `#818cf8`      | `#bcc4fb`       | 36.4 | 11.35:1                   |
+| hub      | `#60a5fa`      | `#a8d3fe`       | 29.4 | 12.25:1                   |
+| canvas   | `#8ab4f8`      | `#c6dcfc`       | 25.0 | 13.74:1                   |
+| quantum  | `#76b900`      | `#b4ea5e`       | 20.8 | 12.33:1                   |
 
 `--on-warning` (`#1a1a1a`) is the matching token for text on `--amber`, which is
 also bright in every theme and both modes.
 
 **Contrast floor.** Three light-mode values sat below WCAG AA and were moved:
 
-| Token | was | is | measured as | before | after |
-| --- | --- | --- | --- | --- | --- |
+| Token              | was       | is        | measured as                                 | before          | after           |
+| ------------------ | --------- | --------- | ------------------------------------------- | --------------- | --------------- |
 | pipeline `--muted` | `#94949e` | `#6f6f7a` | body text and icons on `--surface` / `--bg` | 3.00:1 / 2.90:1 | 4.96:1 / 4.79:1 |
-| hub `--brand` | `#1877f2` | `#1466d6` | `--on-accent` on a brand fill | 4.23:1 | 5.38:1 |
-| canvas `--brand` | `#1a73e8` | `#1968d4` | `--on-accent` on a brand fill | 4.51:1 | 5.29:1 |
+| hub `--brand`      | `#1877f2` | `#1466d6` | `--on-accent` on a brand fill               | 4.23:1          | 5.38:1          |
+| canvas `--brand`   | `#1a73e8` | `#1968d4` | `--on-accent` on a brand fill               | 4.51:1          | 5.29:1          |
 
 hub and canvas keep their identity — Facebook blue and Google blue, one step
 darker. canvas passed at 4.51:1 but with no margin at all, so it moved too.
@@ -120,7 +120,7 @@ partner silently flattens the gradient, so the pair is tuned together.
    are stored **in the document** — serialized into the note's markdown as
    `<span style="color:#ef4444">` and parsed back out of that HTML on load. The
    stored value stays a literal hex (it is document data, not theming). Only the
-   *painting* is delegated: `toDOM` emits `.md-fg` / `.md-hl` plus a `--fg` /
+   _painting_ is delegated: `toDOM` emits `.md-fg` / `.md-hl` plus a `--fg` /
    `--hl` custom property, and `:root[data-mode='dark']` re-derives them
    (`color-mix` toward `--ink` for text, toward `--surface` for highlights).
    Without this a dark mode would make **already-saved** notes unreadable —
@@ -151,15 +151,15 @@ from the main process). Not done.
 
 **Design tokens** (defined on `:root` in `apps/web/src/styles/index.css`, shared by all themes):
 
-| Category   | Tokens                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| Spacing    | `--space-1: 4px` … `--space-10: 40px` (4/8/12/16/20/24/32/40)                                                      |
-| Radius     | `--radius-sm: 6px`, `--radius-md: 10px`, `--radius-lg: 14px`, `--radius-xl: 20px`, `--radius-full: 9999px`         |
-| Shadows    | `--shadow-xs` (0 1px 2px) → `--shadow-xl` (0 16px 48px), layered shadows                                           |
+| Category   | Tokens                                                                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spacing    | `--space-1: 4px` … `--space-10: 40px` (4/8/12/16/20/24/32/40)                                                                                         |
+| Radius     | `--radius-sm: 6px`, `--radius-md: 10px`, `--radius-lg: 14px`, `--radius-xl: 20px`, `--radius-full: 9999px`                                            |
+| Shadows    | `--shadow-xs` (0 1px 2px) → `--shadow-xl` (0 16px 48px), layered shadows                                                                              |
 | Motion     | `--dur-1: 120ms` … `--dur-4: 400ms`; `--ease-out` (enter/exit), `--ease-in-out` (state change), `--ease-spring` (travel); `--move-sm/md/lg: 4/8/16px` |
-| Transition | `--transition-fast/base/slow` = `--dur-1/2/3` + `--ease-out`. Legacy aliases kept so older call sites pick up the curves unchanged |
-| Semantic   | `--brand-soft` / `--red-soft` derived with `color-mix()` from `--brand` / `--red`; `--red: #ef4444`; `--on-accent`; `--on-warning` |
-| Type scale | `--text-xs: 11px`, `--text-sm: 12px`, `--text-base: 14px`, `--text-md: 16px`, `--text-lg: 20px`, `--text-xl: 24px` |
+| Transition | `--transition-fast/base/slow` = `--dur-1/2/3` + `--ease-out`. Legacy aliases kept so older call sites pick up the curves unchanged                    |
+| Semantic   | `--brand-soft` / `--red-soft` derived with `color-mix()` from `--brand` / `--red`; `--red: #ef4444`; `--on-accent`; `--on-warning`                    |
+| Type scale | `--text-xs: 11px`, `--text-sm: 12px`, `--text-base: 14px`, `--text-md: 16px`, `--text-lg: 20px`, `--text-xl: 24px`                                    |
 
 ---
 
@@ -270,6 +270,17 @@ Line heights: `1.5`, `1.6` (base body and messages)
    `THEME_COLORS`, the markdown colour palettes, email-provider brand colours,
    and the `#ddd`/`#f5f5f5` inside outbound SMTP bodies (mail clients don't
    support CSS variables).
+
+   The `no-restricted-syntax` rule that enforces §1.1 now reports **zero
+   warnings repo-wide**, so the pre-commit gate (`--max-warnings 0`) is passable
+   again. The deliberate literals above carry inline suppressions that name
+   their reason and are scoped to the data tables themselves, so a _new_ hex
+   elsewhere in those files is still caught. Two sites that were only ever
+   inconsistent — not deliberate — were fixed rather than suppressed: the email
+   category accents (`EmailList.tsx` `CAT_META`) and the morning/evening nav
+   glyphs (`MenuNav.tsx`) now derive from the semantic tokens, which also
+   removes the light-mode-only tints `CAT_META` used to carry into dark mode.
+
 3. **CSS inconsistencies** — `btn-danger` undefined
 4. **Borders everywhere** — high visual noise (edges on sidebar/panels/headers)
 5. **No elevation hierarchy** — only two effective elevation levels (cards + open panel)

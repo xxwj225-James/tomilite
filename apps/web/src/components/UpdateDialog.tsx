@@ -8,6 +8,10 @@ interface UpdateInfo {
   downloadUrl?: string;
 }
 
+// The hook and the component it feeds share the update payload's shape, so they
+// live in one file; react-refresh's "components only" constraint is a dev-server
+// nicety, not a correctness rule.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUpdateCheck() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -34,15 +38,30 @@ export function useUpdateCheck() {
     });
 
     // Periodic re-check every 2 hours
-    const check = () => { if (ea?.checkUpdate) ea.checkUpdate(); };
+    const check = () => {
+      if (ea?.checkUpdate) ea.checkUpdate();
+    };
     const interval = setInterval(check, 7200_000);
     return () => clearInterval(interval);
   }, []);
 
-  return { update, showDialog, openDialog: () => setShowDialog(true), closeDialog: () => setShowDialog(false), downloaded, filePath };
+  return {
+    update,
+    showDialog,
+    openDialog: () => setShowDialog(true),
+    closeDialog: () => setShowDialog(false),
+    downloaded,
+    filePath,
+  };
 }
 
-export function UpdateDialog({ update, open, onClose, downloaded, filePath }: {
+export function UpdateDialog({
+  update,
+  open,
+  onClose,
+  downloaded,
+  filePath,
+}: {
   update: UpdateInfo | null;
   open: boolean;
   onClose: () => void;
@@ -88,24 +107,28 @@ export function UpdateDialog({ update, open, onClose, downloaded, filePath }: {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="card w-full max-w-lg mx-4 max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+      <div className="card w-full max-w-lg mx-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="card-hd flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold">{downloaded ? 'Update Ready 🚀' : 'Update Available 🚀'}</h2>
-            <span className="text-xs text-ink-muted">v{update.version} · {update.publishedAt?.substring(0, 10)}</span>
+            <span className="text-xs text-ink-muted">
+              v{update.version} · {update.publishedAt?.substring(0, 10)}
+            </span>
           </div>
-          <button className="btn-ghost btn-xs" onClick={onClose}>✕</button>
+          <button className="btn-ghost btn-xs" onClick={onClose}>
+            ✕
+          </button>
         </div>
 
         <div className="card-bd">
-          <div className="text-sm leading-relaxed max-h-64 overflow-auto mb-4 prose prose-invert prose-sm"
-            dangerouslySetInnerHTML={{ __html: changelogHtml }} />
+          <div
+            className="text-sm leading-relaxed max-h-64 overflow-auto mb-4 prose prose-invert prose-sm"
+            dangerouslySetInnerHTML={{ __html: changelogHtml }}
+          />
 
           {error && <div className="text-xs text-red-400 mb-3 p-2 bg-red-500/10 rounded">{error}</div>}
 
-          {progress && (
-            <div className="text-xs text-brand-main mb-3 p-2 bg-brand-soft rounded">{progress}</div>
-          )}
+          {progress && <div className="text-xs text-brand-main mb-3 p-2 bg-brand-soft rounded">{progress}</div>}
 
           {filePath && (
             <div className="text-xs text-ink-muted mb-3 p-2 bg-surface2 rounded break-all">📁 {filePath}</div>
@@ -126,9 +149,7 @@ export function UpdateDialog({ update, open, onClose, downloaded, filePath }: {
             )}
           </div>
 
-          <p className="text-xs text-ink-muted mt-3">
-            Current: v... → New: v{update.version}
-          </p>
+          <p className="text-xs text-ink-muted mt-3">Current: v... → New: v{update.version}</p>
         </div>
       </div>
     </div>

@@ -37,7 +37,7 @@ import { sweepMeetingAudioRetention } from './lib/meeting/retention.js';
 import { runDistillationSweep } from './lib/chatDistill.js';
 import { ensureSearchIndexes, reclaimIndexSpace } from './lib/ftsIndex.js';
 import { embedWarmup } from './lib/embed/index.js';
-import { drainEmbedQueue, embedBootSweep } from './lib/embed/queue.js';
+import { DRAIN_PER_TICK, drainEmbedQueue, embedBootSweep } from './lib/embed/queue.js';
 import { resolveLLM } from './lib/gateway.js';
 import * as telemetry from './lib/telemetry.js';
 // The one path to a Windows toast — shared with the meeting reminder sweep.
@@ -456,7 +456,7 @@ function startBackgroundTasks() {
     embedBootSweep().catch(() => {});
   }, 90_000);
   setInterval(() => {
-    drainEmbedQueue(60).catch(() => {});
+    drainEmbedQueue(DRAIN_PER_TICK).catch(() => {});
   }, 60_000);
 
   // Meetings interrupted by a crash/force-quit would otherwise sit at
