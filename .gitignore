@@ -21,3 +21,6 @@ run_err.txt
 # narrative, and writes Meeting with a raw 32-column INSERT that breaks on any
 # schema change. Run it from the repo root; it is not part of the app.
 /seed-demo-meeting.mjs
+# Scratch space for ad-hoc CDP probes and their screenshots. Not part of the app;
+# the scripts hardcode this machine's debug port and window geometry.
+.tmp-shots/
