@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
+import { EmptyState } from '@/components/EmptyState';
 
 // ═══ Email Mindmap View — category cards → tree lines → topic groups → email table ═══
 
@@ -586,7 +587,20 @@ function EmailTable({
   const allPageSelected = pageEmails.length > 0 && pageEmails.every((e: any) => selectedIds.has(e.id));
 
   if (emails.length === 0)
-    return <div style={{ textAlign: 'center', padding: 12, color: 'var(--muted)', fontSize: 12 }}>—</div>;
+    return (
+      // Reachable only with a mailbox configured and nothing in it — the
+      // unconfigured case is handled above, with its own screen and a link to
+      // the mail settings. Hence "sync", not "set up".
+      <EmptyState
+        icon="📭"
+        title={tt2('empty.email.title', lang)}
+        hint={tt2('empty.email.hint', lang)}
+        // Relabelled rather than hidden while syncing: a button that vanishes
+        // under the cursor reads as a bug, and this is the only control here.
+        actionLabel={get('refreshing') ? tt2('empty.email.syncing', lang) : tt2('empty.email.action', lang)}
+        onAction={() => void (get('refresh') as () => Promise<void>)()}
+      />
+    );
   return (
     <div>
       {/* Batch action bar */}

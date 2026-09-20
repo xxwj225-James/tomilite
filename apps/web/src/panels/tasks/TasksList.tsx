@@ -3,6 +3,7 @@ import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { api } from '@/lib/api';
+import { EmptyState } from '@/components/EmptyState';
 
 // ═══ Tasks List View — tabs + drag-to-status + compact columns ═══
 
@@ -253,6 +254,13 @@ export function TasksList(p: Record<string, unknown>) {
     return true;
   });
 
+  // `sortedIssues` is narrowed by tab *and* search *and* both dropdowns, so an
+  // empty result usually does not mean an empty board — clicking "todo" with
+  // every task done lands here too. The panel is only genuinely empty when the
+  // unfiltered list is, and that is the only case that gets the explanation and
+  // the "New task" button. Everything else is a filter that matched nothing.
+  const libraryEmpty = !((get('issues') as Array<Record<string, unknown>>) || []).some((i) => i.type !== 'email');
+
   const sKey = (get('sortKey') as string) || 'createdAt';
   const sDir = (get('sortDir') as string) || 'desc';
   const sortedIssues = [...tabIssues].sort((a: any, b: any) => {
@@ -317,6 +325,23 @@ export function TasksList(p: Record<string, unknown>) {
       ))}
     </select>
   );
+
+  // Opening a blank editor *is* "new task" in this panel — the editor creates on
+  // save. Named rather than inline because the empty state needs the same
+  // eight-field reset as the toolbar button, and two copies of it would drift.
+  const handleNew = () => {
+    (get('setSelected') as (v: Record<string, unknown>) => void)({});
+    (get('setEditTitle') as (v: string) => void)('');
+    (get('setEditDesc') as (v: string) => void)('');
+    (get('setEditStatus') as (v: string) => void)('todo');
+    (get('setEditPriority') as (v: string) => void)('medium');
+    (get('setEditType') as (v: string) => void)('task');
+    (get('setEditSP') as (v: number) => void)(0);
+    (get('setEditDueDate') as (v: string) => void)('');
+    (get('setEditing') as (v: boolean) => void)(true);
+    const ot = get('onEditingTask') as ((t: Record<string, unknown>) => void) | undefined;
+    ot?.({ issueNumber: undefined, title: '', description: '', status: 'todo', priority: 'medium' });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -392,22 +417,7 @@ export function TasksList(p: Record<string, unknown>) {
           ],
           t('tasks.allPriority'),
         )}
-        <button
-          className="btn btn-brand btn-xs"
-          onClick={() => {
-            (get('setSelected') as (v: Record<string, unknown>) => void)({});
-            (get('setEditTitle') as (v: string) => void)('');
-            (get('setEditDesc') as (v: string) => void)('');
-            (get('setEditStatus') as (v: string) => void)('todo');
-            (get('setEditPriority') as (v: string) => void)('medium');
-            (get('setEditType') as (v: string) => void)('task');
-            (get('setEditSP') as (v: number) => void)(0);
-            (get('setEditDueDate') as (v: string) => void)('');
-            (get('setEditing') as (v: boolean) => void)(true);
-            const ot = get('onEditingTask') as ((t: Record<string, unknown>) => void) | undefined;
-            ot?.({ issueNumber: undefined, title: '', description: '', status: 'todo', priority: 'medium' });
-          }}
-        >
+        <button className="btn btn-brand btn-xs" onClick={handleNew}>
           {t('btn.new')}
         </button>
       </div>
@@ -618,7 +628,19 @@ export function TasksList(p: Record<string, unknown>) {
         {/* Task list */}
         <div style={{ paddingBottom: totalPages > 1 ? 0 : 120 }}>
           {sortedIssues.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>—</div>
+            libraryEmpty ? (
+              <EmptyState
+                icon="🗂️"
+                title={tt2('empty.tasks.title', lang)}
+                hint={tt2('empty.tasks.hint', lang)}
+                actionLabel={tt2('empty.tasks.action', lang)}
+                onAction={handleNew}
+              />
+            ) : (
+              <div className="text-ink-muted text-sm" style={{ padding: 20, textAlign: 'center' }}>
+                {tt2('empty.noResults', lang)}
+              </div>
+            )
           ) : (
             pageIssues.map((card: Record<string, unknown>) => {
               const issue = card;

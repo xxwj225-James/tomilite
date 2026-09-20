@@ -46,6 +46,7 @@ export function useSendMessage({
   setAppliedTaskEdit,
   setAppliedReport,
   compressing,
+  autoTitle,
 }: {
   chatHook: ChatHook;
   saveMsg: (msg: any) => Promise<any>;
@@ -80,6 +81,7 @@ export function useSendMessage({
   setAppliedTaskEdit: (e: any) => void;
   setAppliedReport: (e: any) => void;
   compressing: boolean;
+  autoTitle: (firstUserText: string) => void;
 }) {
   const lang = useLang();
   // Gateway errors arrive with a stable code (feature_closed / quota_exhausted / ...).
@@ -560,7 +562,10 @@ export function useSendMessage({
       });
     setMessages((prev) => [...prev, { role: 'user', text: q }]);
     saveMsg({ role: 'user', text: q, _sessionId: lockedSid });
-    chatHook.autoTitle();
+    // Hand the text over rather than letting the titler read it back: the line
+    // above only *queues* the append, so the message store still holds the
+    // previous render's array at this point.
+    autoTitle(q);
     setThinking(true);
     setAgentStatus(t('chat.thinking', lang));
     // Push assistant placeholder + capture its real index (functional updater = no stale closure)

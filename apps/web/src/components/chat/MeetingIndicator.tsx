@@ -44,7 +44,7 @@ export function MeetingIndicator({ onOpen }: { onOpen: () => void }) {
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        fontSize: 11,
+        fontSize: 'var(--text-xs)',
         textAlign: 'left',
         color: 'var(--red)',
         background: 'var(--red-soft)',

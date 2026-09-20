@@ -1,28 +1,39 @@
 // ═══ App-level constants — menus, themes, languages ═══
 import type { I18NKey } from '@/lib/i18n';
 
-export const MENU = [
-  { key: 'tasks' },
-  { key: 'notes' },
-  { key: 'home' },
+// The nav used to be one flat row of ten. Ten `min-width: 56px` items plus the
+// popup's own padding want 592px, and the chat column is `flex: 1 1 360px` with
+// a `min-width: 360px` — so the row overflowed into a sideways scrollbar
+// precisely when a panel was open, i.e. during real work. Four items plus the
+// "More" trigger need 280px, which fits, and the overflow is gone.
+//
+// Every entry here is a panel. `chat` used to be a fifth, special-cased in
+// `panelForKey` to mean "no panel" — but the chat column is a sibling of the
+// panel, never covered by it, so "go to chat" revealed nothing that was not
+// already on screen. It was a close button labelled as a destination, and the
+// panel header's ✕ already does that job.
+export const PRIMARY_MENU = [{ key: 'home' }, { key: 'notes' }, { key: 'tasks' }, { key: 'meeting' }] as const;
+
+export const MORE_MENU = [
   { key: 'email' },
   { key: 'reports' },
-  { key: 'meeting' },
   { key: 'mcp' },
   { key: 'feedback' },
   { key: 'settings' },
   { key: 'about' },
 ] as const;
 
+export const MENU = [...PRIMARY_MENU, ...MORE_MENU];
+
 export type MenuKey = (typeof MENU)[number]['key'];
 
 export const MENU_LABEL: Record<MenuKey, I18NKey> = {
-  tasks: 'app.menuTasks',
-  notes: 'app.menuNotes',
   home: 'app.menuHome',
+  notes: 'app.menuNotes',
+  tasks: 'app.menuTasks',
+  meeting: 'app.menuMeeting',
   email: 'app.menuEmail',
   reports: 'app.menuReports',
-  meeting: 'app.menuMeeting',
   mcp: 'app.menuMcp',
   feedback: 'app.menuFeedback',
   settings: 'app.menuSettings',

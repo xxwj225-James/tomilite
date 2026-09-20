@@ -21,7 +21,7 @@ All CSS variables are defined in `apps/web/src/styles/index.css`. Four themes: *
 | `--surface-sidebar` | `#f4f5f7`          | `#fff`       | `#fafafa`    | `#f0f0f0`    |
 | `--ink-sidebar`     | `#6b6b75`          | `#1c1e21`    | `#202124`    | `#1a1a1a`    |
 | `--edge-sidebar`    | `#e9ebf0`          | `#e4e6eb`    | `#e0e0e0`    | `#e0e0e0`    |
-| `--green`           | `#22c55e`          | `#00a400`    | `#0d904f`    | `#76B900`    |
+| `--green`           | `#22c55e`          | `#00a400`    | `#0d904f`    | `#0d904f`    |
 | `--amber`           | `#f59e0b`          | `#f7a700`    | `#ea8600`    | `#e68a00`    |
 | `--purple`          | `#a855f7`          | `#8b5cf6`    | `#9334e6`    | `#8b5cf6`    |
 | `--blue`            | `#6366f1`          | `#1877F2`    | `#1A73E8`    | `#3498db`    |
@@ -37,13 +37,21 @@ All CSS variables are defined in `apps/web/src/styles/index.css`. Four themes: *
 Mode is orthogonal to theme: any of the four themes renders in either mode. It
 lives in its own attribute and its own storage key.
 
-|                      |                                                                |
-| -------------------- | -------------------------------------------------------------- |
-| Attribute            | `<html data-mode="light" \| "dark">`                           |
-| Storage key          | `tomilite-mode` (theme uses `tomilite-theme`)                  |
-| API                  | `applyMode()` / `getMode()` in `apps/web/src/lib/constants.ts` |
-| Default              | `light` — existing users see no change                         |
-| Applied before paint | `apps/web/public/theme-init.js` (synchronous, in `<head>`)     |
+|                      |                                                                 |
+| -------------------- | --------------------------------------------------------------- |
+| Attribute            | `<html data-mode="light" \| "dark">`                            |
+| Storage key          | `tomilite-mode` (theme uses `tomilite-theme`)                   |
+| API                  | `applyMode()` / `getMode()` in `apps/web/src/lib/constants.ts`  |
+| Consumers use        | `useThemeStore` in `apps/web/src/stores/themeStore.ts`          |
+| Default              | `light` — existing users see no change                          |
+| Applied before paint | `apps/web/public/theme-init.js` (synchronous, in `<head>`)      |
+| User-facing control  | Settings → **Appearance** (`panels/settings/AppearanceTab.tsx`) |
+
+Theme and mode are one store, not two pieces of React state, because three
+unrelated components need them: the settings panel, the first-run welcome guide,
+and `<html>` itself. The store calls `applyTheme` / `applyMode` from its setters,
+so a component never has to remember to apply what it just set. Nothing applies
+on mount — `theme-init.js` has already written both attributes.
 
 **How the layer is built.** `:root[data-mode='dark']` restates only the neutral
 surfaces, the shadow scale and the derived tints. The four light theme blocks
@@ -188,6 +196,63 @@ from the main process). Not done.
 - `--green`: `#22c55e` | `--amber`: `#f59e0b` | `--purple`: `#a855f7` | `--blue`: `#6366f1`
 - `--red`: `#ef4444` (tokenized, not hardcoded) — delete/danger; `--red-soft` for soft backgrounds
 
+#### What each semantic colour means
+
+The four semantic tokens are **reserved meanings**, not a palette to pick from
+when a component needs "a colour". The convention the codebase actually follows:
+
+| Token     | Means                                                                                                      |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| `--muted` | no state yet · neutral · nothing to report                                                                 |
+| `--amber` | needs attention: in progress, high priority, degraded, over a threshold                                    |
+| `--brand` | the accent: primary buttons, selection, the active nav item, in review, work currently being run by the AI |
+| `--green` | success, and only success: completed, sent, connected, test passed                                         |
+| `--red`   | error · failed · destructive · recording in progress                                                       |
+
+The one rule worth enforcing in review is the boundary between the last three:
+**`--amber` = work that is not finished, `--brand` = the accent and "someone is
+acting on this", `--green` = the outcome was good.** A task status map is the
+canonical example, and it is duplicated consistently in
+`components/chat/TaskBatchCard.tsx` and `panels/tasks/TasksEditor.tsx`:
+`todo → muted`, `in_progress → amber`, `in_review → brand`, `done → green`.
+
+`--brand` and `--green` are the pair most often confused, because "running" and
+"done" both feel positive. Green is reserved for the second one.
+
+**Known deviations** — deliberate, not bugs to file, but they mean this table is a
+default rather than an invariant:
+
+- `priorityColor()` maps `critical → --brand`, `high → --amber`. Severity is not
+  the same axis as state; it reuses the accent to mean "most severe".
+- `McpServerTab`'s enable/disable button tints the **action**, not the state:
+  "Disable" renders amber and "Enable" renders green.
+
+**The token values have to support the rule.** `--brand` and `--green` must be
+**dE76 ≥ ~15 apart in every theme** — the same floor §1 holds the
+`--brand` / `--brand-hover` pair to. `quantum` violated it: `--green` was
+`#76b900`, literally the same hex as its `--brand`, dE76 `0.0`, which is why
+"success" and "accent" were indistinguishable in that theme and nowhere else.
+`--green` is now `#0d904f` (dE76 `46.2`); the other three measure `109.7`–`162.6`.
+
+**Known open issue — `--green` is used as ink, and no theme clears AA on light.**
+29 call sites use it as `color:` (text and icons, some at 9–11px) against only 4
+as a fill, and those fills carry no text on top, so the 4.5:1 text threshold
+applies to it. Measured on `--surface`:
+
+| Theme            | `--green` | on light `#fafafa` | on dark `#14171d` |
+| ---------------- | --------- | ------------------ | ----------------- |
+| pipeline         | `#22c55e` | 2.18:1             | 7.88:1            |
+| hub              | `#00a400` | 3.19:1             | 5.39:1            |
+| canvas / quantum | `#0d904f` | 3.93:1             | 4.38:1            |
+
+No theme reaches 4.5:1 on the light surface, so green status text ("done",
+"connected", "sent") is low-contrast in light mode today. The root cause is that
+`--green`, `--amber`, `--purple` and `--blue` have **no per-mode override in any
+theme** — only `--brand` / `--brand-hover` do. One value cannot satisfy both
+surfaces: light-surface AA needs relative luminance ≤ 0.174 while dark-surface AA
+needs ≥ 0.213. Fixing it means adding a `[data-mode='dark']` value for these four
+tokens in all four themes.
+
 ---
 
 ## 3. Typography
@@ -196,6 +261,46 @@ Font: `'Geist', 'Geist Fallback', system-ui, -apple-system, sans-serif`
 
 Unified type scale via tokens (all px, no rem):
 `--text-xs 11px, --text-sm 12px, --text-base 14px, --text-md 16px, --text-lg 20px, --text-xl 24px` — components reference `var(--text-*)`
+
+### Inline sizes in the chat column
+
+The chat column used to set small text with raw numbers, and had drifted to five
+sizes in 4px of range — 9 / 10 / 11 / 12 / 13. Two problems beyond the count:
+
+- **The rungs were sub-perceptual.** A field label at 9px with its own value at
+  10px is a distinction no one can see; the same for 11 vs 12. Hierarchy in this
+  app is actually carried by `fontWeight` (400 / 600 / 700) and by colour
+  (`--muted` vs `--ink` vs `--brand`), which the code already does consistently.
+- **The card hierarchy was inverted.** In `Msg.tsx` tool cards the identifier sat
+  at 10px inside a body set at 12px, so the card's own name was smaller than the
+  text beneath it.
+
+Now mapped onto the scale, chat column only:
+
+| was       | token       | rendered |
+| --------- | ----------- | -------- |
+| 9, 10, 11 | `--text-xs` | 11px     |
+| 12, 13    | `--text-sm` | 12px     |
+
+That is five sizes down to two, using tokens that already existed — no new rung.
+81 sites: `Msg.tsx` 29, `WelcomeGuide.tsx` 27, `TaskBatchCard.tsx` 7,
+`ChatInput.tsx` 6, `ChatToolbar.tsx` 4, `App.tsx` 2, `SessionSidebar.tsx` 2,
+and one each in `LlmBanner` / `MeetingIndicator` / `MsgList` / `UpdateBar`.
+The chat card chip row gained `flexWrap` in the same change, because four chips
+at 11px would otherwise run past the card edge at the 360px column minimum.
+
+**Left alone deliberately:** 15px / 17px / 18px are emoji and glyph sizes (the
+setup-checklist icons, the banner dismiss ×), not text tiers. The panel header
+(`.panel-header`, `--space-*` + `--text-md`) and the bottom nav (`.menu-item`,
+`--text-xs`) were already tokenized and needed nothing.
+
+**Not done — the "cards by shadow, not border" idea does not apply here.** The
+chat column has no border-stacking and essentially no shadows; message bubbles
+separate by background tone (`--surface2` on `--bg`), which is the right call at
+this density. The borders that do exist are `2px` on tool cards and their
+**colour is the state** (`--brand` active / `--amber` blocked / `--edge`
+resolved) — the convention in §2. Converting those to shadows would delete the
+signal rather than add depth.
 
 Line heights: `1.5`, `1.6` (base body and messages)
 
@@ -240,6 +345,38 @@ Line heights: `1.5`, `1.6` (base body and messages)
 - User: `background:linear-gradient(135deg, var(--brand), var(--brand-hover)); color:#fff; border-bottom-right-radius:var(--radius-sm)`
 - Assistant: `background:var(--surface2); color:var(--ink); border-bottom-left-radius:var(--radius-sm)`
 
+### Empty states
+
+`components/EmptyState.tsx` — one component for every panel that can be empty
+(notes, tasks, reports, meeting, email), so the five cannot drift apart again.
+
+| Part    | Style                                                                          |
+| ------- | ------------------------------------------------------------------------------ |
+| wrapper | `padding: var(--space-10) var(--space-5)`, centred column, `min-height: 200px` |
+| icon    | 40px emoji — a glyph size, deliberately not on the `--text-*` scale            |
+| title   | `--text-md`, 600, `--ink` — says what the panel **is**                         |
+| hint    | `--text-sm`, `--muted`, `lineHeight 1.6`, `maxWidth: 300`                      |
+| action  | `.btn .btn-brand .btn-sm`, and only when the caller passes a handler           |
+
+Three rules worth keeping:
+
+- **A no-match search is not an empty panel.** The panel-empty screen explains
+  and offers an action; the search-empty screen is one muted line
+  (`empty.noResults`). Notes, reports and meeting draw that line now.
+- **Test the judge against the _unfiltered_ collection.** `TasksList` narrows
+  by tab, search and two dropdowns into one array, so `sortedIssues.length === 0`
+  is true for a user with twenty finished tasks sitting on the "todo" tab —
+  telling them the board is empty and offering to create their first task. The
+  guard is `libraryEmpty`, computed from the raw `issues`. The other four panels
+  already tested the raw collection (`p.reports` / `p.notes` / `s.meetings` /
+  `emails`, each with its filtered twin stored separately); tasks was the one
+  that collapsed both into a single array.
+- **The action must be a path that already exists.** No new create flows were
+  invented for these buttons: notes/tasks/reports clear the editor to its blank
+  state (which _is_ how those panels create — they persist on save) and meeting
+  calls `requestStart`, the same entry point the recorder bar uses, so the
+  recording-consent prompt is not bypassed.
+
 ---
 
 ## 6. Layout
@@ -247,23 +384,84 @@ Line heights: `1.5`, `1.6` (base body and messages)
 ```
 .app-root (100vw×100vh, no padding)
   └── .app-shell
-       ├── .session-sidebar (180px)
+       ├── .session-sidebar (180px, fixed, shrink 0)
+       │    └── .session-list (today / yesterday / earlier — "earlier" folds)
        └── .main-chat-wrapper
             ├── Top bar
-            ├── .app-viewport
-            │    ├── .app-viewport-chat (flex-basis 360px, min 360px)
+            ├── .app-viewport (overflow-x: scroll)
+            │    ├── .app-viewport-chat (flex: 1 1 360px, min-width: 360px)
             │    │    ├── .chat-messages
-            │    │    ├── .menu-popup (7 items)
+            │    │    ├── .menu-nav          ← position: relative, holds the popup
+            │    │    │    ├── .menu-popup (PRIMARY_MENU: home/notes/tasks/meeting)
+            │    │    │    └── .menu-more-list (MORE_MENU, anchored to "More")
             │    │    └── .chat-input-row
-            │    └── .panel (slide-in; .panel--open = clamp(380px, 40%, 560px))
+            │    └── .panel (slide-in)
+            │         .panel--open        = max(0px, min(clamp(380px, 40%, 560px), 100% - 360px))
+            │         .panel--open.panel--wide (meeting only)
+            │                             = max(0px, min(clamp(420px, 46%, 680px), 100% - 360px))
 ```
+
+**Why the panel widths are wrapped.** The clamp is a preference; the row not
+overflowing is a constraint. `.app-viewport` is `overflow-x: scroll` and its two
+children cannot shrink below 360px (chat) and the panel's flex-basis, so a panel
+wider than `100% - 360px` — measured against `.app-viewport`, which excludes the
+sidebar — pushes the row sideways and puts a horizontal scrollbar across the whole
+app. The plain clamp alone was already reachable at the 900px minimum window
+width (`360 + 380 = 740 > 720`).
+
+**The nav is split, not trimmed.** `PRIMARY_MENU` holds four entries plus the
+"More" trigger; `MORE_MENU` holds the remaining six behind it. Ten flat items at
+`min-width: 56px` plus the popup's padding wanted 592px against a 360px chat
+column, so the row scrolled sideways exactly when a panel was open.
+
+**Every nav entry is a panel.** `chat` used to be a fifth entry, special-cased in
+`panelForKey` to mean "no panel". It was removed: `.app-viewport-chat` is a
+sibling of `.panel`, never covered by it, so "go to chat" revealed nothing that
+was not already on screen — it was a close button labelled as a destination, and
+the panel header's ✕ already does that. With no panel open the row now shows no
+active item, which is correct: "no panel" is not a destination.
+
+**The More popup is anchored to its trigger.** The `.menu-nav` wrapper exists
+because `.menu-popup` is an x-axis scroll container (`overflow-y: hidden`), which
+would clip an absolutely-positioned popup placed inside it. That rules out making
+the trigger the popup's containing block, so the popup attaches by CSS anchor
+positioning instead (`anchor-name` on the trigger, `left: anchor(left)` /
+`bottom: calc(anchor(top) + 6px)` on the list), with the old `left`/`bottom`
+pair kept as a fallback for a renderer without `anchor()`. Placing it by
+`.menu-nav`'s right edge — harmless when the row held ten items and nearly filled
+the column — put it 634px from the trigger once the row shrank to four.
+
+It matches **left** edges, not right ones. The list is 172px against a 56px
+trigger, so matching right edges hangs the box entirely to the trigger's left:
+measured at 319–491 with the trigger at 435–491, i.e. over Tasks and Meetings
+while the button it belongs to sat just off its edge. Matching left edges puts it
+over the row's empty run, which is also where the room is. In a chat column at its
+360px minimum it can then run past the bar's right edge, and that is the
+deliberate half of the trade: it stays on screen, and it never covers a
+destination button. A `min(anchor(left), …)` clamp was tried and rejected — it
+keeps the box inside the bar, but only by pushing it back over Meetings, which is
+the thing being fixed.
+
+Dismissal keys off the list and the trigger, **not** off `.menu-nav`. The bar
+spans the whole chat column — 1004px against a 280px row of buttons — so treating
+it as "inside" left the menu open when you clicked the empty strip beside the
+buttons, the one place that still reads as part of the menu. Both nodes are
+matched with `closest` rather than containment, because the list is absolutely
+positioned outside the bar's own box.
+
+**"Earlier" is the one folding group.** It is the only bucket with no upper
+bound, and today/yesterday are what you come back to, so it starts folded; the
+header becomes a `<button aria-expanded>` carrying the count and a chevron. It
+unfolds itself when the active session lives down there — a folded group would
+otherwise leave the sidebar with no active row — and a ref keeps that from
+re-opening it after a deliberate fold.
 
 ---
 
 ## 7. Design Weaknesses
 
 1. ~~**No dark mode**~~ — **addressed**, see §1a. (The app is still light by
-   default; dark mode is opt-in via the sun/moon button in the chat toolbar.)
+   default; dark mode is opt-in via **Settings → Appearance**.)
 2. **Hardcoded colors** — the brand-derived tints are now token-driven via
    `color-mix()`, and 13 inline black `box-shadow`s were routed through
    `--shadow-*`. Remaining literals are deliberate: the four theme blocks,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLang } from '@/stores/useLang';
+import { t } from '@/lib/i18n';
 import { LlmTab } from './LlmTab';
 import { ApiKeyTab } from './ApiKeyTab';
 import { EmailTab } from './EmailTab';
@@ -7,8 +8,9 @@ import { GitTab } from './GitTab';
 import { StandupTab } from './StandupTab';
 import { McpServerTab } from './McpServerTab';
 import { MeetingTab } from './MeetingTab';
+import { AppearanceTab } from './AppearanceTab';
 
-const ALL_TABS = ['llm', 'apikey', 'email', 'git', 'standup', 'meeting', 'mcpServers'] as const;
+const ALL_TABS = ['llm', 'apikey', 'email', 'git', 'standup', 'meeting', 'mcpServers', 'appearance'] as const;
 type TabKey = (typeof ALL_TABS)[number];
 
 export function SettingsPanel() {
@@ -43,6 +45,7 @@ export function SettingsPanel() {
     standup: 'var(--purple)',
     meeting: 'var(--blue)',
     mcpServers: 'var(--cyan)',
+    appearance: 'var(--purple)',
     about: 'var(--muted)',
   };
   const s = {
@@ -120,12 +123,25 @@ export function SettingsPanel() {
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         );
+      case 'appearance':
+        // A half-filled circle: the one glyph that reads as "two modes of the
+        // same thing" without illustrating either of them.
+        return (
+          <svg {...s} stroke={c}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 3a9 9 0 000 18z" fill={c} />
+          </svg>
+        );
       default:
         return null;
     }
   };
 
-  const tabLabel = (t: string) => {
+  // Labels live here rather than in the i18n dictionary for the eight original
+  // tabs — predates the central-dictionary rule. `appearance` is new, so it goes
+  // through t(); converting the rest is a separate change.
+  const tabLabel = (key: string) => {
+    if (key === 'appearance') return t('settings.tab.appearance', lang);
     const labels: Record<string, Record<string, string>> = {
       llm: { zh: 'LLM', en: 'LLM', ja: 'LLM' },
       apikey: { zh: '密钥', en: 'Keys', ja: 'キー' },
@@ -136,7 +152,7 @@ export function SettingsPanel() {
       meeting: { zh: '会议', en: 'Meetings', ja: '会議' },
       mcpServers: { zh: 'MCP 服务器', en: 'MCP Servers', ja: 'MCPサーバー' },
     };
-    return labels[t]?.[lang] || t;
+    return labels[key]?.[lang] || key;
   };
   return (
     <div className="p-2">
@@ -162,6 +178,7 @@ export function SettingsPanel() {
       {tab === 'standup' && <StandupTab />}
       {tab === 'meeting' && <MeetingTab />}
       {tab === 'mcpServers' && <McpServerTab />}
+      {tab === 'appearance' && <AppearanceTab />}
     </div>
   );
 }

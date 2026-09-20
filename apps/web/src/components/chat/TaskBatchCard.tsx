@@ -24,7 +24,7 @@ const CELL = {
 
 const HEAD_CELL = {
   ...CELL,
-  fontSize: 10,
+  fontSize: 'var(--text-xs)',
   fontWeight: 600,
   color: 'var(--muted)',
   textAlign: 'left',
@@ -50,12 +50,12 @@ export function TaskBatchCard({ card, thinking }: { card: ChatCard; thinking?: b
         background: 'var(--surface)',
         borderRadius: 8,
         border: '2px solid var(--brand)',
-        fontSize: 12,
+        fontSize: 'var(--text-sm)',
         maxWidth: '100%',
         cursor: 'default',
       }}
     >
-      <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--ink)', marginBottom: 6 }}>
+      <div style={{ fontWeight: 600, fontSize: 'var(--text-xs)', color: 'var(--ink)', marginBottom: 6 }}>
         {t('chat.batchCreated', lang, { n: items.length })}
         {thinking ? ' …' : ''}
       </div>
@@ -81,7 +81,7 @@ export function TaskBatchCard({ card, thinking }: { card: ChatCard; thinking?: b
                   <td
                     style={{
                       ...CELL,
-                      fontSize: 10,
+                      fontSize: 'var(--text-xs)',
                       fontWeight: 700,
                       color: 'var(--brand)',
                       whiteSpace: 'nowrap',
@@ -97,15 +97,29 @@ export function TaskBatchCard({ card, thinking }: { card: ChatCard; thinking?: b
                       {item.title}
                     </div>
                   </td>
-                  <td style={{ ...CELL, fontSize: 10, fontWeight: 600, color: priorityColor(item.priority) }}>
+                  <td
+                    style={{
+                      ...CELL,
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      color: priorityColor(item.priority),
+                    }}
+                  >
                     {item.priority || ''}
                   </td>
-                  <td style={{ ...CELL, fontSize: 10, fontWeight: 600, color: statusMeta?.color || 'var(--muted)' }}>
+                  <td
+                    style={{
+                      ...CELL,
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      color: statusMeta?.color || 'var(--muted)',
+                    }}
+                  >
                     {statusMeta ? t(statusMeta.key, lang) : item.status || 'todo'}
                   </td>
                   <td style={{ ...CELL, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {deleted ? (
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                         🗑️ {t('chat.rowDeleted', lang)}
                       </span>
                     ) : (
@@ -120,7 +134,11 @@ export function TaskBatchCard({ card, thinking }: { card: ChatCard; thinking?: b
                         </button>
                         <button
                           className="btn btn-xs"
-                          style={{ background: 'var(--surface2)', color: 'var(--ink)', border: '1px solid var(--edge)' }}
+                          style={{
+                            background: 'var(--surface2)',
+                            color: 'var(--ink)',
+                            border: '1px solid var(--edge)',
+                          }}
                           onClick={() => {
                             window.dispatchEvent(new CustomEvent('tl-edit-card', { detail: item }));
                           }}

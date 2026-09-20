@@ -10,7 +10,7 @@ import { useTokenUsage } from '@/hooks/useTokenUsage';
 import { useSetupChecks } from '@/hooks/useSetupChecks';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useUpdates } from '@/hooks/useUpdates';
-import { useSessionManager } from '@/hooks/useSessionManager';
+import { toSidebarSession, useSessionManager } from '@/hooks/useSessionManager';
 import { useEditorMonitors } from '@/hooks/useEditorMonitors';
 import { useSendMessage } from '@/hooks/useSendMessage';
 import { useChatCardActions } from '@/hooks/useChatCardActions';
@@ -28,7 +28,6 @@ import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
 import { TelemetryConsentDialog } from '@/components/TelemetryConsentDialog';
 import { setConsent as telSetConsent, track as telTrack } from '@/lib/telemetry';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { applyTheme, getTheme, applyMode, getMode } from '@/lib/constants';
 import type { StagedEdit } from '@/types/chat';
 
 // ═══ MAIN APP ═══
@@ -40,9 +39,10 @@ export function App() {
   // ─── Local UI state ───
   const lang = useLang();
   const setLang = useSetLang();
-  const [theme, setTheme] = useState(getTheme());
-  // Light/dark is independent of `theme` — see lib/constants.ts
-  const [mode, setMode] = useState<string>(getMode());
+  // Theme and light/dark live in stores/themeStore.ts — the settings panel and
+  // the welcome guide both read it directly. App declares no state and runs no
+  // effect here: the store writes <html> from its setters, and
+  // `public/theme-init.js` has already written it before React's first render.
   const [panel, setPanel] = useState<string | null>(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -135,6 +135,7 @@ export function App() {
   const {
     sessions,
     setSessions,
+    autoTitle,
     currentSessionId,
     setCurrentSessionId,
     sessionsLoaded,
@@ -298,6 +299,7 @@ export function App() {
     setAppliedTaskEdit,
     setAppliedReport,
     compressing,
+    autoTitle,
   });
 
   // Chat-card listeners (apply/undo/force-create/delete) + executeDelete
@@ -358,15 +360,21 @@ export function App() {
     handleUpdateDownload,
     handleOpenUpdateFolder,
   } = useUpdates({ onResult: setSaveResult });
-  // Apply theme to <html data-theme> whenever it changes
+  // The two `applyTheme` / `applyMode` effects that used to sit here are gone:
+  // the store writes both attributes from its setters, and `public/theme-init.js`
+  // has already written them before React's first render.
+  // Stick to the bottom whenever something lands on screen. The dependency stays
+  // on `messages` because streaming swaps the assistant message object on every
+  // token, and that is exactly what has to keep scrolling. The ref guard covers
+  // the internal context signals (see MsgList): they append to the array without
+  // putting anything on screen, so scrolling on them would drag the view down
+  // while the user is just opening a panel.
+  const lastVisibleMsgRef = useRef<any>(null);
   useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-  // Apply light/dark to <html data-mode> whenever it changes
-  useEffect(() => {
-    applyMode(mode);
-  }, [mode]);
-  useEffect(() => {
+    const visible = messages.filter((m: any) => !m.internal);
+    const last = visible.length > 0 ? visible[visible.length - 1] : null;
+    if (last === lastVisibleMsgRef.current) return;
+    lastVisibleMsgRef.current = last;
     msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);
   }, [messages]);
   // Resize textarea only when line count changes (Enter/Shift+Enter), not on every keystroke
@@ -394,12 +402,16 @@ export function App() {
   panelRef.current = panel;
 
   // Menu navigation (used by MenuNav) — unsaved-changes gate + update-seen + clear notifications
+  // Every menu key is now a real panel key, so this is a null-normaliser: the
+  // nav passes `null` for "no panel", and the confirm-leave path can pass an
+  // undefined key. Both entry points share it so they cannot drift apart.
+  const panelForKey = (key: string | null | undefined) => key ?? null;
   const handleMenuNav = (key: string) => {
     if ((window as any).__tl_unsaved && key !== panel) {
       setLeaveTarget({ type: 'menu', key });
       return;
     }
-    setPanel(key);
+    setPanel(panelForKey(key));
     if (key === 'about') setUpdateSeen(true);
     if (key === 'email' && notifyCount > 0) {
       fetch('/api/system.clearNotifications', {
@@ -488,7 +500,7 @@ export function App() {
             api.chat
               .createSession(`Chat ${sessions.length + 1}`)
               .then((s: any) => {
-                setSessions((prev) => [{ id: s.id, title: s.title, tokenPercent: 0 }, ...prev]);
+                setSessions((prev) => [toSidebarSession(s), ...prev]);
                 setCurrentSessionId(s.id);
                 chatHook.switchSession(s.id);
                 chatHook.loadSession(s.id);
@@ -535,16 +547,17 @@ export function App() {
             }}
           >
             <div className="app-viewport-chat">
+              {/* `messagesCount` drives the compress/clear buttons, which act on
+                  stored messages. The internal context signals are never stored,
+                  so counting them would offer "clear" on a chat that looks empty.
+                  The token meter deliberately still counts them — they are sent to
+                  the model, so they are real context even while hidden. */}
               <ChatToolbar
                 lang={lang}
                 setLang={setLang}
                 langMenuOpen={langMenuOpen}
                 setLangMenuOpen={setLangMenuOpen}
-                theme={theme}
-                setTheme={setTheme}
-                mode={mode}
-                setMode={setMode}
-                messagesCount={messages.length}
+                messagesCount={messages.filter((m: any) => !m.internal).length}
                 compressing={compressing}
                 onCompress={compressChat}
                 onClear={clearSession}
@@ -575,7 +588,7 @@ export function App() {
                       border: '1px solid var(--edge)',
                       borderRadius: 4,
                       padding: '2px 10px',
-                      fontSize: 10,
+                      fontSize: 'var(--text-xs)',
                       cursor: 'pointer',
                       color: 'var(--ink)',
                     }}
@@ -595,8 +608,6 @@ export function App() {
                   <WelcomeGuide
                     lang={lang}
                     setLang={setLang}
-                    theme={theme}
-                    setTheme={setTheme}
                     llmConfigured={llmConfigured}
                     emailConfigured={emailConfigured}
                     gitConfigured={gitConfigured}
@@ -659,7 +670,7 @@ export function App() {
                   style={{
                     margin: '0 12px 8px',
                     padding: '6px 10px',
-                    fontSize: 11,
+                    fontSize: 'var(--text-xs)',
                     lineHeight: 1.5,
                     color: 'var(--amber)',
                     background: 'var(--surface2)',
@@ -754,7 +765,7 @@ export function App() {
           setLeaveTarget(null);
           (window as any).__tl_unsaved = null;
           if (target?.type === 'close') setPanel(null);
-          else if (target?.type === 'menu') setPanel(target.key ?? null);
+          else if (target?.type === 'menu') setPanel(panelForKey(target.key));
           setTimeout(() => {
             if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
           }, 50);

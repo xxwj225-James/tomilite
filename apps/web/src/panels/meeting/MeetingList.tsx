@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { t } from '@/lib/i18n';
 import type { MeetingRow, MeetingState } from './useMeetingState';
+import { EmptyState } from '@/components/EmptyState';
 
 // ═══ Meeting library ═══
 //
@@ -96,16 +97,29 @@ export function MeetingList({ s }: { s: MeetingState }) {
           </p>
         )}
 
-        {!s.loading && rows.length === 0 && (
-          <div style={{ padding: 20, textAlign: 'center' }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>
-              {s.search ? t('meeting.noResults', lang) : t('meeting.empty', lang)}
-            </p>
-            <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 6 }}>
-              {t('meeting.emptyHint', lang)}
-            </p>
-          </div>
-        )}
+        {!s.loading &&
+          rows.length === 0 &&
+          // A search that matched nothing gets one line; an empty library gets
+          // the explanation and the button that fills it.
+          (s.search ? (
+            <div className="text-ink-muted" style={{ padding: 20, textAlign: 'center', fontSize: 'var(--text-sm)' }}>
+              {t('meeting.noResults', lang)}
+            </div>
+          ) : (
+            <EmptyState
+              icon="🎙️"
+              title={t('meeting.empty', lang)}
+              hint={t('meeting.emptyHint', lang)}
+              actionLabel={t('meeting.emptyAction', lang)}
+              // `requestStart`, not a direct capture call: it is the same entry
+              // point the recorder bar uses, so the consent prompt that meeting
+              // recording requires is not bypassed from this button. The source
+              // matches the recorder bar's default (`mic+system`) — capturing
+              // only the microphone would silently drop the other side of the
+              // call, which is the half that matters in a meeting.
+              onAction={() => void s.requestStart('mic+system')}
+            />
+          ))}
 
         {rows.map((m) => (
           <div
@@ -157,8 +171,14 @@ export function MeetingList({ s }: { s: MeetingState }) {
                   {t('meeting.source.mic', lang)}
                 </span>
               )}
+              {/* The action clause is dropped rather than shown as "0 action
+                  items": a count of nothing is not a fact about the meeting, and
+                  in a row that already carries four other pieces of metadata it
+                  is pure noise. */}
               <span className="text-ink-muted" style={{ fontSize: 10 }}>
-                {t('meeting.counts', lang, { segments: m.segmentCount, actions: m.actionItemCount })}
+                {m.actionItemCount > 0
+                  ? t('meeting.counts', lang, { segments: m.segmentCount, actions: m.actionItemCount })
+                  : t('meeting.countsNoActions', lang, { segments: m.segmentCount })}
               </span>
             </div>
             <div style={{ fontSize: 10, marginTop: 2 }}>

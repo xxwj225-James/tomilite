@@ -72,7 +72,7 @@ export function Msg({
               padding: '4px 12px',
               borderRadius: 6,
               cursor: 'pointer',
-              fontSize: 11,
+              fontSize: 'var(--text-xs)',
               color: 'var(--amber)',
               background: 'var(--surface2)',
               border: '1px solid var(--edge)',
@@ -82,7 +82,7 @@ export function Msg({
           >
             <span
               style={{
-                fontSize: 10,
+                fontSize: 'var(--text-xs)',
                 transition: 'transform .15s',
                 transform: thinkingOpen ? 'rotate(90deg)' : 'rotate(0deg)',
               }}
@@ -100,7 +100,7 @@ export function Msg({
                 borderRadius: 6,
                 background: 'var(--surface2)',
                 border: '1px solid var(--edge)',
-                fontSize: 10,
+                fontSize: 'var(--text-xs)',
                 color: 'var(--muted)',
                 whiteSpace: 'pre-line',
                 wordBreak: 'break-word',
@@ -124,7 +124,7 @@ export function Msg({
         style={
           isMonitor
             ? {
-                fontSize: 10,
+                fontSize: 'var(--text-xs)',
                 opacity: 0.55,
                 fontStyle: 'italic',
                 padding: '3px 10px',
@@ -137,7 +137,7 @@ export function Msg({
       >
         {isApiKeyHint ? (
           <div>
-            <span style={{ fontSize: 12, color: 'var(--amber)', lineHeight: 1.6 }}>⚠️ {safeText}</span>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--amber)', lineHeight: 1.6 }}>⚠️ {safeText}</span>
             <br />
             <button
               className="btn btn-brand btn-xs"
@@ -169,19 +169,19 @@ export function Msg({
               background: 'var(--surface2)',
               borderRadius: 8,
               border: '2px solid var(--edge)',
-              fontSize: 12,
+              fontSize: 'var(--text-sm)',
               maxWidth: 400,
               opacity: 0.55,
             }}
           >
-            <span style={{ fontWeight: 700, fontSize: 10, color: 'var(--muted)' }}>
+            <span style={{ fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
               {card.type === 'export_xlsx' || card.type === 'export_doc'
                 ? card.title
                 : card.key || card.id?.substring(0, 8)}
             </span>
             <span
               style={{
-                fontSize: 9,
+                fontSize: 'var(--text-xs)',
                 padding: '1px 6px',
                 borderRadius: 3,
                 background: 'color-mix(in srgb, var(--muted) 12%, transparent)',
@@ -201,7 +201,7 @@ export function Msg({
               background: 'var(--surface)',
               borderRadius: 8,
               border: `2px solid ${card.resolved ? 'var(--edge)' : 'var(--amber)'}`,
-              fontSize: 12,
+              fontSize: 'var(--text-sm)',
               maxWidth: 420,
               opacity: card.resolved ? 0.6 : 1,
             }}
@@ -211,7 +211,7 @@ export function Msg({
                 fontWeight: 600,
                 marginBottom: 6,
                 color: card.resolved ? 'var(--muted)' : 'var(--amber)',
-                fontSize: 13,
+                fontSize: 'var(--text-sm)',
               }}
             >
               ⚠️ 发现 {card.duplicates?.length || 0} 个相似
@@ -228,7 +228,7 @@ export function Msg({
             {card.duplicates?.slice(0, 8).map((d: any) => (
               <div
                 key={d.key}
-                style={{ display: 'flex', gap: 8, fontSize: 10, marginBottom: 2, color: 'var(--muted)' }}
+                style={{ display: 'flex', gap: 8, fontSize: 'var(--text-xs)', marginBottom: 2, color: 'var(--muted)' }}
               >
                 <span style={{ fontWeight: 600, color: 'var(--brand)', minWidth: 50 }}>{d.key}</span>
                 <span style={{ flex: 1 }}>{d.title}</span>
@@ -295,19 +295,24 @@ export function Msg({
                 background: 'var(--surface)',
                 borderRadius: 8,
                 border: '2px solid var(--brand)',
-                fontSize: 12,
+                fontSize: 'var(--text-sm)',
                 maxWidth: 400,
                 cursor: 'default',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 10, color: 'var(--brand)' }}>
+              {/* `flexWrap` is here because the chips below moved from 9px to
+                  `--text-xs`. A task card can carry four of them (id, type,
+                  status, priority) and the chat column narrows to 360px, so
+                  without this the row would run past the card's edge instead
+                  of dropping the priority chip to a second line. */}
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--brand)' }}>
                   {card.key || card.id?.substring(0, 8)}
                 </span>
                 {card.type === 'task' && card.issueType && card.issueType !== 'task' && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 'var(--text-xs)',
                       padding: '1px 6px',
                       borderRadius: 3,
                       background:
@@ -331,10 +336,13 @@ export function Msg({
                 {card.type === 'task' && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 'var(--text-xs)',
                       padding: '1px 6px',
                       borderRadius: 3,
-                      background: card.status === 'done' ? 'color-mix(in srgb, var(--green) 20%, transparent)' : 'color-mix(in srgb, var(--muted) 18%, transparent)',
+                      background:
+                        card.status === 'done'
+                          ? 'color-mix(in srgb, var(--green) 20%, transparent)'
+                          : 'color-mix(in srgb, var(--muted) 18%, transparent)',
                       color: card.status === 'done' ? 'var(--green)' : 'var(--ink)',
                       fontWeight: 500,
                     }}
@@ -345,7 +353,7 @@ export function Msg({
                 {card.type === 'task' && card.priority && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 'var(--text-xs)',
                       fontWeight: 600,
                       color:
                         card.priority === 'critical'
@@ -361,7 +369,7 @@ export function Msg({
                 {card.type === 'note' && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 'var(--text-xs)',
                       padding: '1px 6px',
                       borderRadius: 3,
                       background: 'color-mix(in srgb, var(--muted) 18%, transparent)',
@@ -375,7 +383,7 @@ export function Msg({
                 {card.type === 'report' && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 'var(--text-xs)',
                       padding: '1px 6px',
                       borderRadius: 3,
                       background: 'color-mix(in srgb, var(--muted) 18%, transparent)',
@@ -400,7 +408,7 @@ export function Msg({
               {card.description && (
                 <div
                   style={{
-                    fontSize: 10,
+                    fontSize: 'var(--text-xs)',
                     color: 'var(--muted)',
                     marginBottom: 6,
                     lineHeight: 1.4,
@@ -593,8 +601,8 @@ export function Msg({
           <div style={{ marginTop: 8 }}>
             {/* Diff display — show what changed (only when original available) */}
             {staged.original && staged.title !== staged.original.title && staged.title && (
-              <div style={{ fontSize: 10, marginBottom: 2, lineHeight: 1.6, color: 'var(--ink)' }}>
-                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 9 }}>
+              <div style={{ fontSize: 'var(--text-xs)', marginBottom: 2, lineHeight: 1.6, color: 'var(--ink)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
                   {tr(lang, '标题', 'タイトル', 'Title')}:{' '}
                 </span>
                 <span style={{ textDecoration: 'line-through', color: 'var(--brand)', opacity: 0.7 }}>
@@ -605,8 +613,8 @@ export function Msg({
               </div>
             )}
             {staged.original && staged.status && staged.status !== staged.original.status && (
-              <div style={{ fontSize: 10, marginBottom: 2 }}>
-                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 9 }}>
+              <div style={{ fontSize: 'var(--text-xs)', marginBottom: 2 }}>
+                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
                   {tr(lang, '状态', 'ステータス', 'Status')}:{' '}
                 </span>
                 <span style={{ textDecoration: 'line-through', opacity: 0.5 }}>{staged.original.status}</span>
@@ -615,8 +623,8 @@ export function Msg({
               </div>
             )}
             {staged.original && staged.priority && staged.priority !== staged.original.priority && (
-              <div style={{ fontSize: 10 }}>
-                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 9 }}>
+              <div style={{ fontSize: 'var(--text-xs)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
                   {tr(lang, '优先级', '優先度', 'Priority')}:{' '}
                 </span>
                 <span style={{ textDecoration: 'line-through', opacity: 0.5 }}>{staged.original.priority}</span>
@@ -627,7 +635,7 @@ export function Msg({
             {/* New content preview */}
             {staged.content && (
               <div style={{ marginBottom: 4 }}>
-                <div style={{ fontWeight: 600, color: 'var(--green)', fontSize: 9, marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, color: 'var(--green)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>
                   {tr(lang, '修改后内容', '変更後の内容', 'Updated Content')}:
                 </div>
                 <div
@@ -635,7 +643,7 @@ export function Msg({
                     background: 'var(--surface2)',
                     borderRadius: 8,
                     padding: '10px 14px',
-                    fontSize: 12,
+                    fontSize: 'var(--text-sm)',
                     lineHeight: 1.7,
                     maxHeight: 300,
                     overflow: 'auto',
@@ -650,7 +658,7 @@ export function Msg({
               </div>
             )}
             {staged.original && staged.description !== staged.original.description && staged.description && (
-              <div style={{ fontSize: 10, marginBottom: 2, color: 'var(--muted)' }}>
+              <div style={{ fontSize: 'var(--text-xs)', marginBottom: 2, color: 'var(--muted)' }}>
                 {tr(
                   lang,
                   `描述已修改 (${staged.description?.length || 0} 字符)`,
@@ -678,7 +686,7 @@ export function Msg({
             className="btn btn-xs"
             style={{
               marginTop: 6,
-              fontSize: 10,
+              fontSize: 'var(--text-xs)',
               background: isPinned ? 'var(--amber)' : 'var(--brand)',
               border: 'none',
               borderRadius: 6,

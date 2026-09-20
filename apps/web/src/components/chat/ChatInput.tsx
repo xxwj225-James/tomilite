@@ -43,7 +43,7 @@ export function ChatInput({
                 border: '1px solid var(--edge)',
                 borderRadius: 14,
                 padding: '3px 10px',
-                fontSize: 11,
+                fontSize: 'var(--text-xs)',
                 color: 'var(--ink)',
               }}
             >
@@ -55,7 +55,7 @@ export function ChatInput({
                   border: 'none',
                   color: 'var(--muted)',
                   cursor: 'pointer',
-                  fontSize: 13,
+                  fontSize: 'var(--text-sm)',
                   padding: 0,
                   lineHeight: 1,
                 }}
@@ -166,14 +166,18 @@ export function ChatInput({
       </div>
       <div className="chat-hint" style={{ padding: '4px 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
         {thinking ? (
-          <span style={{ fontSize: 11, color: 'var(--brand)', fontWeight: 500 }}>{t('chat.hintEsc', lang)}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--brand)', fontWeight: 500 }}>
+            {t('chat.hintEsc', lang)}
+          </span>
         ) : disabled ? (
-          <span style={{ fontSize: 11, color: 'var(--brand)', fontWeight: 500 }}>{t('chat.compressBusy', lang)}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--brand)', fontWeight: 500 }}>
+            {t('chat.compressBusy', lang)}
+          </span>
         ) : (
           <>
             <span
               style={{
-                fontSize: 11,
+                fontSize: 'var(--text-xs)',
                 padding: '2px 10px',
                 borderRadius: 10,
                 background: 'var(--surface2)',
@@ -189,7 +193,7 @@ export function ChatInput({
             </span>
             <span
               style={{
-                fontSize: 11,
+                fontSize: 'var(--text-xs)',
                 padding: '2px 10px',
                 borderRadius: 10,
                 background: 'var(--surface2)',

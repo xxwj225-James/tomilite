@@ -179,7 +179,7 @@ export function ContentPanel({
   const mounted = mountedRef.current;
 
   return (
-    <div className={cn('panel', panel ? 'panel--open' : '')}>
+    <div className={cn('panel', panel ? 'panel--open' : '', panel === 'meeting' ? 'panel--wide' : '')}>
       <div className="panel-header">
         <h3 className="panel-title">{panel === 'about' ? '' : tMenu(panel || '', lang)}</h3>
         <button className="panel-close" onClick={onClose}>

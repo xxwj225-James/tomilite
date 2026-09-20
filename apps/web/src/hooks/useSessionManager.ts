@@ -1,9 +1,31 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import type { StagedEdit, ChatCard } from '@/types/chat';
-import type { ChatHook } from './useChatThreads';
+import { makeTitle, type ChatHook } from './useChatThreads';
+
+// What the sidebar renders. `updatedAt` is carried through from the row because
+// the list groups by date; it stays optional since the create paths only have the
+// fields the server just handed back.
+export interface SidebarSession {
+  id: string;
+  title: string;
+  tokenPercent: number;
+  updatedAt?: string;
+}
+
+export const toSidebarSession = (s: any): SidebarSession => ({
+  id: s.id,
+  title: s.title,
+  tokenPercent: s.tokenPercent || 0,
+  updatedAt: s.updatedAt,
+});
+
+// A title nobody chose. Sessions are created as `Chat ${n}` (and the very first
+// one as 'Chat 1'), so a placeholder is the only thing auto-titling may overwrite.
+// Anything else came from the user's rename and has to win.
+const isPlaceholderTitle = (title: string) => title === 'Chat' || /^Chat \d+$/.test(title);
 
 // ═══ Session management: session list + bootstrap, per-session locked saveMsg, rename/delete/compress ═══
 export function useSessionManager({
@@ -16,7 +38,14 @@ export function useSessionManager({
   currentTokens: number;
 }) {
   const lang = useLang();
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; tokenPercent: number }>>([]);
+  const [sessions, setSessions] = useState<SidebarSession[]>([]);
+  // autoTitle decides whether a title was user-chosen, and it runs from a send
+  // handler rather than from render — so it reads the list through a ref instead
+  // of capturing a stale render's value in its closure.
+  const sessionsRef = useRef<SidebarSession[]>([]);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const messages = chatHook.messages;
@@ -28,14 +57,14 @@ export function useSessionManager({
       .listSessions()
       .then((list: any[]) => {
         if (list.length > 0) {
-          setSessions(list.map((s) => ({ id: s.id, title: s.title, tokenPercent: s.tokenPercent || 0 })));
+          setSessions(list.map(toSidebarSession));
           const cur = list[0].id;
           setCurrentSessionId(cur);
           chatHook.switchSession(cur);
           chatHook.loadSession(cur);
         } else {
           api.chat.createSession('Chat 1').then((s: any) => {
-            setSessions([{ id: s.id, title: s.title, tokenPercent: 0 }]);
+            setSessions([toSidebarSession(s)]);
             setCurrentSessionId(s.id);
             // Register + select the freshly created session, or activeSessionId stays ''
             // and every UI write from the first message is dropped (setMessages no-op),
@@ -103,7 +132,7 @@ export function useSessionManager({
     if (!sessionCreatingRef.current) {
       sessionCreatingRef.current = api.chat.createSession('Chat 1').then((s: any) => {
         setCurrentSessionId(s.id);
-        setSessions((prev) => [...prev, { id: s.id, title: s.title, tokenPercent: 0 }]);
+        setSessions((prev) => [...prev, toSidebarSession(s)]);
         sessionCreatingRef.current = null;
         return s.id;
       });
@@ -276,7 +305,7 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
         api.chat
           .createSession('Chat 1')
           .then((s: any) => {
-            setSessions([{ id: s.id, title: s.title, tokenPercent: 0 }]);
+            setSessions([toSidebarSession(s)]);
             setCurrentSessionId(s.id);
             chatHook.switchSession(s.id);
             chatHook.loadSession(s.id);
@@ -286,9 +315,33 @@ Format with markdown headings (##). Do NOT add suggestions, offers to help, or p
     }
   };
 
+  // Name a session after the first thing the user said. This lives here rather
+  // than in the message store because the sidebar is a second, independent piece
+  // of state — a title written only to chatHook.sessionsData is invisible, since
+  // nothing renders that field. It also has to be written through, or the next
+  // launch restores the placeholder.
+  //
+  // The text is passed in rather than read back out of the message list: the
+  // caller appends the user message in the same tick, so the hook's `messages`
+  // still holds the previous render's value at this point.
+  const autoTitle = useCallback(
+    (firstUserText: string) => {
+      const sid = currentSessionId;
+      if (!sid) return;
+      const cur = sessionsRef.current.find((s) => s.id === sid);
+      if (!cur || !isPlaceholderTitle(cur.title)) return;
+      const next = makeTitle(firstUserText);
+      if (!next || next === cur.title) return;
+      setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, title: next } : s)));
+      api.chat.renameSession(sid, next).catch(() => {});
+    },
+    [currentSessionId],
+  );
+
   return {
     sessions,
     setSessions,
+    autoTitle,
     currentSessionId,
     setCurrentSessionId,
     sessionsLoaded,

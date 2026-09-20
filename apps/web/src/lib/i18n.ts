@@ -144,6 +144,23 @@ const I18N = {
     zh: '切换到浅色模式',
     ja: 'ライトモードに切り替え',
   },
+  // Settings → Appearance. Theme and light/dark are two axes, so they are
+  // presented as two controls rather than one list of eight combinations.
+  'settings.tab.appearance': { en: 'Appearance', zh: '外观', ja: '外観' },
+  'appearance.theme': { en: 'Theme', zh: '主题', ja: 'テーマ' },
+  'appearance.themeHint': {
+    en: 'Sets the accent colour and the neutral surfaces. Independent of light or dark — any theme works in either.',
+    zh: '决定强调色与中性底色。与明暗相互独立 —— 每套主题都能用在两种模式里。',
+    ja: 'アクセントカラーと中間色を決めます。ライト／ダークとは独立で、どのテーマも両モードで使えます。',
+  },
+  'appearance.mode': { en: 'Light / dark', zh: '明暗', ja: 'ライト / ダーク' },
+  'appearance.modeLight': { en: 'Light', zh: '浅色', ja: 'ライト' },
+  'appearance.modeDark': { en: 'Dark', zh: '深色', ja: 'ダーク' },
+  'appearance.modeHint': {
+    en: 'Applies on top of the theme above. Takes effect immediately and is remembered across restarts.',
+    zh: '叠加在上方主题之上。立即生效，重启后仍保留。',
+    ja: '上のテーマに重ねて適用されます。すぐに反映され、再起動後も保持されます。',
+  },
   'chat.download': { en: 'Download', zh: '下载', ja: 'ダウンロード', th: 'ดาวน์โหลด', mi: 'Tikiake', ru: 'Скачать' },
   'chat.uploadFile': {
     en: 'Upload file',
@@ -205,6 +222,12 @@ const I18N = {
     mi: '+ Kōrero Hou',
     ru: '+ Новый чат',
   },
+  // Date headings in the session list. That list is ordered by recency, and once
+  // the titles are generated the ordering is the only thing telling one row from
+  // the next — so it gets labelled instead of being left implicit.
+  'sidebar.today': { en: 'Today', zh: '今天', ja: '今日', th: 'วันนี้', mi: 'Rā nei', ru: 'Сегодня' },
+  'sidebar.yesterday': { en: 'Yesterday', zh: '昨天', ja: '昨日', th: 'เมื่อวาน', mi: 'Inanahi', ru: 'Вчера' },
+  'sidebar.earlier': { en: 'Earlier', zh: '更早', ja: 'それ以前', th: 'ก่อนหน้านี้', mi: 'Mua atu', ru: 'Ранее' },
 
   // ═══ Pin ═══
   'pin.top': {
@@ -1516,6 +1539,7 @@ const I18N = {
   'app.welcomeSkip': { en: 'Skip for now →', zh: '稍后配置 →', ja: '後で設定 →' },
   'app.welcomeDontShow': { en: "Don't show again", zh: '不再显示', ja: '今後表示しない' },
   'app.menuHome': { en: 'Home', zh: '首页', ja: 'ホーム', th: 'หน้าแรก', mi: 'Kāinga', ru: 'Главная' },
+  'app.menuChat': { en: 'Chat', zh: '对话', ja: 'チャット', th: 'แชท', mi: 'Kōrero', ru: 'Чат' },
   'app.menuTasks': { en: 'Tasks', zh: '任务', ja: 'タスク', th: 'งาน', mi: 'Mahi', ru: 'Задачи' },
   'app.menuNotes': { en: 'Notes', zh: '笔记', ja: 'ノート', th: 'บันทึก', mi: 'Tuhipoka', ru: 'Заметки' },
   'app.menuEmail': { en: 'Email', zh: '邮件', ja: 'メール', th: 'อีเมล', mi: 'Īmēra', ru: 'Почта' },
@@ -1539,6 +1563,7 @@ const I18N = {
   },
   'app.menuSettings': { en: 'Settings', zh: '设置', ja: '設定', th: 'การตั้งค่า', mi: 'Tautuhinga', ru: 'Настройки' },
   'app.menuAbout': { en: 'About', zh: '关于', ja: 'About', th: 'About', mi: 'About', ru: 'About' },
+  'app.menuMore': { en: 'More', zh: '更多', ja: 'その他', th: 'เพิ่มเติม', mi: 'Ētahi atu', ru: 'Ещё' },
   'app.entityNote': { en: 'note', zh: '笔记', ja: 'ノート', th: 'บันทึก', mi: 'tuhipoka', ru: 'заметка' },
   'app.entityTask': { en: 'task', zh: '任务', ja: 'タスク', th: 'งาน', mi: 'mahi', ru: 'задача' },
   'app.entityReport': { en: 'report', zh: '报告', ja: 'レポート', th: 'รายงาน', mi: 'pūrongo', ru: 'отчёт' },
@@ -1761,6 +1786,52 @@ const I18N = {
     ja: '会議を録音すると、TomiLite がそのまま着手できるタスクに変えます。',
   },
   'meeting.noResults': { en: 'No matches', zh: '没有匹配结果', ja: '一致する項目がありません' },
+  'meeting.emptyAction': { en: 'Start recording', zh: '开始录音', ja: '録音を開始' },
+
+  // ─── Empty states (components/EmptyState.tsx) ───
+  //
+  // A search that matched nothing is a different screen from a panel that has
+  // nothing in it: the first needs one line, the second needs an explanation.
+  'empty.noResults': { en: 'Nothing matched', zh: '没有匹配的内容', ja: '一致するものがありません' },
+  //
+  // Each panel gets a title that says what the panel *is* and a hint that says
+  // how something gets into it. The task hint names both routes on purpose: the
+  // obvious one is the button, but most tasks in this app arrive from the chat,
+  // and a user who only ever sees an empty list has no way to guess that.
+  'empty.notes.title': { en: 'No notes yet', zh: '还没有笔记', ja: 'ノートはまだありません' },
+  'empty.notes.hint': {
+    en: 'Notes you write here are searchable by the assistant, so it can quote them back later.',
+    zh: '写在这里的笔记，助手可以检索到，之后能引用给你。',
+    ja: 'ここに書いたノートはアシスタントが検索でき、後で引用できます。',
+  },
+  'empty.notes.action': { en: 'New note', zh: '新建笔记', ja: '新規ノート' },
+
+  'empty.tasks.title': { en: 'No tasks yet', zh: '还没有任务', ja: 'タスクはまだありません' },
+  'empty.tasks.hint': {
+    en: 'Create one here, or just tell the assistant what needs doing and it will file it.',
+    zh: '可以在这里新建，也可以直接告诉助手要做什么，它会替你建好。',
+    ja: 'ここで作成するか、アシスタントにやることを伝えれば登録されます。',
+  },
+  'empty.tasks.action': { en: 'New task', zh: '新建任务', ja: '新規タスク' },
+
+  'empty.reports.title': { en: 'No reports yet', zh: '还没有报告', ja: 'レポートはまだありません' },
+  'empty.reports.hint': {
+    en: 'Reports are for writing up where things stand — daily, weekly, or at the end of a piece of work.',
+    zh: '报告用来写清当前进展 —— 日报、周报，或一件工作结束时的小结。',
+    ja: 'レポートは進捗を書き残すためのもの — 日次・週次、または作業の区切りに。',
+  },
+  'empty.reports.action': { en: 'New report', zh: '新建报告', ja: '新規レポート' },
+
+  // Only shown when a mailbox *is* configured and simply has nothing in it —
+  // the unconfigured case has its own screen in EmailList with a settings link.
+  'empty.email.title': { en: 'No mail yet', zh: '还没有邮件', ja: 'メールはまだありません' },
+  'empty.email.hint': {
+    en: 'Your mailbox is connected but nothing has been fetched yet. Sync to pull in what has arrived.',
+    zh: '邮箱已连接，但还没有取回任何邮件。同步一下就能拉取已收到的邮件。',
+    ja: 'メールボックスは接続済みですが、まだ取得していません。同期すると受信メールを取り込みます。',
+  },
+  'empty.email.action': { en: 'Sync now', zh: '立即同步', ja: '今すぐ同期' },
+  'empty.email.syncing': { en: 'Syncing…', zh: '同步中…', ja: '同期中…' },
 
   // ─── Recorder ───
   'meeting.recorder.title': { en: 'Record', zh: '录音', ja: '録音' },
@@ -2057,6 +2128,14 @@ const I18N = {
     en: '{segments} segments · {actions} action items',
     zh: '{segments} 段转写 · {actions} 个行动项',
     ja: '{segments} セグメント · アクション {actions} 件',
+  },
+  // Used instead of the string above when the meeting produced no action items.
+  // "0 action items" reads as a result the user failed to get; dropping the clause
+  // reads as a meeting that simply had nothing to assign.
+  'meeting.countsNoActions': {
+    en: '{segments} segments',
+    zh: '{segments} 段转写',
+    ja: 'セグメント {segments} 件',
   },
   'meeting.delete.title': { en: 'Delete meeting', zh: '删除会议', ja: '会議を削除' },
   'meeting.delete.message': {

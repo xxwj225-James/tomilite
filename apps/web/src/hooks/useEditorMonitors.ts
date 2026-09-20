@@ -92,8 +92,16 @@ export function useEditorMonitors({
 
   // User action monitor — tells agent what the user is doing
   // NOTE: these are NOT persisted to DB — they're ephemeral context signals for the AI agent
+  //
+  // `internal` is what keeps that promise in the UI. The signal has to stay in
+  // the messages array, because that array is exactly what useSendMessage turns
+  // into the `history` the agent reads — moving it to a separate channel would
+  // cost the agent the record of what the user did. Flagging it instead lets the
+  // renderer skip it (see the filter in MsgList) while `history` still carries it.
+  // These used to paint as 🔔 bubbles, which turned an ordinary session into a
+  // wall of "Opened Notes panel" / "Exited Notes panel".
   const notifyAgent = (text: string) => {
-    const sysMsg = { role: 'assistant' as const, text: `🔔 *${text}*` };
+    const sysMsg = { role: 'assistant' as const, text: `🔔 *${text}*`, internal: true };
     setMessages((prev) => [...prev, sysMsg]);
   };
   const notifyI18n = (key: string, params?: Record<string, string>) => {
