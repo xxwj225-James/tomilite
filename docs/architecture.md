@@ -103,25 +103,153 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 
 33 models; key tables:
 
-| Model                                                              | Purpose                                                                                                                                                                                               |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Issue`                                                            | Task management (type, status, priority, storyPoints, sortOrder...)                                                                                                                                   |
-| `Board` / `BoardColumn` / `BoardCard`                              | Kanban                                                                                                                                                                                                |
-| `Sprint` / `Comment` / `IssueChangelog`                            | Sprint planning, comments, change history                                                                                                                                                             |
-| `KnowledgePage`                                                    | Wiki/notes; `source`/`sourceId` mark machine-written rows (chat distillation) vs. user-authored                                                                                                       |
-| `PersonalNote`                                                     | Notes                                                                                                                                                                                                 |
-| `FocusSession`                                                     | Focus sessions                                                                                                                                                                                        |
-| `GitWorkDir` / `GitRepo` / `GitCommitRef` / `GitCommit`            | Git integration                                                                                                                                                                                       |
-| `SmartEmail`                                                       | Email triage (AI summary, reply draft, linked issue)                                                                                                                                                  |
-| `ApiKey`                                                           | Inbound API Key (stored as SHA-256 hash)                                                                                                                                                              |
-| `McpServer` / `McpAuditLog`                                        | MCP server config + audit                                                                                                                                                                             |
-| `AiDecisionFeedback`                                               | Self-learning feedback                                                                                                                                                                                |
-| `UserHealthSnapshot`                                               | Health history                                                                                                                                                                                        |
-| `DailyMotto`                                                       | Daily motto cache                                                                                                                                                                                     |
-| `Report`                                                           | Reports (daily/weekly)                                                                                                                                                                                |
-| `ChatSession` / `ChatMessage`                                      | Chat sessions + messages; `distillCursor`/`distillAt`/`distillMeta` are the distillation watermark + run accounting. **`updatedAt` is written in UTC here, unlike every other `localtime` timestamp** |
-| `LlmProviderMaster` / `LlmProvider` / `LlmConfig`                  | LLM configuration                                                                                                                                                                                     |
-| `SystemConfig` / `KnowledgeCache` / `Integration` / `FeedbackItem` | Misc                                                                                                                                                                                                  |
+| Model                                                              | Purpose                                                                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `Issue`                                                            | Task management (type, status, priority, storyPoints, sortOrder...)                                                 |
+| `Board` / `BoardColumn` / `BoardCard`                              | Kanban                                                                                                              |
+| `Sprint` / `Comment` / `IssueChangelog`                            | Sprint planning, comments, change history                                                                           |
+| `KnowledgePage`                                                    | Wiki/notes; `source`/`sourceId` mark machine-written rows (chat distillation) vs. user-authored                     |
+| `PersonalNote`                                                     | Notes                                                                                                               |
+| `FocusSession`                                                     | Focus sessions                                                                                                      |
+| `GitWorkDir` / `GitRepo` / `GitCommitRef` / `GitCommit`            | Git integration                                                                                                     |
+| `SmartEmail`                                                       | Email triage (AI summary, reply draft, linked issue)                                                                |
+| `ApiKey`                                                           | Inbound API Key (stored as SHA-256 hash)                                                                            |
+| `McpServer` / `McpAuditLog`                                        | MCP server config + audit                                                                                           |
+| `AiDecisionFeedback`                                               | Self-learning feedback                                                                                              |
+| `UserHealthSnapshot`                                               | Health history                                                                                                      |
+| `DailyMotto`                                                       | Daily motto cache                                                                                                   |
+| `Report`                                                           | Reports (daily/weekly)                                                                                              |
+| `ChatSession` / `ChatMessage`                                      | Chat sessions + messages; `distillCursor`/`distillAt`/`distillMeta` are the distillation watermark + run accounting |
+| `LlmProviderMaster` / `LlmProvider` / `LlmConfig`                  | LLM configuration                                                                                                   |
+| `SystemConfig` / `KnowledgeCache` / `Integration` / `FeedbackItem` | Misc                                                                                                                |
+
+### 5.1 Timestamps — which clock a stored stamp is on
+
+Every timestamp is a `String` shaped `YYYY-MM-DD HH:MM:SS`, and on the normalised tables
+that text is **UTC**. The helpers that do the reading and writing live in
+`apps/api/src/lib/dbTime.ts` (API) and `apps/web/src/lib/dbTime.ts` (renderer); the
+invariant is:
+
+> **Every write goes through `utcStamp()`. No row is born from a column default.**
+
+The second half is the load-bearing one. `schema.prisma` still declares
+`@default(dbgenerated("(datetime('now','localtime'))"))` on most models, because changing a
+column default in SQLite requires a full table rebuild — so a `create()` that forgets its
+timestamps silently reintroduces a second clock, and the stored text cannot tell you which
+one wrote it.
+
+**What the bug looked like.** Two clocks fed the same columns: the localtime default and
+~26 inline `new Date().toISOString()` call sites. Nothing in the stored text says which
+one wrote a given row, so the conversion rests on two discriminators:
+
+- `updatedAt = createdAt` ⇒ no update ever ran ⇒ the default wrote both ⇒ localtime. Its
+  converse is equally firm: a real update is never earlier than its creation, so
+  `updatedAt < createdAt` ⇒ that stamp is already UTC.
+- `updatedAt > datetime('now', '+1 minute')` ⇒ a future stamp cannot have come from a UTC
+  writer on this machine ⇒ localtime. This is the case the first discriminator misses: an
+  update path that also wrote local time bumps the stamp _past_ its created value, so
+  equality alone reads it as untouched-and-already-UTC and leaves it 8h in the future. It
+  was found by asserting on every timestamp column in rehearsal, not by reading the code.
+
+What neither covers is a second stamp whose distance from creation is positive but smaller
+than the UTC offset — a localtime edit minutes later and a UTC edit hours later are the
+same text. Those rows are left as-is and counted in the log rather than guessed at (4 rows
+in the dev database).
+
+Note what the _obvious_ test would have missed: `WHERE stamp > datetime('now')` only finds
+a localtime row while the row is younger than the UTC offset, so it sees recent bad writes
+and no old ones. It is a probe, never a proof.
+
+**Scope, measured.** Thirteen tables were converted. `Issue`, `ChatSession`,
+`KnowledgePage` and `McpServer` carry a mixed `createdAt`/`updatedAt` pair; `Report` is the
+same shape with the second stamp named `generatedAt`. Seven more have a `createdAt` only
+the default ever wrote, so converting all of it is the whole fix: `SmartEmail` 959,
+`GitCommit` 407, `ChatMessage` 172, `KnowledgeCache` 99, `UserHealthSnapshot` 67,
+`McpAuditLog` 14, `AiDecisionFeedback` 1. `FocusSession.startTime` (17430 rows) and
+`ChatSession.distillCursor` (7, a message stamp copied verbatim) are the remaining singles.
+
+Four of those are not display nuances — they drive a cache or a window compared against a
+UTC cutoff, so the 8h skew had silently widened each one: the health-snapshot cache TTL
+(`routers/health.ts`), the knowledge cache TTL (`routers/knowledge.ts`), the self-learning
+feedback window (`agent/core/selfLearning.ts`) and the MCP pending-approval staleness
+filter (`routers/mcp.ts`). The same skew also held the report archiver 8h late
+(`server.ts`) and put the git day-boundary filter on the wrong window (`routers/git.ts`,
+`agent/tools/gitTools.ts`).
+
+Two _display_ defects came out of the same sweep, both from slicing stored text instead of
+parsing it. `SmartEmail.date` holds the email's own `Date:` header normalised to UTC, and
+both the list and the detail view printed `substring(5, 16)` of it — every arrival time read
+8 hours early at UTC+8. `ApiKey.createdAt` (local, from the default) and `ApiKey.expiresAt`
+(an ISO `Z` instant) shared one line, each sliced the same way, so one of them was always
+the wrong day.
+
+`GitCommit.timestamp` is a _shape_ fix rather than a clock fix: every value was already an
+ISO string carrying its own `+08:00`, so it named a correct instant, but string comparisons
+against it could not line up with the naive-UTC columns. It is normalised under a `LIKE`
+guard that only matches offset-bearing text, which makes it idempotent by construction and
+keeps a naive value from being shifted the wrong way. All 407 rows still resolve to the
+identical instant.
+
+**Why the migration is not a versioned one.** `lib/clockUtc.ts` follows
+`lib/ftsIndex.ts`: its own `SystemConfig` stamp (`clockVersion`, `issueDefaultVersion`),
+written **inside** the transaction that did the work, re-evaluated on every boot if it is
+absent, and it never touches `SCHEMA_VERSION`. The conversion is not idempotent — nothing
+in the text says whether it already ran — so the stamp is written before `COMMIT`;
+a process that died in between would otherwise shift every stamp a second time, twice.
+
+It also refuses to run at all unless the database still shows the old default
+(`Issue`'s DDL containing `localtime`). A fresh install is already UTC by construction —
+`ensureSchema()` pushes the schema into the empty file _before_ `ensureSearchIndexes()`
+creates `global_fts`, so it gets the UTC defaults and its rows are all explicit — and
+running the conversion there would be the bug it exists to fix.
+
+**`Issue` gets UTC column defaults** (the one table this project changed): its stamps drive
+the dates the task board renders, so a mixed column there is a visibly wrong day. SQLite
+cannot `ALTER` a default, so `ensureIssueClock()` rebuilds the table from the **live** DDL
+in `sqlite_master` with the two defaults swapped — never from a literal copy of the
+schema's 30 columns, which would rot. Two things a naive rebuild gets wrong and this one
+handles: the seven inbound foreign keys (values saved, nulled, and restored around the
+swap, so the result does not depend on `PRAGMA foreign_keys` having taken effect — a pragma
+set inside a transaction is silently ignored) and the `fts_issue_i/u/d` triggers, which
+`DROP TABLE` takes with it and only a full index rebuild would restore.
+
+**Leaving a table on localtime.** Every remaining timestamp column was measured as
+_uniformly_ local — writer, default and reader all agree, so the column is self-consistent
+and nothing renders it wrongly. `Meeting` is the clearest case: its stamps come from
+`nowStr()` (local), its audio-retention cutoff is computed in local time to match
+(`lib/meeting/retention.ts`), and its list prints `.slice(0, 16)` of the raw text. Same for
+`ApiKey.createdAt`. Converting one of these without flipping every writer is what _creates_
+a mixed column, so they are left alone deliberately.
+
+The defect was never "a column is not UTC" — it was **two clocks in one column**, or a
+reader that assumes the wrong one. That is the test to apply before touching any of these.
+
+### 5.2 The task set — what counts as a task
+
+`apps/api/src/lib/taskScope.ts` is the single definition:
+
+```ts
+type !== 'email' && status ∈ ['todo', 'in_progress', 'done', 'in_review']
+```
+
+Two shapes of the same rule live in that one file: `isTask(row)` for callers filtering in
+JS, and `TASK_WHERE` for callers filtering or counting in SQL. Eleven call sites use it —
+the board, the Home stat card, the health score, `mcp.get_project_stats`,
+`agentRouter.getProjectStats`, the search prompt, standup, and the agent's `get_stats` and
+`list_issues` tools. The `in_review` → `inProgress` folding is part of the definition
+rather than something each caller re-decides.
+
+Two failure modes this prevents, both of which produce plausible-looking wrong numbers
+rather than an error:
+
+- **Counting the table instead of the task set.** `Issue` rows with `type: 'email'` are
+  mailbox items the Email panel mirrors, and `cancelled` has no column on the board. The
+  raw table was 144 where the board's total was 109 — the agent answered "144 tasks,
+  63 done" to a user looking at a card that said 109 and 54.
+- **Counting a page instead of the set.** `issue.list` is capped at 200 rows. Any badge
+  derived from the fetched array silently under-reports once the table passes that, so the
+  Home panel and the task board would disagree again the moment they fetched differently.
+  `issue.taskCounts` counts in SQL over the whole set and is what the tab badges render.
 
 ---
 
@@ -147,6 +275,7 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 - **Conversation is the main UI** — chat with a session sidebar and an always-visible bottom menu bar (`MenuNav`)
 - **Menu** — 9 panels: Tasks / Notes / Home / Email / Reports / MCP Approve / Feedback / Settings / About
 - **Right slide-in panel** — chat area shrinks but stays usable; panels lazy-mount in `ContentPanel`
+  - **A panel mounts once and is then hidden, never unmounted** — so `useEffect(…, [])` inside a panel is "once per app run", not "once per visit". A panel that must show fresh data keys off the `active` prop (`panel === '<id>'`), which goes false→true on every return and is the only remount-shaped signal the keep-alive route gives. `EmailPanel` polls on it, `MeetingPanel` holds its SSE stream open only while it is true, and `HomePanel` re-reads `health.taskStats` on it — before that, the Home task card was fetched in a `[lang]` effect and showed whatever the numbers were when the app started.
 - **SSE streaming output** — renders token by token, typewriter effect
 - **Session sidebar** — session list with rename/delete + token usage meter (`SessionSidebar`)
 - **Rich result cards** — a tool result renders as a card (`apps/web/src/types/chat.ts`), e.g. a task with 👁/✏️/🗑 actions. When one turn creates **several** tasks, they collapse into a single `task_batch` card: one table, one row per task, each row's buttons acting on that row only (`TaskBatchCard.tsx`). Rows carry the card object itself into the existing `tl-open-card` / `tl-edit-card` / `tl-delete-card` events, so the action layer needed no change. A batch card is only emitted for ≥2 tasks — a single task keeps the old single-card rendering, and old persisted rows parse unchanged
@@ -213,22 +342,32 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
   one-time `VACUUM` (deferred 120 s past `listen()`) reclaims the freed pages
 
 > **Why the rebuild is not a versioned migration:** `ensureSchema()`'s migration loop
-> treats a failure as non-fatal and then stamps `schemaVersion` on **both** the success and
-> the failure branch (`server.ts:781-793`), so a failed migration is never retried, and
-> there is no pre-migration DB backup. A rebuild that half-applied there would leave the
-> index broken permanently. `ensureSearchIndexes()` instead stamps its own `ftsVersion`
-> only after the indexed row count reconciles with the source tables, so any failure is
-> re-evaluated and retried on the next boot. It does not touch `SCHEMA_VERSION` at all.
+> treats a failure as non-fatal and — until v24 — stamped `schemaVersion` on **both** the
+> success and the failure branch, so a failed migration was never retried, and there is no
+> pre-migration DB backup. A rebuild that half-applied there would leave the index broken
+> permanently. `ensureSearchIndexes()` instead stamps its own `ftsVersion` only after the
+> indexed row count reconciles with the source tables, so any failure is re-evaluated and
+> retried on the next boot. It does not touch `SCHEMA_VERSION` at all. `lib/clockUtc.ts`
+> (§5.1) is the second user of this pattern, for the same reason.
 
 > **`db push` and the index:** Prisma does not know about `global_fts` or its five shadow
-> tables, so a `db push` proposes dropping all six and — because `server.ts:761` passes no
+> tables, so a `db push` proposes dropping all six and — because `server.ts:837` passes no
 > `--accept-data-loss` — is _refused_. A refused push changes nothing, so the index is
 > never at risk; `ensureSearchIndexes()` runs after `ensureSchema()` and self-heals
 > regardless. The consequence that does matter is on the schema side: `db push` only runs
 > when `SCHEMA_VERSION` is bumped, and it is refused whenever the index exists, so the
-> additive `migrations[]` array (`server.ts:554`) is what actually delivers schema changes
+> additive `migrations[]` array (`server.ts:602`) is what actually delivers schema changes
 > to existing installs. A `schema.prisma` change with no matching entry there never
-> reaches them
+> reaches them.
+>
+> **Since v24 this is explicit rather than accidental.** `ensureSchema()` checks for
+> `global_fts` first (`server.ts:799`) and skips `db push` outright on a database that has
+> it, logging that the migration array and the self-healing functions are the delivery
+> path. Previously it ran the doomed push on every launch of every existing install and
+> then stamped `schemaVersion` anyway — 60 wasted seconds and a permanent silent no-op that
+> looked exactly like success. A failed push now leaves the version **unstamped** and
+> records `SystemConfig.schemaPushError`, so it is retried and visible instead of being
+> swallowed (`server.ts:859-870`)
 
 ### 6.4.1 Semantic search (local embeddings)
 

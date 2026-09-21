@@ -1,4 +1,5 @@
 import { prisma } from '@tomilite/database';
+import { utcStamp } from '../lib/dbTime.js';
 
 export const emailToolDefs = [
   {
@@ -97,7 +98,15 @@ export async function executeEmailTool(tool: string, args: Record<string, any>) 
         where,
         take: args.limit || 10,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, subject: true, fromAddr: true, category: true, summary: true, replyDraft: true, date: true },
+        select: {
+          id: true,
+          subject: true,
+          fromAddr: true,
+          category: true,
+          summary: true,
+          replyDraft: true,
+          date: true,
+        },
       });
     }
     case 'edit_email_reply': {
@@ -110,7 +119,13 @@ export async function executeEmailTool(tool: string, args: Record<string, any>) 
     case 'send_email_reply': {
       const email = await prisma.smartEmail.findUnique({ where: { id: args.emailId } });
       if (!email) return { ok: false, error: 'Email not found' };
-      return { ok: true, emailId: args.emailId, subject: email.subject, replyDraft: email.replyDraft, readyToSend: true };
+      return {
+        ok: true,
+        emailId: args.emailId,
+        subject: email.subject,
+        replyDraft: email.replyDraft,
+        readyToSend: true,
+      };
     }
     case 'read_email_original': {
       const email = await prisma.smartEmail.findUnique({
@@ -120,13 +135,14 @@ export async function executeEmailTool(tool: string, args: Record<string, any>) 
       return { subject: email?.subject, body: email?.bodySnapshot || '(No body stored)' };
     }
     case 'dismiss_email': {
-      const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const now = utcStamp();
       await prisma.smartEmail.update({
         where: { id: args.emailId },
         data: { isProcessed: true, processedAt: now },
       });
       const email = await prisma.smartEmail.findUnique({ where: { id: args.emailId }, select: { issueId: true } });
-      if (email?.issueId) await prisma.issue.update({ where: { id: email.issueId }, data: { status: 'done' } });
+      if (email?.issueId)
+        await prisma.issue.update({ where: { id: email.issueId }, data: { status: 'done', updatedAt: now } });
       return { ok: true, dismissed: true };
     }
     case 'delete_email': {

@@ -44,6 +44,8 @@ async function trpcMutate(route: string, input: any): Promise<any> {
 export const api = {
   issue: {
     list: (projectId: string) => trpcCall('issue.list', { projectId }),
+    /** Tab badges — counted server-side over the whole set, not over a page of rows. */
+    taskCounts: (projectId: string) => trpcCall('issue.taskCounts', { projectId }),
     byId: (id: string) => trpcCall('issue.byId', { id }),
     create: (data: any) => trpcMutate('issue.create', data),
     update: (data: any) => trpcMutate('issue.update', data),
@@ -172,7 +174,7 @@ export const api = {
     get: (id: string, segmentLimit = 200, segmentOffset = 0) =>
       trpcCall('meeting.get', { id, segmentLimit, segmentOffset }),
     stats: () => trpcCall('meeting.stats'),
-    create: (data: { title?: string; source?: string; lang?: string; whisperModel?: string; retentionDays?: number }) =>
+    create: (data: { title?: string; source?: string; lang?: string; retentionDays?: number }) =>
       trpcMutate('meeting.create', data),
     finalizeRecording: (id: string, autoTranscribe = true, durationMs?: number) =>
       trpcMutate('meeting.finalizeRecording', { id, autoTranscribe, durationMs }),
@@ -209,6 +211,7 @@ export const api = {
     deleteModel: (name: string) => trpcMutate('meeting.deleteModel', { name }),
     consent: () => trpcCall('meeting.consent'),
     acknowledgeConsent: () => trpcMutate('meeting.acknowledgeConsent', {}),
+    resetConsent: () => trpcMutate('meeting.resetConsent', {}),
   },
   report: {
     list: (limit?: number) => trpcCall('report.list', { limit: limit || 50 }),

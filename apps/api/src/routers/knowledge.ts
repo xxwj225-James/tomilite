@@ -2,6 +2,7 @@ import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { t } from '../lib/i18n.js';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
+import { utcStamp } from '../lib/dbTime.js';
 
 export const knowledgeRouter = router({
   generate: publicProcedure
@@ -41,10 +42,11 @@ export const knowledgeRouter = router({
         .toString('base64')
         .substring(0, 32);
 
-      // Return cached if same data + same lang + within 2 hours (matching Health pattern)
+      // Return cached if same data + same lang + within 2 hours (matching Health pattern).
+      // The cutoff is a UTC stamp because the column is UTC — see lib/dbTime.ts.
       if (!input.force) {
         try {
-          const twoHoursAgo = new Date(Date.now() - 2 * 3600000).toISOString().replace('T', ' ').substring(0, 19);
+          const twoHoursAgo = utcStamp(new Date(Date.now() - 2 * 3600000));
           const cached = await prisma.knowledgeCache.findFirst({
             where: { createdAt: { gte: twoHoursAgo }, lang: input.lang, tasksHash: hash },
             orderBy: { createdAt: 'desc' },
@@ -139,7 +141,7 @@ ${hint}`;
       }
 
       // Cache result (like Health: store lang column)
-      const now2 = new Date().toLocaleString('sv-SE').replace('T', ' ').substring(0, 19);
+      const now2 = utcStamp();
       try {
         await prisma.knowledgeCache.create({ data: { content, tasksHash: hash, lang: input.lang, createdAt: now2 } });
       } catch {}

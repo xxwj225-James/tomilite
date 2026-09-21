@@ -24,7 +24,10 @@ import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API = 'http://localhost:3192';
-const REPO = join(__dirname, '..', '..', '..', '..');
+// <repo>/.claude/skills/run-tomilite → three levels up. Four landed in the home
+// directory, so `build` ran `npm run pack` where there is no such script and
+// `launch` looked for dist-electron outside the repo.
+const REPO = join(__dirname, '..', '..', '..');
 
 // ─── Helpers ───
 
@@ -51,7 +54,8 @@ async function build(debug = false) {
   const script = debug ? 'pack:debug' : 'pack';
   console.log(`[build] running npm run ${script}...`);
   execSync(`npm run ${script}`, { cwd: REPO, stdio: 'inherit' });
-  const installer = join(REPO, 'dist-electron', 'TomiLite-Setup-1.0.0.exe');
+  const version = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')).version;
+  const installer = join(REPO, 'dist-electron', `TomiLite-Setup-${version}.exe`);
   console.log(`[build] installer: ${installer}`);
   return installer;
 }
@@ -64,7 +68,13 @@ async function launch() {
     process.exit(1);
   }
   console.log(`[launch] starting ${exe}...`);
-  const proc = spawn(exe, [], { detached: true, stdio: 'ignore' });
+  // The Electron binary runs as plain Node when ELECTRON_RUN_AS_NODE is set, which
+  // some shells export. Inherited, it makes the app exit before the window or the API
+  // server exists — and `launch` then fails with "API did not start" rather than the
+  // real reason.
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const proc = spawn(exe, [], { detached: true, stdio: 'ignore', env });
   proc.unref();
   console.log('[launch] pid:', proc.pid);
   // Wait for API

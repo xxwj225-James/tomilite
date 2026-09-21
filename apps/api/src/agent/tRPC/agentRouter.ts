@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../../trpc.js';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../../lib/gateway.js';
+import { isTask } from '../../lib/taskScope.js';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
 /** Non-streaming chat, board stats, project stats, LLM config status, intent classification */
@@ -103,7 +104,8 @@ export const agentRouter = router({
   }),
 
   getProjectStats: publicProcedure.query(async () => {
-    const issues = await prisma.issue.findMany({ where: { projectId: DEFAULT_PROJECT_ID } });
+    // Same set Home and the task board count — see lib/taskScope.ts.
+    const issues = (await prisma.issue.findMany({ where: { projectId: DEFAULT_PROJECT_ID } })).filter(isTask);
     return {
       total: issues.length,
       todo: issues.filter((i) => i.status === 'todo').length,

@@ -1,16 +1,27 @@
 import { prisma } from '@tomilite/database';
+import { utcStamp } from '../../lib/dbTime.js';
+
+// The cutoffs here are UTC stamps, matching how the column is stored. `toISOString()`
+// yields `2026-09-20T05:34:23.123Z` — a different shape from the column's
+// `2026-09-20 05:34:23`, so the text compare read the separator at index 10 (space
+// against `T`) and sorted every same-day row to the wrong side of the cutoff. See
+// lib/dbTime.ts.
+const DAY_MS = 86400000;
 
 /** Retrieve past mistakes to avoid (REJECT feedback from last 7 days, top 3) */
 export async function getLearnHint(): Promise<string> {
   try {
     const lessons = await prisma.aiDecisionFeedback.findMany({
-      where: { humanAction: 'REJECT', createdAt: { gte: new Date(Date.now() - 7 * 86400000).toISOString() } },
-      orderBy: { createdAt: 'desc' }, take: 3,
+      where: { humanAction: 'REJECT', createdAt: { gte: utcStamp(new Date(Date.now() - 7 * DAY_MS)) } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
     });
     if (lessons.length > 0) {
-      return `\n📚 PAST MISTAKES TO AVOID:\n${lessons.map(l => `- ${l.featureType}: you said "${l.aiOutput?.substring(0, 80)}" → user REJECTED`).join('\n')}`;
+      return `\n📚 PAST MISTAKES TO AVOID:\n${lessons.map((l) => `- ${l.featureType}: you said "${l.aiOutput?.substring(0, 80)}" → user REJECTED`).join('\n')}`;
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
   return '';
 }
 
@@ -18,7 +29,7 @@ export async function getLearnHint(): Promise<string> {
 export async function getPreferenceHint(): Promise<string> {
   try {
     const recent = await prisma.aiDecisionFeedback.findMany({
-      where: { humanAction: 'ACCEPT', createdAt: { gte: new Date(Date.now() - 30 * 86400000).toISOString() } },
+      where: { humanAction: 'ACCEPT', createdAt: { gte: utcStamp(new Date(Date.now() - 30 * DAY_MS)) } },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
@@ -35,6 +46,8 @@ export async function getPreferenceHint(): Promise<string> {
       });
       if (hints.length > 0) return `\n📚 Learned preferences (user has accepted these):\n${hints.join('\n')}\n`;
     }
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
   return '';
 }

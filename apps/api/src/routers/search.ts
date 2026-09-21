@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../lib/gateway';
+import { isTask } from '../lib/taskScope.js';
 import { webSearch } from '../agent/tools/searchTools.js';
 import { ftsTerms, toFtsMatch, unsearchableTerms } from '../lib/fts.js';
 
@@ -44,10 +45,14 @@ async function fallbackSearch(q: string, limit: number) {
 
 export const searchRouter = router({
   knowledgeMap: publicProcedure.query(async () => {
-    const issues = await prisma.issue.findMany({
-      where: { projectId: 'proj-default' },
-      orderBy: { createdAt: 'desc' },
-    });
+    // Mirrored emails and statuses with no place on the board are not tasks, so the
+    // count in the prompt matches the one the user sees. See lib/taskScope.ts.
+    const issues = (
+      await prisma.issue.findMany({
+        where: { projectId: 'proj-default' },
+        orderBy: { createdAt: 'desc' },
+      })
+    ).filter(isTask);
     const pages = await prisma.knowledgePage.findMany({
       where: { projectId: 'proj-default' },
       orderBy: { updatedAt: 'desc' },

@@ -16,6 +16,25 @@ The original plan proposed a three-column Kanban with email cards and a notifica
 - The **IN_PROGRESS tab includes `in_review`** issues (`!['in_progress', 'in_review'].includes(status)` filter).
 - Tabs filter the existing flat, sortable table (sort by #/Title/Priority/Type/Created/Due/Updated) — no Kanban columns.
 - **No notification bar.** Unprocessed-email count appears as a badge on the sidebar Email menu instead (`MenuNav.tsx` `notif-badge`).
+- **The tab badges are counted by the server over the whole set, not over the page of rows on screen.** `issue.list` returns at most 200 rows, so a badge derived from the fetched array silently under-reports the moment the table grows past that — the numbers would still look plausible. `issue.taskCounts` counts in SQL and returns `{ total, todo, inProgress, done }`; `TasksList` renders that and shows nothing (not a zero) until it arrives.
+
+### 1a. One definition of "a task"
+
+`apps/api/src/lib/taskScope.ts` is the single source of that rule:
+
+```ts
+type !== 'email' && status ∈ ['todo', 'in_progress', 'in_review', 'done']
+```
+
+It is expressed twice on purpose — `isTask(row)` for callers working in JS, and `TASK_WHERE` for callers that must filter or count in SQL. They are adjacent in one file so a future change to the rule has one obvious place to land. The `in_review` → `inProgress` folding is part of the same definition, so every counter that reports a four-way split reports the same four numbers as the board.
+
+The callers: `issue.list`, `issue.taskCounts`, `health.personalHealth`, `health.taskStats`, `mcp.get_project_stats`, `agentRouter.getProjectStats`, `search.knowledgeMap` (the count injected into the prompt), `standup.gatherEveningData`, `standup.getMorningBrief`, and the agent's own `issueTools.getStats` and `issueTools.listIssues`.
+
+The agent's `listIssues` was the last caller filtering on something else (`args.status` alone), which made `list_issues` with no status return `type: 'email'` rows — and because its projection carries no `type` field, the model could not tell a newsletter from a task even in principle. It now spreads `TASK_WHERE` and lets an explicit `status` override the four-status union only; the type clause always applies. `list_issues`'s `status` is an enum of the four statuses, so nothing legitimate was cut by narrowing it.
+
+> `cancelled` is deliberately **not** a task status. A cancelled row is excluded from every count; it is not "todo" and it is not "done".
+
+> `get_issue` is deliberately **left open** on both branches. By number it is an identity lookup — `TL-57` either exists or does not, and answering "not found" for a row that is there would be worse than returning it. By `query` it returns `type`, so the model can see what it found.
 
 ### 2. No Email Cards in the Task List
 

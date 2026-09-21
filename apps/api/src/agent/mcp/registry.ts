@@ -2,6 +2,7 @@
 
 import { prisma } from '@tomilite/database';
 import { decrypt } from '../../lib/crypto.js';
+import { utcStamp } from '../../lib/dbTime.js';
 import { createMCPClient } from './client.js';
 import { agentLog } from '../utils/logger.js';
 import type { McpToolInfo, TransportMode } from './types.js';
@@ -29,19 +30,24 @@ class MCPRegistry {
     // Check if any cached entry is stale
     let needsRefresh = false;
     for (const [, entry] of this.cache) {
-      if (now - entry.cachedAt > TTL_MS) { needsRefresh = true; break; }
+      if (now - entry.cachedAt > TTL_MS) {
+        needsRefresh = true;
+        break;
+      }
     }
 
     // Also check for new/removed servers by loading from DB
     if (!needsRefresh) {
       try {
         const servers = await prisma.mcpServer.findMany({ where: { enabled: true }, select: { id: true } });
-        const dbIds = new Set(servers.map(s => s.id));
+        const dbIds = new Set(servers.map((s) => s.id));
         const cacheIds = new Set(this.cache.keys());
-        if (dbIds.size !== cacheIds.size || [...dbIds].some(id => !cacheIds.has(id))) {
+        if (dbIds.size !== cacheIds.size || [...dbIds].some((id) => !cacheIds.has(id))) {
           needsRefresh = true;
         }
-      } catch { /* DB error — keep cache */ }
+      } catch {
+        /* DB error — keep cache */
+      }
     }
 
     if (needsRefresh && !this.refreshing) {
@@ -86,7 +92,7 @@ class MCPRegistry {
       return;
     }
 
-    const dbIds = new Set(servers.map(s => s.id));
+    const dbIds = new Set(servers.map((s) => s.id));
 
     // Remove entries for servers that no longer exist or are disabled
     for (const [id] of this.cache) {
@@ -103,7 +109,11 @@ class MCPRegistry {
         try {
           let apiKey: string | undefined;
           if (srv.apiKey) {
-            try { apiKey = await decrypt(srv.apiKey); } catch { apiKey = srv.apiKey; }
+            try {
+              apiKey = await decrypt(srv.apiKey);
+            } catch {
+              apiKey = srv.apiKey;
+            }
           }
 
           let headers: Record<string, string> = {};
@@ -112,7 +122,11 @@ class MCPRegistry {
               const decrypted = await decrypt(srv.headers);
               headers = JSON.parse(decrypted);
             } catch {
-              try { headers = JSON.parse(srv.headers); } catch { /* not JSON */ }
+              try {
+                headers = JSON.parse(srv.headers);
+              } catch {
+                /* not JSON */
+              }
             }
           }
 
@@ -126,7 +140,9 @@ class MCPRegistry {
 
           const tools = await Promise.race([
             client.listTools(),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Discovery timeout')), DISCOVERY_TIMEOUT_MS)),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Discovery timeout')), DISCOVERY_TIMEOUT_MS),
+            ),
           ]);
 
           this.cache.set(srv.id, {
@@ -138,16 +154,18 @@ class MCPRegistry {
           });
 
           // Persist state back to DB (non-blocking)
-          prisma.mcpServer.update({
-            where: { id: srv.id },
-            data: {
-              status: 'online',
-              toolCount: tools.length,
-              toolsJson: JSON.stringify(tools),
-              lastConnectedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-              lastError: null,
-            },
-          }).catch(() => {});
+          prisma.mcpServer
+            .update({
+              where: { id: srv.id },
+              data: {
+                status: 'online',
+                toolCount: tools.length,
+                toolsJson: JSON.stringify(tools),
+                lastConnectedAt: utcStamp(),
+                lastError: null,
+              },
+            })
+            .catch(() => {});
 
           agentLog('[MCPRegistry]', srv.name, `${tools.length} tools`);
         } catch (e: any) {
@@ -157,7 +175,11 @@ class MCPRegistry {
           // Use cached tools if available (graceful degradation)
           const fallbackTools: McpToolInfo[] = existing?.tools || [];
           if (srv.toolsJson && fallbackTools.length === 0) {
-            try { fallbackTools.push(...JSON.parse(srv.toolsJson)); } catch { /* ignore */ }
+            try {
+              fallbackTools.push(...JSON.parse(srv.toolsJson));
+            } catch {
+              /* ignore */
+            }
           }
 
           this.cache.set(srv.id, {
@@ -169,10 +191,12 @@ class MCPRegistry {
             cachedAt: Date.now(),
           });
 
-          prisma.mcpServer.update({
-            where: { id: srv.id },
-            data: { status: 'offline', lastError: errorMsg },
-          }).catch(() => {});
+          prisma.mcpServer
+            .update({
+              where: { id: srv.id },
+              data: { status: 'offline', lastError: errorMsg },
+            })
+            .catch(() => {});
         }
       }),
     );
@@ -194,7 +218,11 @@ class MCPRegistry {
 
       let apiKey: string | undefined;
       if (srv.apiKey) {
-        try { apiKey = await decrypt(srv.apiKey); } catch { apiKey = srv.apiKey; }
+        try {
+          apiKey = await decrypt(srv.apiKey);
+        } catch {
+          apiKey = srv.apiKey;
+        }
       }
 
       let headers: Record<string, string> = {};
@@ -202,7 +230,9 @@ class MCPRegistry {
         try {
           const decrypted = await decrypt(srv.headers);
           headers = JSON.parse(decrypted);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       const client = createMCPClient({
@@ -230,7 +260,7 @@ class MCPRegistry {
           status: 'online',
           toolCount: tools.length,
           toolsJson: JSON.stringify(tools),
-          lastConnectedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          lastConnectedAt: utcStamp(),
           lastError: null,
         },
       });
@@ -244,10 +274,12 @@ class MCPRegistry {
   /** Disconnect a server — evict cache, mark offline */
   async disconnect(serverId: string): Promise<void> {
     this.cache.delete(serverId);
-    await prisma.mcpServer.update({
-      where: { id: serverId },
-      data: { status: 'offline' },
-    }).catch(() => {});
+    await prisma.mcpServer
+      .update({
+        where: { id: serverId },
+        data: { status: 'offline' },
+      })
+      .catch(() => {});
   }
 
   /** Refresh tools for a single server */

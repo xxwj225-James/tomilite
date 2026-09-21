@@ -19,6 +19,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, appendF
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { prisma } from '@tomilite/database';
+import { parseUtc, utcStamp } from './dbTime.js';
 
 const DATA_DIR = process.env.TL_USER_DATA || join(homedir(), '.tomilite');
 const BUFFER_FILE = join(DATA_DIR, 'telemetry.ndjson');
@@ -29,24 +30,46 @@ const MAX_SEND_EVENTS = 300; // events per request
 const CACHE_TTL_MS = 30_000; // consent cache lifetime
 const CONSENT_KEY = 'telemetry.consent';
 const INSTALL_KEY = 'telemetry.installId';
-const LAST_DAILY_KEY = 'telemetry.lastDaily'; // localtime string 'YYYY-MM-DD HH:MM:SS'
-const LAST_FLUSH_KEY = 'telemetry.lastFlush'; // ISO timestamp
+const LAST_DAILY_KEY = 'telemetry.lastDaily'; // UTC stamp in the DB's own shape
+const LAST_FLUSH_KEY = 'telemetry.lastFlush'; // ISO timestamp, local to this module
 const BEACON_IF_IDLE_MS = 36 * 3600_000; // send an active-install beacon at least ~daily
 
 let cachedConsent: boolean | null = null;
 let cachedAt = 0;
 let flushing = false;
 
+/**
+ * The flush cursor, in the shape the database stores timestamps.
+ *
+ * `buildDailyCounts` hands this straight to `{ gt: since }` filters over ten columns,
+ * every one of them a naive-UTC stamp (`lib/dbTime.ts`). Local time here was 8h ahead of
+ * them, which dropped everything counted in the last 8 hours; `toISOString()` was a
+ * third shape again. It is written back to `telemetry.lastDaily` between flushes, so it
+ * has to stay in the column's shape rather than being converted at the call site.
+ */
 function nowLocal(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return utcStamp();
 }
 
 function localDay(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * The stored flush cursor, converted if it predates the move to UTC.
+ *
+ * A cursor written while this was localtime sits ahead of now when read as UTC, and no
+ * cursor saved after the change can be — that is the whole test. Converted here rather
+ * than by a migration, because it is one config value and one flush's counts, and
+ * `parseUtc` already reads a naive stamp as the localtime it was.
+ */
+async function readCursor(): Promise<string> {
+  const stored = await getCfg(LAST_DAILY_KEY);
+  if (!stored) return nowLocal();
+  if (stored > nowLocal()) return utcStamp(parseUtc(stored) ?? new Date());
+  return stored;
 }
 
 async function getCfg(key: string): Promise<string | null> {
@@ -237,7 +260,7 @@ export async function flush() {
   flushing = true;
   try {
     const events = readEvents();
-    const since = (await getCfg(LAST_DAILY_KEY)) || nowLocal();
+    const since = await readCursor();
     const lastFlushIso = await getCfg(LAST_FLUSH_KEY);
     const idleMs = lastFlushIso ? Date.now() - new Date(lastFlushIso).getTime() : Number.POSITIVE_INFINITY;
     const counts = await buildDailyCounts(since);

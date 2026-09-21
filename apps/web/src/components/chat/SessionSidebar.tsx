@@ -1,25 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { t } from '@/lib/i18n';
+import { parseDbUtc } from '@/lib/dbTime';
 import { useLang } from '@/stores/LangContext';
 import type { Lang } from '@/stores/languageStore';
 
 type SessionRow = { id: string; title: string; tokenPercent: number; updatedAt?: string };
 
-// `updatedAt` is a SQLite-style stamp ("YYYY-MM-DD HH:MM:SS") carrying **no zone**,
-// and it is UTC: chat.ts writes it with toISOString() in both addMessage and
-// renameSession, and chatDistill.ts documents the same convention. Parsing it as
-// local — which is what a bare `new Date("...T...")` does — reads as "yesterday"
-// for anything done before the UTC offset in the morning: at UTC+8, a chat at
-// 00:30 local is stamped 16:30 the previous day. The `Z` pins it to the clock it
-// was actually written in.
+// Parsed as UTC, like every other stored stamp — see lib/dbTime.ts for why.
 //
-// The one exception is a session created and never used: createSession omits the
-// field, so it takes the column default `datetime('now','localtime')`. Such a row
-// is read here as offset-hours in the future, which still lands in 今天 — the
-// bucket it belongs in. Making the two writers agree would mean touching the
-// distillation idle check that depends on the UTC stamp, so it stays as is.
-const parseStamp = (s: string) => new Date(s.replace(' ', 'T') + 'Z').getTime();
+// This file used to carry the repo's longest note on the two-clock problem, because
+// it was where the exception bit: `createSession` passed only `title`, so a session
+// that was created and never touched took the localtime column default while every
+// other write to `updatedAt` was UTC. Such a row read as offset-hours in the future
+// and still landed in 今天, so it was left alone to avoid disturbing the distillation
+// idle check that depends on the UTC stamp. `createSession` now writes both stamps
+// explicitly, so there is one clock and no exception to document.
+const parseStamp = (s: string) => parseDbUtc(s);
 
 // Recency is the only thing that tells one session from the next once the titles
 // are generated, so it is spelled out rather than left implicit in the order.

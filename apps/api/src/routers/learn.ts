@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../lib/gateway';
+import { utcStamp } from '../lib/dbTime.js';
 
 // ═══ Agent Self-Learning — lightweight, no MQ/Celery ═══
 // Captures implicit feedback (reopen, reassign), reflects on startup,
@@ -20,14 +21,16 @@ export const learnRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      await prisma.aiDecisionFeedback.create({ data: { ...input } });
+      // Stamp it explicitly: the column default is localtime, so a row born from it
+      // would sit 8h ahead of the UTC cutoffs below and of every other inbox row.
+      await prisma.aiDecisionFeedback.create({ data: { ...input, createdAt: utcStamp() } });
       return { captured: true };
     }),
 
   // ─── Reflect on recent feedback (called on startup or manually) ───
   reflect: publicProcedure.mutation(async () => {
     const recent = await prisma.aiDecisionFeedback.findMany({
-      where: { createdAt: { gte: new Date(Date.now() - 7 * 86400000).toISOString() } },
+      where: { createdAt: { gte: utcStamp(new Date(Date.now() - 7 * 86400000)) } },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -92,7 +95,7 @@ export const learnRouter = router({
   // ─── Get learnings for agent prompt injection ───
   getContext: publicProcedure.query(async () => {
     const recent = await prisma.aiDecisionFeedback.findMany({
-      where: { humanAction: 'REJECT', createdAt: { gte: new Date(Date.now() - 30 * 86400000).toISOString() } },
+      where: { humanAction: 'REJECT', createdAt: { gte: utcStamp(new Date(Date.now() - 30 * 86400000)) } },
       orderBy: { createdAt: 'desc' },
       take: 5,
     });

@@ -189,7 +189,10 @@ export function ContentPanel({
       <div className="panel-body">
         {mounted.has('home') && (
           <PanelBody active={panel === 'home'}>
-            <HomePanel />
+            {/* Panels are kept alive after their first visit, so "remount" is not a
+                refresh signal. `active` is: it goes false→true every time the user
+                comes back to Home. */}
+            <HomePanel active={panel === 'home'} />
           </PanelBody>
         )}
         {mounted.has('tasks') && (

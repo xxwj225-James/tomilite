@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unl
 import { join } from 'node:path';
 import { publish } from './events';
 import { ensureTmpDir, TMP_DIR } from './paths';
+import { convertScript, DEFAULT_TEXT_SCRIPT, type TextScript } from './script';
 import { whisperCliPath, whisperThreads } from './whisperBin';
 
 export interface TranscriptSegment {
@@ -83,6 +84,8 @@ export interface RunOptions {
   accurate?: boolean;
   /** Audio length, used only for the no-progress-lines fallback estimate. */
   durationMs?: number;
+  /** Which Chinese script the transcript is written in. See lib/meeting/script.ts. */
+  script?: TextScript;
 }
 
 export async function runWhisperJob(opts: RunOptions): Promise<WhisperResult> {
@@ -205,11 +208,21 @@ export async function runWhisperJob(opts: RunOptions): Promise<WhisperResult> {
   cleanupJson();
   publish(opts.meetingId, 'progress', { stage: 'transcribe', percent: 100 });
 
+  // Script conversion last, so it covers exactly what gets stored. Whisper's
+  // detected language is the authority here: with `-l auto` the requested one is
+  // 'auto' and says nothing about what was actually spoken.
+  const script = opts.script || DEFAULT_TEXT_SCRIPT;
+  const lang = parsed.language || opts.lang || '';
+  const segments = parsed.segments.map((s) => ({
+    ...s,
+    text: convertScript(s.text, lang, script),
+  }));
+
   return {
     ok: true,
-    segments: parsed.segments,
+    segments,
     language: parsed.language,
-    text: parsed.segments.map((s) => s.text).join(' '),
+    text: segments.map((s) => s.text).join(' '),
   };
 }
 

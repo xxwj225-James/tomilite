@@ -2,6 +2,8 @@ import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { t } from '../lib/i18n.js';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
+import { parseUtcMs, utcStamp } from '../lib/dbTime.js';
+import { isTask } from '../lib/taskScope.js';
 
 const DEFAULT_MORNING_TIME = '09:00';
 const DEFAULT_EVENING_TIME = '18:00';
@@ -31,30 +33,46 @@ async function gatherEveningData() {
     '-' +
     String(today.getDate()).padStart(2, '0');
 
-  // All tasks created or updated today (not just done) — exclude email-derived tasks
+  // The stamps below are UTC, so the local date string is the wrong lower bound: text
+  // compared against text, but one names a local day and the other a UTC instant, so
+  // everything written between local 00:00 and 08:00 carries the previous UTC date and
+  // fell out of "today". Local midnight, expressed as a UTC stamp, is the same shape and
+  // the same clock, which is what makes this compare mean what it looks like. See
+  // lib/dbTime.ts.
+  const midnight = new Date(today);
+  midnight.setHours(0, 0, 0, 0);
+  const todayStart = utcStamp(midnight);
+
+  // The task set, not the table: emails the Email panel mirrors in are mailbox items
+  // and `cancelled` has no column on the board. Same rule as the Home card — see
+  // lib/taskScope.ts.
   const allIssues = (
     await prisma.issue.findMany({
-      where: { projectId: 'proj-default', updatedAt: { gte: todayStr } },
+      where: { projectId: 'proj-default', updatedAt: { gte: todayStart } },
       orderBy: { updatedAt: 'desc' },
     })
-  ).filter((i) => i.type !== 'email');
+  ).filter(isTask);
   // Notes created/updated today
   const allNotes = await prisma.knowledgePage.findMany({
-    where: { updatedAt: { gte: todayStr } },
+    where: { updatedAt: { gte: todayStart } },
     orderBy: { updatedAt: 'desc' },
   });
   // Reports created/updated today
   const allReports = await prisma.report.findMany({
-    where: { generatedAt: { gte: todayStr } },
+    where: { generatedAt: { gte: todayStart } },
     orderBy: { generatedAt: 'desc' },
   });
-  // Git commits today
+  // Git commits today. `timestamp` is normalised to the same naive-UTC shape on write
+  // (`saveCommit`), so the UTC bound is right here too.
   const gitCommits = await prisma.gitCommit.findMany({
-    where: { timestamp: { gte: todayStr }, archived: false },
+    where: { timestamp: { gte: todayStart }, archived: false },
     orderBy: { timestamp: 'desc' },
     include: { repo: { select: { name: true } } },
   });
-  // Status changes
+  // Status changes. `IssueChangelog.createdAt` is the one stamp in this function that
+  // really is local (`datetime('now','localtime')`, never rewritten by clockUtc.ts), so
+  // the local date string is the correct bound for it — do not "fix" this one to
+  // `todayStart`. Nothing writes this table, so it is normally empty.
   const changelog = await prisma.issueChangelog.findMany({
     where: { field: 'status', createdAt: { gte: todayStr } },
     include: { issue: { select: { issueNumber: true, title: true } } },
@@ -69,7 +87,7 @@ async function gatherEveningData() {
   }));
   // Emails processed today
   const todayEmails = await prisma.smartEmail.findMany({
-    where: { archived: false, createdAt: { gte: todayStr } },
+    where: { archived: false, createdAt: { gte: todayStart } },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
@@ -337,7 +355,7 @@ export async function checkAndGenerateEvening(lang: string = 'en'): Promise<stri
 
     const content = await generateEveningContent(allIssues, allNotes, allReports, gitCommits, moves, lang, todayEmails);
     const langLabel = lang === 'zh' ? '📋 晚报' : lang === 'ja' ? '📋 イブニングレポート' : '📋 Evening Report';
-    const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+    const nowStr = utcStamp(now);
 
     const saved = await prisma.report.create({
       data: {
@@ -346,6 +364,9 @@ export async function checkAndGenerateEvening(lang: string = 'en'): Promise<stri
         title: `${langLabel} — ${today}`,
         content,
         status: 'draft',
+        // `createdAt` explicitly: its default is localtime, and this writer used to leave
+        // it there — which is what made `Report`'s two stamps disagree by 8h. dbTime.ts.
+        createdAt: nowStr,
         generatedAt: nowStr,
       },
     });
@@ -366,31 +387,45 @@ export const standupRouter = router({
   getMorningBrief: publicProcedure.input(z.object({ lang: z.string().default('en') })).query(async ({ input }) => {
     const now = Date.now();
     const dayMs = 86400000;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString();
-    const yesterdayStart = new Date(today.getTime() - dayMs).toISOString();
+    // Local day boundaries, expressed as UTC stamps — the same shape and the same clock
+    // as the column, which is what the comparison needs. Two things were wrong with the
+    // `toISOString()` pair this replaces: it gave a UTC instant for a local midnight (so
+    // the window started 8h early), and against a naive stamp the `T` at index 10 sorts
+    // after the space, so `doneYesterday` could not match any row whose date prefix
+    // equalled the cutoff's — the first 8 hours of yesterday, every day.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const todayStart = utcStamp(midnight);
+    const yesterdayStart = utcStamp(new Date(midnight.getTime() - dayMs));
 
-    // Exclude email-derived tasks (type='email') — they are reported separately
-    const allIssues = (await prisma.issue.findMany({ where: { projectId: 'proj-default' } })).filter(
-      (i) => i.type !== 'email',
-    );
-    const openTasks = allIssues.filter((i) => ['todo', 'in_progress'].includes(i.status));
+    // The task set: emails the Email panel mirrors in are mailbox items, and `cancelled`
+    // has no column on the board. Same rule as the Home card — see lib/taskScope.ts.
+    const allIssues = (await prisma.issue.findMany({ where: { projectId: 'proj-default' } })).filter(isTask);
+    const openTasks = allIssues.filter((i) => ['todo', 'in_progress', 'in_review'].includes(i.status));
     const doneYesterday = allIssues.filter(
-      (i) => i.status === 'done' && i.updatedAt && i.updatedAt >= yesterdayStart && i.updatedAt < todayStr,
+      (i) => i.status === 'done' && i.updatedAt && i.updatedAt >= yesterdayStart && i.updatedAt < todayStart,
     );
+    // Stamps are UTC — `new Date(stamp)` parsed them as local, which shortened every
+    // age by the offset. See lib/dbTime.ts.
+    const ageMs = (s: string | null) => {
+      const ms = parseUtcMs(s);
+      return ms === null ? null : now - ms;
+    };
     const overdue = openTasks
-      .filter((i) => i.updatedAt && now - new Date(i.updatedAt).getTime() > 3 * dayMs)
+      .filter((i) => {
+        const age = ageMs(i.updatedAt);
+        return age !== null && age > 3 * dayMs;
+      })
       .map((i) => ({
         key: `TL-${i.issueNumber}`,
         title: i.title,
         priority: i.priority,
-        daysStale: Math.floor((now - new Date(i.updatedAt || now).getTime()) / dayMs),
+        daysStale: Math.floor((ageMs(i.updatedAt) ?? 0) / dayMs),
       }))
       .sort((a, b) => b.daysStale - a.daysStale);
 
     const todo = openTasks.filter((i) => i.status === 'todo');
-    const inProgress = openTasks.filter((i) => i.status === 'in_progress');
+    const inProgress = openTasks.filter((i) => ['in_progress', 'in_review'].includes(i.status));
 
     // ─── Email section: unprocessed action-required emails ───
     const pendingEmails = await prisma.smartEmail.findMany({
@@ -582,7 +617,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
       input.lang,
       todayEmails,
     );
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const now = utcStamp();
     let reportId: string | null = null;
     try {
       const saved = await prisma.report.create({
@@ -592,6 +627,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
           title: expectedTitle,
           content,
           status: 'draft',
+          createdAt: now,
           generatedAt: now,
         },
       });
@@ -653,7 +689,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
     const lang = cfg?.value || 'en';
     const content = await generateEveningContent(allIssues, allNotes, allReports, gitCommits, moves, lang, todayEmails);
     const langLabel = lang === 'zh' ? '📋 晚报' : lang === 'ja' ? '📋 イブニングレポート' : '📋 Evening Report';
-    const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+    const nowStr = utcStamp(now);
     let reportId: string | null = null;
     try {
       const saved = await prisma.report.create({
@@ -663,6 +699,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
           title: `${langLabel} — ${today}`,
           content,
           status: 'draft',
+          createdAt: nowStr,
           generatedAt: nowStr,
         },
       });

@@ -3,6 +3,7 @@ import { marked } from 'marked';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { t, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
+import { formatDbDateTime } from '@/lib/dbTime';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function DashboardPanel() {
@@ -95,7 +96,12 @@ function DashboardPanel() {
   );
 }
 
-export function HomePanel() {
+/**
+ * `active` is whether Home is the panel currently on screen. The panel is kept
+ * alive after its first visit, so it never remounts — which is why the task
+ * statistics used to be fetched once per app run and then never again.
+ */
+export function HomePanel({ active = true }: { active?: boolean }) {
   const lang = useLang();
   const [health, setHealth] = useState<any>(null);
   const [healthLoading, setHealthLoading] = useState(false);
@@ -121,20 +127,24 @@ export function HomePanel() {
   const [mapGeneratedAt, setMapGeneratedAt] = useState('');
   const [healthGeneratedAt, setHealthGeneratedAt] = useState('');
   const [taskStats, setTaskStats] = useState<any>(null);
+  const [taskStatsLoading, setTaskStatsLoading] = useState(false);
 
   const fetchTaskStats = async () => {
+    setTaskStatsLoading(true);
     try {
-      const r = await fetch('\api\health.taskStats');
+      const r = await fetch('/api/health.taskStats');
       const d = await r.json();
       setTaskStats(d.result?.data || null);
-    } catch {}
+    } catch {
+    } finally {
+      setTaskStatsLoading(false);
+    }
   };
 
-  const formatGenTime = (t: string) => {
-    if (!t) return '';
-    const d = t.replace('T', ' ').substring(0, 16);
-    return d;
-  };
+  // "Generated at" for the health snapshot and the knowledge map. The stamp is UTC, so
+  // it has to be rendered in the viewer's zone — slicing the text showed a time 8h off
+  // the one on the clock. The `.replace('T',' ')` was a no-op on a column-shape stamp.
+  const formatGenTime = (t: string) => formatDbDateTime(t);
 
   const fetchHealth = async (force = false) => {
     setHealthLoading(true);
@@ -234,9 +244,20 @@ export function HomePanel() {
   useEffect(() => {
     fetchHealth(true);
     fetchKnowledge(true);
-    fetchTaskStats();
+    // Task statistics are deliberately not fetched here — the effect below owns
+    // them, and it already covers the first open, so calling it in both places
+    // would double every load.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchers recreated per render; [lang] is the real trigger
   }, [lang]);
+
+  // Task statistics are cheap to recompute server-side (a live count over the
+  // task board's own scope — `health.taskStats` holds no cache) and they change
+  // from outside this panel: finishing a task happens in the task board or in
+  // chat. So they are re-read every time Home comes back on screen, which is the
+  // only moment the user can see the difference.
+  useEffect(() => {
+    if (active) fetchTaskStats();
+  }, [active]);
 
   // Auto-refresh health + knowledge map every 2 hours
   useEffect(() => {
@@ -287,11 +308,39 @@ export function HomePanel() {
           </div>
         </div>
       )}
-      {/* Task Statistics */}
-      {taskStats && taskStats.total > 0 && (
+      {/* Task Statistics — rendered as soon as the numbers have loaded, zeros and all.
+          It used to hide itself while `total === 0`, which took the refresh button away
+          in the one state where you most want it: a board you just emptied (or one whose
+          rows an agent moved elsewhere) looked like a card that had been deleted, with no
+          way to ask for the current numbers. The API answers with the same shape either
+          way, so there is nothing special to render here. */}
+      {taskStats && (
         <div className="card" style={{ flexShrink: 0 }}>
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--edge)' }}>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>{t('home.taskStats', lang)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>{t('home.taskStats', lang)}</span>
+              <button
+                className="btn-ghost btn-xs"
+                onClick={fetchTaskStats}
+                disabled={taskStatsLoading}
+                title={t('btn.refresh', lang)}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={taskStatsLoading ? ({ animation: 'spin 1s linear infinite' } as any) : {}}
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>

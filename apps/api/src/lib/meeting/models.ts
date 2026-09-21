@@ -79,27 +79,25 @@ export function installedModels(): ModelSpec[] {
 }
 
 /**
- * The model that should actually run for a job.
+ * The speech model a job runs with.
  *
- * Prefer what the meeting asked for, then the default, then anything at all
- * that is installed. That last step matters: a meeting created while the
- * default was `base` would otherwise fail with "no model installed" for a user
- * who deliberately downloaded `small` — a message that is both wrong and
- * unactionable, and the most likely way to get stuck on first run.
+ * `base` when it is on disk, otherwise the smallest model that is installed, and
+ * `null` when nothing is. This is the app's decision and it is made here: the user
+ * does not choose a model, and no model name reaches the UI.
  *
- * The unrequested fallback is the *smallest* installed model, not the largest.
- * Silently substituting a 1.5 GB `medium` (RTF ~1.5–3) would turn an hour-long
- * meeting into an hour-long wait, which reads as a hang.
+ * The fallback exists for one real case — a disk holding only some *other* model,
+ * either from an install that predates this rule or a deliberate `small` download
+ * made while choosing was possible. It must not be told "no model installed" when
+ * it can transcribe perfectly well. The *smallest* installed wins rather than the
+ * largest, because silently running a 1.5 GB `medium` (RTF ~1.5–3) turns an
+ * hour-long meeting into an hour-long wait, which reads as a hang.
  */
-export function pickModel(requested?: string | null): { name: string; path: string } | null {
-  for (const name of [requested, DEFAULT_MODEL]) {
-    if (!name) continue;
-    const path = resolveModel(name);
-    if (path) return { name, path };
-  }
-  const first = installedModels()[0];
-  if (!first) return null;
-  return { name: first.name, path: resolveModel(first.name) as string };
+export function resolveSpeechModel(): { name: string; path: string } | null {
+  const base = resolveModel(DEFAULT_MODEL);
+  if (base) return { name: DEFAULT_MODEL, path: base };
+  const fallback = installedModels()[0];
+  if (!fallback) return null;
+  return { name: fallback.name, path: resolveModel(fallback.name) as string };
 }
 
 export function deleteModel(name: string): { ok: boolean; error?: string } {

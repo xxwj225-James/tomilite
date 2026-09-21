@@ -2088,10 +2088,27 @@ const I18N = {
 
   // ─── Action items ───
   'meeting.actions.title': { en: 'Action items', zh: '行动项', ja: 'アクション項目' },
+  // Four empty states, because "no action items" means four different things.
+  // `empty` is the only one that may invite a run; the rest report a run already done.
   'meeting.actions.empty': {
     en: 'No action items. TomiLite looks for them when it writes the minutes.',
     zh: '没有行动项。生成纪要时 TomiLite 会从中提取。',
     ja: 'アクション項目はありません。議事録の生成時に抽出します。',
+  },
+  'meeting.actions.emptyRunning': {
+    en: 'The minutes are being written — action items appear when they are done.',
+    zh: '正在生成纪要 —— 生成完会在这里列出行动项。',
+    ja: '議事録を生成しています — 完了するとアクション項目が表示されます。',
+  },
+  'meeting.actions.emptyDone': {
+    en: 'No action items in these minutes. Nothing concrete enough to assign came up.',
+    zh: '这次纪要里没有行动项 —— 没有出现具体可指派的事。',
+    ja: 'この議事録にアクション項目はありません — 具体的に割り当てられる事項はありませんでした。',
+  },
+  'meeting.actions.emptyFailed': {
+    en: 'The last minutes run failed, so no action items were extracted.',
+    zh: '上次生成纪要失败了，没有提取到行动项。',
+    ja: '前回の議事録生成が失敗したため、アクション項目は抽出されていません。',
   },
   'meeting.actions.createTask': { en: 'Create task', zh: '创建任务', ja: 'タスクを作成' },
   'meeting.actions.creating': { en: 'Creating…', zh: '创建中…', ja: '作成中…' },
@@ -2187,7 +2204,6 @@ const I18N = {
   'meeting.settings.modelInstalled': { en: 'Installed', zh: '已安装', ja: 'インストール済み' },
   'meeting.settings.modelDownload': { en: 'Download', zh: '下载', ja: 'ダウンロード' },
   'meeting.settings.modelDelete': { en: 'Delete', zh: '删除', ja: '削除' },
-  'meeting.settings.modelDefault': { en: 'Default', zh: '默认', ja: '既定' },
   'meeting.settings.downloading': {
     en: 'Downloading {name} — {pct}%',
     zh: '正在下载 {name} — {pct}%',
@@ -2203,6 +2219,28 @@ const I18N = {
   'meeting.settings.defaults': { en: 'Recording defaults', zh: '录音默认值', ja: '録音の既定値' },
   'meeting.settings.defaultSource': { en: 'Default audio source', zh: '默认音源', ja: '既定の音声ソース' },
   'meeting.settings.defaultLang': { en: 'Transcription language', zh: '转写语言', ja: '文字起こし言語' },
+  'meeting.settings.modelNoneWarn': {
+    en: 'No speech model is downloaded yet. Transcription cannot start until one is.',
+    zh: '还没有下载任何语音模型，下载后才能开始转写。',
+    ja: '音声モデルがまだありません。ダウンロードするまで文字起こしは開始できません。',
+  },
+  'meeting.settings.textScript': {
+    en: 'Chinese script',
+    zh: '中文转写字形',
+    ja: '中国語の文字表記',
+  },
+  'meeting.settings.script.simplified': { en: 'Simplified', zh: '简体中文', ja: '簡体字' },
+  'meeting.settings.script.traditional': { en: 'Traditional', zh: '繁體中文', ja: '繁体字' },
+  'meeting.settings.script.source': {
+    en: "Don't convert",
+    zh: '不转换',
+    ja: '変換しない',
+  },
+  'meeting.settings.textScriptNote': {
+    en: 'Whisper has no simplified/traditional switch — it picks one itself, and the bundled model picks Traditional for Mandarin. This converts the finished transcript to the script you choose. It only rewrites characters; the words are untouched. Applies to the next transcription, including re-transcribing an existing meeting.',
+    zh: 'whisper 没有简繁开关，字形由模型自己决定，而内置模型在普通话上会输出繁体。这里是把转写结果转换成你选的字形，只改字形、不改用词。修改后对下一次转写生效（重新转写已有会议也按新值）。',
+    ja: 'whisper に簡体字／繁体字の切り替えはなく、字形はモデルが決めます（同梱モデルは北京語で繁体字を出力します）。ここでは文字起こし結果を選んだ字形に変換します。変わるのは字形だけで、語句はそのままです。次回の文字起こしから適用されます（既存の会議を再文字起こしする場合も同様）。',
+  },
   'meeting.settings.retention': {
     en: 'Keep audio for (days, 0 = forever)',
     zh: '音频保留天数（0 = 永久）',
@@ -2236,39 +2274,24 @@ const I18N = {
     ja: 'docs/meetings.md を読む',
   },
   'meeting.settings.modelGuide': {
-    en: 'Pick one to start — Base, the default, is the right choice for almost everyone. The others trade size and speed for accuracy. You only need to download once.',
-    zh: '先装一个就行 —— 默认的 Base 对绝大多数人都是正确选择。其余各档是在体积/速度与准确度之间取舍。只需下载一次。',
-    ja: 'まずは1つだけ。既定の Base がほとんどの場合に最適です。他のモデルはサイズ・速度と精度のトレードオフです。ダウンロードは一度だけです。',
+    en: 'TomiLite transcribes with one model, Base. Download it once and transcription runs offline — there is nothing to choose.',
+    zh: 'TomiLite 固定使用 Base 这一个模型转写。下载一次即可离线使用，无需选择。',
+    ja: 'TomiLite は Base という1つのモデルで文字起こしします。一度ダウンロードすればオフラインで動作し、選択の必要はありません。',
   },
-  'meeting.settings.modelPick': {
-    en: 'Download this one',
-    zh: '下载这个',
-    ja: 'これをダウンロード',
+  'meeting.settings.modelsUnused': {
+    en: 'Other models on this machine',
+    zh: '本机上的其他模型',
+    ja: 'この PC 上の他のモデル',
   },
-  'meeting.settings.modelBest': {
-    en: 'Best for most meetings',
-    zh: '最适合大多数会议',
-    ja: 'ほとんどの会議に最適',
-  },
-  'meeting.settings.modelNote.tiny': {
-    en: 'Fastest, least accurate. Fine for a quick test, rough on real meetings.',
-    zh: '最快、最不准。适合快速试一下，真实会议里效果粗糙。',
-    ja: '最速・最低精度。お試し向きで、実際の会議では粗い結果になります。',
+  'meeting.settings.modelsUnusedNote': {
+    en: 'Left over from an earlier version that let you choose. As long as Base is installed they will not be used, and they only take up disk space — safe to delete.',
+    zh: '旧版本允许选择模型时留下的。只要 Base 已安装就不会再使用它们，只占磁盘空间，可以放心删除。',
+    ja: 'モデルを選べた旧バージョンの残りです。Base がインストールされていれば使われることはなく、ディスクを占有するだけなので削除して構いません。',
   },
   'meeting.settings.modelNote.base': {
     en: 'The balance point. Real meetings, real accuracy, minutes not hours.',
     zh: '平衡点。真实的会议、可用的准确度，耗时是分钟级而非小时级。',
     ja: 'バランス型。実用的な精度で、所要時間は分単位です。',
-  },
-  'meeting.settings.modelNote.small': {
-    en: 'Noticeably better on accents, jargon and noisy rooms. Several times slower.',
-    zh: '对口音、专业术语和嘈杂环境明显更好，但慢好几倍。',
-    ja: '訛り・専門用語・騒がしい環境に明らかに強い。ただし数倍遅い。',
-  },
-  'meeting.settings.modelNote.medium': {
-    en: 'Best quality, and the slowest by far — an hour of audio can take hours. Pick only if accuracy matters more than waiting.',
-    zh: '质量最好，但最慢 —— 一小时录音可能要跑几小时。只有准确度比等待更重要时才选。',
-    ja: '最高品質ですが最も遅く、1時間の音声に数時間かかることも。精度を待ち時間より優先する場合のみ。',
   },
   'meeting.panel.noModelHint': {
     en: 'No speech model installed yet — recording works, but transcription needs a model (about 150 MB, downloaded once).',

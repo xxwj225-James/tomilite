@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLang } from '@/stores/useLang';
 import { t as tt2 } from '@/lib/i18n';
 import { EmptyState } from '@/components/EmptyState';
+import { formatDbDate } from '@/lib/dbTime';
 
 // ═══ Reports List View — toolbar + list with pagination ═══
 
@@ -117,7 +118,7 @@ export function ReportsList(p: Record<string, unknown>) {
                 {r.title as string}
               </div>
               <div style={{ fontSize: 9, color: 'var(--muted)' }}>
-                {((r.generatedAt as string) || (r.createdAt as string))?.substring(0, 10)} · {r.reportType as string}
+                {formatDbDate((r.generatedAt as string) || (r.createdAt as string))} · {r.reportType as string}
               </div>
             </div>
             <button

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { tr } from '@/lib/i18n';
+import { nowDbUtc } from '@/lib/dbTime';
 import { useLang } from '@/stores/useLang';
 
 // ═══ Task State Hook — all state + handlers for TasksPanel ═══
@@ -14,6 +15,15 @@ export function useTaskState(
   const lang = useLang();
   // ─── Core state ───
   const [issues, setIssues] = useState<any[]>([]);
+  // Tab badges come from the server, counted over every task — `issues` above is a
+  // capped page, so counting it made the badges shrink once the table outgrew the
+  // cap while the Home card kept counting everything.
+  const [taskCounts, setTaskCounts] = useState<{
+    total: number;
+    todo: number;
+    inProgress: number;
+    done: number;
+  } | null>(null);
   const [selected, setSelected] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -159,23 +169,40 @@ export function useTaskState(
   const t = (key: string) => key;
 
   // ─── Data fetching ───
-  const fetchIssues = () =>
-    api.issue
-      .list('proj-default')
-      .then((data) => {
-        setIssues(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => console.error('fetchIssues error', err));
+  /**
+   * Rows and tab badges together.
+   *
+   * Every mutation in this hook calls this one function, which is why the two
+   * requests live inside it rather than beside it: a badge fetched on its own
+   * schedule would trail the list it labels.
+   *
+   * It returns a promise that settles when both have, because callers await it —
+   * the refresh button spins for its duration. Returning nothing would leave that
+   * spinner flashing for zero frames.
+   */
+  const refreshTasks = (): Promise<void> =>
+    Promise.all([
+      api.issue
+        .list('proj-default')
+        .then((data) => {
+          setIssues(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => console.error('refreshTasks error', err)),
+      api.issue
+        .taskCounts('proj-default')
+        .then((d: any) => setTaskCounts(d || null))
+        .catch((err: any) => console.error('fetchTaskCounts error', err)),
+    ]).then(() => undefined);
   useEffect(() => {
-    fetchIssues();
+    refreshTasks();
   }, []);
   useEffect(() => {
     if (taskRefresh && taskRefresh > 0) {
-      fetchIssues();
+      refreshTasks();
     }
   }, [taskRefresh]);
   useEffect(() => {
-    if (active) fetchIssues();
+    if (active) refreshTasks();
   }, [active]);
 
   // Re-sync editingTask when panel becomes active — it was cleared on panel exit
@@ -198,10 +225,10 @@ export function useTaskState(
       const d = (e as any).detail;
       const num = d.key ? parseInt(d.key.replace('TL-', '')) : 0;
       if (!num) {
-        fetchIssues();
+        refreshTasks();
         return;
       }
-      fetchIssues();
+      refreshTasks();
       // Fetch full issue from DB — chat card data may be incomplete (e.g. missing description)
       const apply = (full: any) => {
         const f = full || d;
@@ -276,7 +303,7 @@ export function useTaskState(
       window.removeEventListener('tl-select-task', h);
       window.removeEventListener('tl-close-task-editor', onCloseEditor);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once; lang/fetchIssues/onEditingTask recreated per render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- listeners registered once; lang/refreshTasks/onEditingTask recreated per render
   }, []);
   // Re-check pending selection when panel becomes active (panel stays mounted via lazy-mount)
   useEffect(() => {
@@ -312,15 +339,29 @@ export function useTaskState(
   }, [selected?.id, selected?.dueDate]);
 
   // ─── Dirty tracking ───
-  // Sync editing flag back to App.tsx when user toggles View→Edit or Edit→View
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingTask recreated per render; [editing] is the real trigger
+  // The parent recreates `onEditingTask` on every render, so it cannot be a dependency
+  // of the effects below without them firing on every render; the ref carries the
+  // current callback instead. `selected` is read the same way, which keeps these two
+  // effects firing exactly when they did before — on the `editing` toggle and on
+  // deselection — rather than also on every change of the selected task.
+  //
+  // This replaces two `eslint-disable-next-line` comments that were sitting on the
+  // `useEffect` line while the rule reports on the dependency array two lines down, so
+  // they suppressed nothing and lint kept all four problems.
+  const onEditingTaskRef = useRef(onEditingTask);
+  const selectedRef = useRef(selected);
   useEffect(() => {
-    if (selected?.issueNumber) onEditingTask?.({ ...selected, editing });
+    onEditingTaskRef.current = onEditingTask;
+    selectedRef.current = selected;
+  });
+  // Sync editing flag back to App.tsx when user toggles View→Edit or Edit→View
+  useEffect(() => {
+    const task = selectedRef.current;
+    if (task?.issueNumber) onEditingTaskRef.current?.({ ...task, editing });
   }, [editing]);
   // Clear App.tsx editingTask when editor closes (returns to task list)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingTask recreated per render; [selected] is the real trigger
   useEffect(() => {
-    if (!selected) (onEditingTask as any)?.(null);
+    if (!selected) onEditingTaskRef.current?.(null);
   }, [selected]);
   useEffect(() => {
     if (!editing) {
@@ -359,7 +400,7 @@ export function useTaskState(
         setIssues((prev) => prev.map((i) => (i.id === data.id ? { ...i, status: targetStatus } : i)));
         // Fire API in background — don't await
         api.issue.update({ id: data.id, status: targetStatus }).catch(() => {
-          fetchIssues();
+          refreshTasks();
         });
       }
     } catch {
@@ -390,13 +431,15 @@ export function useTaskState(
         const created = await api.issue.create({ projectId: 'proj-default', ...payload });
         setSelected({ ...selected, ...payload, id: created.id, issueNumber: created.issueNumber });
         setIssues((prev) => [
-          { ...payload, id: created.id, issueNumber: created.issueNumber, createdAt: new Date().toISOString() },
+          // Same shape the server stores, not toISOString() — the list renders this the
+          // moment it lands, before any refetch replaces it.
+          { ...payload, id: created.id, issueNumber: created.issueNumber, createdAt: nowDbUtc() },
           ...prev,
         ]);
       }
       taskEditedRef.current = false;
       setEditing(false);
-      fetchIssues();
+      refreshTasks();
     } catch {
     } finally {
       setSaving(false);
@@ -421,7 +464,7 @@ export function useTaskState(
         await api.issue.create({ projectId: 'proj-default', ...payload });
       }
       setEditing(false);
-      fetchIssues();
+      refreshTasks();
       return true;
     } catch {
       return false;
@@ -436,7 +479,7 @@ export function useTaskState(
     await api.issue.delete(targetId);
     setDeleting(false);
     setSelected(null);
-    fetchIssues();
+    refreshTasks();
   };
   const executeBatchDelete = async () => {
     for (const id of selectedIds) {
@@ -444,7 +487,7 @@ export function useTaskState(
     }
     setSelectedIds(new Set());
     setBatchDeleteOpen(false);
-    fetchIssues();
+    refreshTasks();
   };
 
   // ─── Sort/Filter helpers ───
@@ -490,6 +533,7 @@ export function useTaskState(
   return {
     // State
     issues,
+    taskCounts,
     selected,
     setSelected,
     editing,
@@ -545,7 +589,7 @@ export function useTaskState(
     descRef,
     // Helpers
     t,
-    fetchIssues,
+    refreshTasks,
     handleDragStart,
     handleDragOver,
     handleDrop,

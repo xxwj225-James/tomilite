@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
+import { formatDbDate } from '@/lib/dbTime';
 import { useLang } from '@/stores/useLang';
 import { api } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
@@ -197,7 +198,7 @@ export function TasksList(p: Record<string, unknown>) {
           api.issue
             .update({ id: dragItemIdRef.current, status: newStatus })
             .then(() => {
-              (get('fetchIssues') as () => void)();
+              (get('refreshTasks') as () => void)();
               const label = (STATUS_LABEL[newStatus] || {})[lang] || newStatus;
               showToast(tt2('tasks.toast.statusChanged', lang).replace('{status}', label));
             })
@@ -240,6 +241,15 @@ export function TasksList(p: Record<string, unknown>) {
   }, []);
 
   // ─── Filter & sort ───
+  //
+  // `type === 'email'` rows are emails the Email panel mirrors into the Issue table
+  // so triage can link a message to a task — mailbox items, not work — and the
+  // three tabs below are the only places a status can be shown.
+  //
+  // The server now applies both rules (`issue.list` filters in SQL and
+  // `issue.taskCounts` counts by them), so the two checks here are belt-and-braces
+  // rather than the load-bearing copy they used to be. The status narrowing is still
+  // required: it is what `activeTab` means.
   const tabIssues = ((get('issues') as Array<Record<string, unknown>>) || []).filter((i: Record<string, unknown>) => {
     if (i.type === 'email') return false;
     if (activeTab === 'todo' && i.status !== 'todo') return false;
@@ -280,13 +290,23 @@ export function TasksList(p: Record<string, unknown>) {
   }, [sortedIssues.length, activeTab]);
 
   // Counts
-  const counts: Record<string, number> = { todo: 0, in_progress: 0, done: 0 };
-  ((get('issues') as Array<Record<string, unknown>>) || []).forEach((i: any) => {
-    if (i.type === 'email') return;
-    if (i.status === 'todo') counts.todo++;
-    else if (i.status === 'done') counts.done++;
-    else counts.in_progress++;
-  });
+  //
+  // From the server, counted over every task — not over `issues`, which is a capped
+  // page of rows. Deriving them here made a badge shrink silently once the table
+  // outgrew the cap, while the Home card, which is not capped, kept counting
+  // everything; `issue.taskCounts` counts in SQL so the two cannot drift.
+  //
+  // The three buckets are the three tabs, so a badge always equals the number of
+  // rows clicking it produces. The catch-all `else` that used to be here counted
+  // every unrecognised status as in-progress, and the tab filter only admits
+  // `in_progress`/`in_review` — so a `cancelled` task inflated the In Progress
+  // badge and then appeared under no tab at all.
+  //
+  // `null` until the first response: a badge is not drawn rather than drawn as 0.
+  const serverCounts = get('taskCounts') as { total: number; todo: number; inProgress: number; done: number } | null;
+  const counts: Record<string, number> | null = serverCounts
+    ? { todo: serverCounts.todo, in_progress: serverCounts.inProgress, done: serverCounts.done }
+    : null;
 
   // ─── Drag hint (always shown until user dismisses, persisted to localStorage) ───
   const [dragHintDismissed, setDragHintDismissed] = useState(() => localStorage.getItem('tl-task-drag-hint') === '1');
@@ -367,7 +387,7 @@ export function TasksList(p: Record<string, unknown>) {
           onClick={async () => {
             (get('setRefreshing') as (v: boolean) => void)(true);
             try {
-              await (get('fetchIssues') as () => Promise<void>)();
+              await (get('refreshTasks') as () => Promise<void>)();
             } finally {
               (get('setRefreshing') as (v: boolean) => void)(false);
             }
@@ -448,7 +468,7 @@ export function TasksList(p: Record<string, unknown>) {
               transition: 'all .15s',
             }}
           >
-            {t(tab.labelKey)} <span style={{ opacity: 0.6, fontSize: 11 }}>({counts[tab.key] || 0})</span>
+            {t(tab.labelKey)} {counts && <span style={{ opacity: 0.6, fontSize: 11 }}>({counts[tab.key] || 0})</span>}
           </div>
         ))}
         {/* Toast */}
@@ -758,7 +778,7 @@ export function TasksList(p: Record<string, unknown>) {
                       cursor: activeTab !== 'done' ? 'grab' : 'default',
                     }}
                   >
-                    {((issue.createdAt as string) || '').substring(0, 10)}
+                    {formatDbDate(issue.createdAt as string)}
                   </span>
                   {/* Due */}
                   <span
@@ -803,7 +823,7 @@ export function TasksList(p: Record<string, unknown>) {
                       cursor: activeTab !== 'done' ? 'grab' : 'default',
                     }}
                   >
-                    {((issue.updatedAt as string) || (issue.createdAt as string) || '').substring(0, 10)}
+                    {formatDbDate((issue.updatedAt as string) || (issue.createdAt as string))}
                   </span>
                 </div>
               );

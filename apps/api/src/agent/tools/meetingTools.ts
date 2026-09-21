@@ -32,6 +32,9 @@ const durations = (ms: number) => ({
  * What the panel shows, and therefore what the model sees. Deliberately excludes
  * `chunkSummaries`, `speakers`, `stageLog` and the legacy `decisions` JSON column:
  * they are pipeline internals, and context is the scarce resource in a turn.
+ *
+ * `whisperModel` and `transcribeModel` are excluded for the same reason: neither is
+ * shown to the user. The first is always `base`, the second is a diagnostic record.
  */
 const MEETING_FIELDS = {
   id: true,
@@ -40,7 +43,6 @@ const MEETING_FIELDS = {
   createdAt: true,
   durationMs: true,
   lang: true,
-  whisperModel: true,
   transcribeStatus: true,
   aiStatus: true,
   minutesStatus: true,

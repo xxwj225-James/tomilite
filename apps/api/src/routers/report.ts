@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { exportToExcel, exportToDoc, exportToHtml, exportToPptx } from '../agent/tools/reportTools.js';
+import { utcStamp } from '../lib/dbTime.js';
 
 // Archive sent reports older than 90 days (hide from UI, never delete)
 export function startReportArchiver() {
@@ -52,6 +53,10 @@ export const reportRouter = router({
           data: { reportType: input.reportType, title: input.title, content: input.content, status: 'draft' },
         });
       }
+      // Both stamps explicitly: their defaults are localtime, and `generatedAt` is read
+      // against UTC cutoffs by the archiver and shown as the report's date. A row born
+      // from the defaults would sit 8h off the reports standup writes. See lib/dbTime.ts.
+      const now = utcStamp();
       return prisma.report.create({
         data: {
           projectId: 'proj-default',
@@ -59,6 +64,8 @@ export const reportRouter = router({
           title: input.title,
           content: input.content,
           status: 'draft',
+          createdAt: now,
+          generatedAt: now,
         },
       });
     }),

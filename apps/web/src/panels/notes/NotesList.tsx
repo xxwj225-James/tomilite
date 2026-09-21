@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
+import { formatDbDate } from '@/lib/dbTime';
 import { EmptyState } from '@/components/EmptyState';
 import { useLang } from '@/stores/useLang';
 
@@ -288,7 +289,7 @@ export function NotesList(p: Props) {
               {n.category === 'chat' ? tt2('notes.categoryChat', lang) : n.category || 'general'}
             </span>
             <span style={{ width: 100, fontSize: 11, textAlign: 'right', color: 'var(--muted)', flexShrink: 0 }}>
-              {n.updatedAt?.substring(0, 10)}
+              {formatDbDate(n.updatedAt)}
             </span>
           </div>
         ))}

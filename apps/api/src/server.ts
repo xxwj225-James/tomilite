@@ -36,6 +36,7 @@ import { checkMeetingReminders } from './lib/meeting/reminders.js';
 import { sweepMeetingAudioRetention } from './lib/meeting/retention.js';
 import { runDistillationSweep } from './lib/chatDistill.js';
 import { ensureSearchIndexes, reclaimIndexSpace } from './lib/ftsIndex.js';
+import { ensureClockUtc, ensureIssueClock } from './lib/clockUtc.js';
 import { embedWarmup } from './lib/embed/index.js';
 import { DRAIN_PER_TICK, drainEmbedQueue, embedBootSweep } from './lib/embed/queue.js';
 import { resolveLLM } from './lib/gateway.js';
@@ -305,6 +306,7 @@ const server = createServer(async (req, res) => {
 // ─── Start email watchers ───
 import { emailManager, classifyEmail, heuristicClassify } from '@tomilite/email';
 import { prisma } from '@tomilite/database';
+import { utcStamp } from './lib/dbTime.js';
 
 /** Clean up processed emails older than 12h (piggybacks on each incoming message) */
 async function cleanupOldEmails() {
@@ -374,6 +376,9 @@ emailManager.onMessage(async (msg) => {
         summary: classification.summary,
         replyDraft: classification.replyDraft || null,
         bodySnapshot: msg.body?.substring(0, 2000) || null,
+        // Explicit: the column default is localtime and this was the only writer, so
+        // every row was born local. See lib/dbTime.ts for the invariant.
+        createdAt: utcStamp(),
       },
     });
 
@@ -518,8 +523,11 @@ function startBackgroundTasks() {
   setInterval(
     async () => {
       try {
-        const cutoffIssue = new Date(Date.now() - 90 * 86400000).toISOString().replace('T', ' ').substring(0, 19);
-        const cutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+        const cutoffIssue = utcStamp(new Date(Date.now() - 90 * 86400000));
+        // `GitCommit.timestamp` is a naive-UTC stamp like every other column now, so the
+        // archiver's cutoff has to be one too — it used to be an ISO `Z` string, which
+        // never compared equal to it. See lib/dbTime.ts.
+        const cutoff = cutoffIssue;
         const a1 = await prisma.issue.deleteMany({
           where: { status: 'done', updatedAt: { lt: cutoffIssue } },
         });
@@ -574,7 +582,13 @@ function startBackgroundTasks() {
 // ⚠️ OTA migration: increment EVERY TIME you change prisma/schema.prisma
 // Only ADDITIVE changes (new columns/tables). Never rename or drop.
 // ensureSchema() → detects old version → prisma db push → preserves all user data
-const SCHEMA_VERSION = 23; // Chat auto-distillation watermark + KnowledgePage provenance
+//
+// A changed *column default* is not deliverable this way (SQLite has no ALTER COLUMN
+// SET DEFAULT, and db push cannot run against a database carrying the search index —
+// see the Phase 2 note below). Those are delivered by lib/clockUtc.ts instead, which
+// self-heals on every boot like lib/ftsIndex.ts. The bump here is only so the additive
+// array re-runs.
+const SCHEMA_VERSION = 25; // Meeting gained the column recording which speech model ran
 
 // ─── Ensure database schema is up to date (runs db push only when needed) ───
 async function ensureSchema() {
@@ -641,6 +655,7 @@ async function ensureSchema() {
         "sampleRate" INTEGER NOT NULL DEFAULT 16000,
         "durationMs" INTEGER NOT NULL DEFAULT 0,
         "whisperModel" TEXT NOT NULL DEFAULT 'base',
+        "transcribeModel" TEXT,
         "lang" TEXT NOT NULL DEFAULT 'auto',
         "transcribeStatus" TEXT NOT NULL DEFAULT 'none',
         "transcribeProgress" INTEGER NOT NULL DEFAULT 0,
@@ -762,6 +777,11 @@ async function ensureSchema() {
     { version: 23, sql: 'ALTER TABLE "ChatSession" ADD COLUMN "distillAt" TEXT' },
     { version: 23, sql: 'ALTER TABLE "ChatSession" ADD COLUMN "distillMeta" TEXT' },
     { version: 23, sql: 'CREATE INDEX IF NOT EXISTS "ChatSession_updatedAt_idx" ON "ChatSession"("updatedAt")' },
+    // `whisperModel` used to double as both "what the user asked for" and "what ran",
+    // because `startTranscription` wrote the fallback back into it — which pinned a
+    // meeting to whatever was on disk that day, permanently. It now records the request
+    // only, and this column holds the model that did the work.
+    { version: 25, sql: 'ALTER TABLE "Meeting" ADD COLUMN "transcribeModel" TEXT' },
   ];
 
   for (const m of migrations) {
@@ -780,6 +800,34 @@ async function ensureSchema() {
   }
 
   // ─── Phase 2: prisma db push (catch-all for any other schema changes) ───
+  //
+  // Skipped whenever the database carries objects Prisma does not model: `global_fts`
+  // (6 shadow tables) and `embed_queue` belong to lib/ftsIndex.ts and are NOT NULL, so
+  // db push proposes dropping them, warns NonEmptyTableDrop, and — since we deliberately
+  // pass no --accept-data-loss — refuses. That refusal is correct, but it used to happen
+  // on *every* launch of *every* existing install and be marked as applied anyway, which
+  // made the whole function a no-op that looked like a success. On those databases the
+  // additive `migrations[]` array above and the self-healing functions in lib/ are the
+  // delivery path, so the honest thing is to say so and not spend 60s failing.
+  const hasUnmanagedTables = await prisma
+    .$queryRawUnsafe<Array<{ name: string }>>("SELECT name FROM sqlite_master WHERE type='table' AND name='global_fts'")
+    .then((rows) => rows.length > 0)
+    .catch(() => false);
+  if (hasUnmanagedTables) {
+    console.warn(
+      '[Init] db push skipped: this database carries objects Prisma does not model ' +
+        '(global_fts, embed_queue). Schema changes reach it through the additive migration ' +
+        'array and the self-healing functions in lib/ — see docs/architecture.md.',
+    );
+    await prisma.systemConfig.upsert({
+      where: { key: 'schemaVersion' },
+      create: { key: 'schemaVersion', value: String(SCHEMA_VERSION) },
+      update: { value: String(SCHEMA_VERSION) },
+    });
+    await prisma.systemConfig.deleteMany({ where: { key: 'schemaPushError' } }).catch(() => {});
+    return true;
+  }
+
   const { execSync } = await import('node:child_process');
   const root = typeof __dirname !== 'undefined' ? join(__dirname, '..', '..', '..') : process.cwd();
   const prismaCli = join(root, 'node_modules', 'prisma', 'build', 'index.js');
@@ -818,16 +866,23 @@ async function ensureSchema() {
       update: { value: String(SCHEMA_VERSION) },
     });
     console.warn('[Init] Schema synced to v' + SCHEMA_VERSION);
+    await prisma.systemConfig.deleteMany({ where: { key: 'schemaPushError' } }).catch(() => {});
     return true;
   } catch (e: any) {
     console.error('[Init] db push failed:', e.stderr?.toString() || e.message);
-    // Best-effort: mark version anyway if raw migrations applied — prevents
-    // re-running the whole migration (and a slow/hanging db push) on every startup.
+    // Deliberately NOT stamping schemaVersion. Stamping it on failure is what hid the
+    // problem above: it made the next launch skip the migration pass entirely, so a
+    // push that never worked was indistinguishable from one that did. Leaving the
+    // version behind means the pass re-runs, and the flag below makes the failure
+    // visible to the UI instead of only to a log nobody reads.
     try {
       await prisma.systemConfig.upsert({
-        where: { key: 'schemaVersion' },
-        create: { key: 'schemaVersion', value: String(SCHEMA_VERSION) },
-        update: { value: String(SCHEMA_VERSION) },
+        where: { key: 'schemaPushError' },
+        create: {
+          key: 'schemaPushError',
+          value: String(e.stderr?.toString() || e.message || 'unknown').substring(0, 500),
+        },
+        update: { value: String(e.stderr?.toString() || e.message || 'unknown').substring(0, 500) },
       });
     } catch {
       /* non-critical */
@@ -943,6 +998,11 @@ ensureSchema()
   // Must stay before startBackgroundTasks() and before listen(): the rebuild runs its
   // DDL in one transaction, and nothing may query global_fts while it is mid-swap.
   .then(() => ensureSearchIndexes())
+  // Clock normalisation, also before listen() — the Issue rebuild swaps the table under a
+  // transaction and must not race a reader. After ensureSearchIndexes() because that is
+  // what owns the fts_issue_* triggers the rebuild has to put back.
+  .then(() => ensureClockUtc())
+  .then(() => ensureIssueClock())
   .then(() => {
     console.warn('[Init] Database ready');
     startBackgroundTasks();

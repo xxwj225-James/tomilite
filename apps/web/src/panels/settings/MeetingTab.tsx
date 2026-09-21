@@ -15,9 +15,14 @@ import { useLang } from '@/stores/useLang';
 
 const CONFIG_KEY = 'meeting.defaults';
 
+/** Mirrors `TextScript` in `apps/api/src/lib/meeting/script.ts`. */
+export type TextScript = 'source' | 'simplified' | 'traditional';
+
 export interface MeetingDefaults {
   source: 'mic' | 'mic+system';
   lang: string;
+  /** Which script Chinese transcripts are written in. Default: `simplified`. */
+  textScript: TextScript;
   retentionDays: number;
   /** Windows toast when an action item falls due / a meeting is still open. */
   remindersEnabled: boolean;
@@ -28,6 +33,7 @@ export interface MeetingDefaults {
 const DEFAULTS: MeetingDefaults = {
   source: 'mic+system',
   lang: 'auto',
+  textScript: 'simplified',
   retentionDays: 30,
   remindersEnabled: true,
   followUpReminderDays: 3,
@@ -58,8 +64,12 @@ export function MeetingTab() {
     fetch('/api/system.getConfig?input=' + encodeURIComponent(JSON.stringify({ key: CONFIG_KEY })))
       .then((r) => r.json())
       .then((d) => {
-        const raw = d?.result?.data?.value ?? d?.value;
-        if (raw) setDefaults({ ...DEFAULTS, ...JSON.parse(raw) });
+        // `system.getConfig` returns the stored string itself, not `{value}` —
+        // reading `.value` off it yielded undefined, so this card rendered
+        // DEFAULTS forever and every `persist({...defaults, x})` wrote those
+        // defaults back over whatever the other fields had been set to.
+        const raw = d?.result?.data;
+        if (typeof raw === 'string' && raw) setDefaults({ ...DEFAULTS, ...JSON.parse(raw) });
       })
       .catch(() => {});
     api.meeting
@@ -136,6 +146,15 @@ export function MeetingTab() {
 
   const catalog: any[] = models?.models || [];
   const installed: string[] = models?.active || [];
+  // The app's one model. Looked up in the catalog rather than assumed, so this row
+  // shows the real size and still renders if the catalog ever renames it.
+  const base = catalog.find((m) => m.name === 'base');
+  // Anything else on disk: an older version's download, or one made when choosing
+  // was possible. Still used as a fallback, so it must not be deleted silently —
+  // but it must be visible, or a 488 MB file becomes undeletable.
+  const leftover = installed.filter((n) => n !== 'base');
+  const sizeOf = (name: string) => catalog.find((m) => m.name === name)?.bytes || 0;
+  const labelOf = (name: string) => catalog.find((m) => m.name === name)?.label || name;
 
   return (
     <div className="settings-content" style={{ padding: 12, overflowY: 'auto', height: '100%' }}>
@@ -189,86 +208,85 @@ export function MeetingTab() {
           <p className="text-ink-muted" style={{ fontSize: 11, lineHeight: 1.7, margin: '0 0 10px' }}>
             {t('meeting.settings.modelGuide', lang)}
           </p>
-          {catalog.map((m) => {
-            const isInstalled = installed.includes(m.name);
-            const isDefault = models?.defaultModel === m.name;
-            const dl = download?.name === m.name ? download : null;
-            const anyInstalled = installed.length > 0;
-            return (
-              <div
-                key={m.name}
-                style={{
-                  ...row,
-                  padding: isDefault ? '8px 10px' : '6px 10px',
-                  marginLeft: -10,
-                  marginRight: -10,
-                  borderRadius: 8,
-                  // The default gets a background rather than just bolder text:
-                  // "base · Default" told the user which one TomiLite prefers,
-                  // not which one they should pick.
-                  background: isDefault ? 'var(--brand-soft)' : 'transparent',
-                  border: isDefault ? '1px solid var(--brand)' : '1px solid transparent',
-                }}
-              >
-                <span style={{ ...label, fontWeight: isDefault ? 700 : 400, minWidth: 110 }}>
-                  {m.label || m.name}
-                  {isDefault && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 9,
-                        padding: '1px 6px',
-                        borderRadius: 999,
-                        color: 'var(--brand)',
-                        border: '1px solid var(--brand)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {t('meeting.settings.modelBest', lang)}
-                    </span>
-                  )}
-                </span>
-                <span className="text-ink-muted" style={{ fontSize: 11, minWidth: 52 }}>
-                  {fmtBytes(m.bytes)}
-                </span>
-                <span className="text-ink-muted" style={{ fontSize: 10, flex: 1, minWidth: 200 }}>
-                  {t(`meeting.settings.modelNote.${m.name}` as any, lang)}
-                </span>
-                {isInstalled ? (
-                  <>
-                    <span style={{ fontSize: 11, color: 'var(--green)' }}>
-                      ✓ {t('meeting.settings.modelInstalled', lang)}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-xs"
-                      disabled={!!download}
-                      onClick={() => void removeModel(m.name)}
-                    >
-                      {t('meeting.settings.modelDelete', lang)}
-                    </button>
-                  </>
-                ) : dl ? (
-                  <button type="button" className="btn btn-secondary btn-xs" onClick={() => void cancelDownload()}>
-                    {t('meeting.settings.downloadCancel', lang)}
-                  </button>
-                ) : (
+          {/* One row, because there is one model. No picker, no "best" badge, no
+              "currently selected" highlight: all three existed to compare choices
+              the user is not asked to make. */}
+          {base && (
+            <div style={{ ...row, padding: '6px 10px', marginLeft: -10, marginRight: -10 }}>
+              <span style={{ ...label, minWidth: 110 }}>{base.label || base.name}</span>
+              <span className="text-ink-muted" style={{ fontSize: 11, minWidth: 52 }}>
+                {fmtBytes(base.bytes)}
+              </span>
+              <span className="text-ink-muted" style={{ fontSize: 10, flex: 1, minWidth: 200 }}>
+                {t('meeting.settings.modelNote.base', lang)}
+              </span>
+              {installed.includes('base') ? (
+                <>
+                  <span style={{ fontSize: 11, color: 'var(--green)' }}>
+                    ✓ {t('meeting.settings.modelInstalled', lang)}
+                  </span>
                   <button
                     type="button"
-                    className={isDefault ? 'btn btn-brand btn-xs' : 'btn btn-secondary btn-xs'}
+                    className="btn btn-ghost btn-xs"
                     disabled={!!download}
-                    onClick={() => void startDownload(m.name)}
+                    onClick={() => void removeModel('base')}
                   >
-                    {/* Once something is installed the button is no longer a
-                        recommendation, just a way to add another one. */}
-                    {isDefault && !anyInstalled
-                      ? t('meeting.settings.modelPick', lang)
-                      : t('meeting.settings.modelDownload', lang)}
+                    {t('meeting.settings.modelDelete', lang)}
                   </button>
-                )}
+                </>
+              ) : download?.name === 'base' ? (
+                <button type="button" className="btn btn-secondary btn-xs" onClick={() => void cancelDownload()}>
+                  {t('meeting.settings.downloadCancel', lang)}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  disabled={!!download}
+                  onClick={() => void startDownload('base')}
+                >
+                  {t('meeting.settings.modelDownload', lang)}
+                </button>
+              )}
+            </div>
+          )}
+
+          {installed.length === 0 && (
+            <p style={{ fontSize: 10, lineHeight: 1.7, color: 'var(--amber)', margin: '8px 0 0' }}>
+              {t('meeting.settings.modelNoneWarn', lang)}
+            </p>
+          )}
+
+          {/* ═══ Leftovers from when a model could be chosen ═══
+              Listed so they can be deleted, not so they can be picked. Nothing
+              here changes what runs: `base` is used whenever it is on disk. */}
+          {leftover.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: '1px solid var(--edge)', paddingTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
+                {t('meeting.settings.modelsUnused', lang)}
               </div>
-            );
-          })}
+              <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.7, margin: '0 0 6px' }}>
+                {t('meeting.settings.modelsUnusedNote', lang)}
+              </p>
+              {leftover.map((name) => (
+                <div key={name} style={{ ...row, padding: '4px 10px', marginLeft: -10, marginRight: -10 }}>
+                  <span style={{ ...label, minWidth: 110 }}>{labelOf(name)}</span>
+                  <span className="text-ink-muted" style={{ fontSize: 11, minWidth: 52 }}>
+                    {fmtBytes(sizeOf(name))}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    disabled={!!download}
+                    onClick={() => void removeModel(name)}
+                  >
+                    {t('meeting.settings.modelDelete', lang)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {download && !download.error && (
             <div style={{ marginTop: 6 }}>
@@ -334,6 +352,20 @@ export function MeetingTab() {
           </div>
 
           <div style={row}>
+            <span style={label}>{t('meeting.settings.textScript', lang)}</span>
+            <select
+              className="form-select"
+              value={defaults.textScript}
+              onChange={(e) => persist({ ...defaults, textScript: e.target.value as TextScript })}
+              style={{ fontSize: 12, maxWidth: 240 }}
+            >
+              <option value="simplified">{t('meeting.settings.script.simplified', lang)}</option>
+              <option value="traditional">{t('meeting.settings.script.traditional', lang)}</option>
+              <option value="source">{t('meeting.settings.script.source', lang)}</option>
+            </select>
+          </div>
+
+          <div style={row}>
             <span style={label}>{t('meeting.settings.retention', lang)}</span>
             <input
               className="form-input"
@@ -345,6 +377,10 @@ export function MeetingTab() {
               style={{ fontSize: 12, maxWidth: 120 }}
             />
           </div>
+
+          <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.7 }}>
+            {t('meeting.settings.textScriptNote', lang)}
+          </p>
 
           <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.7 }}>
             {t('meeting.settings.retentionNote', lang)}
@@ -402,7 +438,18 @@ export function MeetingTab() {
             type="button"
             className="btn btn-secondary btn-sm"
             style={{ marginTop: 6 }}
-            onClick={() => window.dispatchEvent(new CustomEvent('meeting-consent-reset'))}
+            onClick={async () => {
+              // The stored row is the real state — the date above and the recorder's
+              // gate both read `SystemConfig`. Clearing in-memory only, as this used to,
+              // was undone by the next read: the button looked dead because the date
+              // never changed and a reload brought it back.
+              await api.meeting.resetConsent().catch(() => {});
+              const r: any = await api.meeting.consent().catch(() => null);
+              setConsentAt(r?.acknowledgedAt ?? null);
+              // Still worth telling the meeting panel, so an already-open recorder
+              // hides its acknowledgement without waiting for a refetch.
+              window.dispatchEvent(new CustomEvent('meeting-consent-reset'));
+            }}
           >
             {t('meeting.settings.consentReset', lang)}
           </button>

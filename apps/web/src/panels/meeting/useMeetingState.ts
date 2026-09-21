@@ -26,7 +26,12 @@ export interface MeetingRow {
   source: string;
   durationMs: number;
   audioBytes: number;
-  whisperModel: string;
+  /**
+   * What actually ran — null until a transcription has been attempted. Not rendered:
+   * the app targets one model and never asks the user about it. Kept because it is the
+   * only record of whether a leftover model on disk produced a given transcript.
+   */
+  transcribeModel: string | null;
   lang: string;
   transcribeStatus: string;
   transcribeProgress: number;
@@ -336,7 +341,8 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
         // No lang / retentionDays here: the server resolves both from the
         // Settings → Meetings defaults, which were previously written and then
         // never read by anything. Passing `lang: 'auto'` here would keep
-        // overriding the user's choice.
+        // overriding the user's choice. The speech model is resolved server-side
+        // too — it is not a setting, so there is nothing to pass.
         const created = await api.meeting.create({ source });
         if (!created?.ok) {
           setRecError(nowStr('meeting.record.uploadFailed'));

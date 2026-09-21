@@ -1,4 +1,5 @@
 import { prisma } from '@tomilite/database';
+import { utcStamp } from './dbTime.js';
 import { resolveLLM } from './gateway.js';
 import { chat } from './meeting/pipeline.js';
 import { track as telTrack } from './telemetry.js';
@@ -45,18 +46,9 @@ let sweeping = false;
 const inFlight = new Set<string>();
 
 // ─── Time helpers ───
-// ChatSession.updatedAt/distillAt are UTC (chat.ts writes them that way);
-// every other row timestamp is the DB default datetime('now','localtime').
-// Never mix the two — see the idle check below.
-
-function utcStamp(d: Date = new Date()): string {
-  return d.toISOString().replace('T', ' ').substring(0, 19);
-}
-
-function localStamp(d: Date = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
+// Every stamp this job writes is UTC, via lib/dbTime.ts. It used to use a private
+// `localStamp()` for the distilled note, which is what made KnowledgePage.updatedAt a
+// mixed column: the note write was local while the note panel's own saves were UTC.
 
 // ─── SystemConfig helpers ───
 
@@ -118,11 +110,7 @@ async function stampAttempt(sessionId: string, meta: DistillMeta, cursor?: strin
 
 // ─── Prompt + parsing ───
 
-function buildPrompt(
-  lang: string,
-  existing: string | null,
-  window: Array<{ role: string; text: string }>,
-): string {
+function buildPrompt(lang: string, existing: string | null, window: Array<{ role: string; text: string }>): string {
   const langName = LANG_LABEL[lang] || 'English';
   const transcript = window
     .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text.substring(0, MAX_MSG_CHARS)}`)
@@ -273,18 +261,17 @@ export async function distillSession(sessionId: string, opts: { force?: boolean 
     // when it didn't, so the note is still findable in the Notes list.
     const title =
       verdict.title ||
-      (session.title
-        ? t('distill.noteTitle', lang, { title: session.title })
-        : t('distill.untitled', lang));
+      (session.title ? t('distill.noteTitle', lang, { title: session.title }) : t('distill.untitled', lang));
     const content = (verdict.content || '').substring(0, MAX_CONTENT);
     let noteId: string;
     if (existing) {
       await prisma.knowledgePage.update({
         where: { id: existing.id },
-        data: { title, content, updatedAt: localStamp() },
+        data: { title, content, updatedAt: utcStamp() },
       });
       noteId = existing.id;
     } else {
+      const now = utcStamp();
       const created = await prisma.knowledgePage.create({
         data: {
           projectId: DEFAULT_PROJECT_ID,
@@ -294,6 +281,8 @@ export async function distillSession(sessionId: string, opts: { force?: boolean 
           status: 'active',
           source: 'chat_distill',
           sourceId: sessionId,
+          createdAt: now,
+          updatedAt: now,
         },
       });
       noteId = created.id;

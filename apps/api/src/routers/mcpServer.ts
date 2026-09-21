@@ -2,6 +2,7 @@ import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import { mcpRegistry } from '../agent/mcp/registry.js';
+import { utcStamp } from '../lib/dbTime.js';
 
 function maskKey(raw: string): string {
   if (!raw || raw.length <= 8) return '****';
@@ -18,7 +19,11 @@ export const mcpServerRouter = router({
     for (const s of servers) {
       let keyMasked: string | null = null;
       if (s.apiKey) {
-        try { keyMasked = maskKey(await decrypt(s.apiKey)); } catch { keyMasked = '****'; }
+        try {
+          keyMasked = maskKey(await decrypt(s.apiKey));
+        } catch {
+          keyMasked = '****';
+        }
       }
       result.push({
         id: s.id,
@@ -44,18 +49,24 @@ export const mcpServerRouter = router({
 
   // ─── Create ───
   create: publicProcedure
-    .input(z.object({
-      name: z.string().min(1).max(50),
-      url: z.string().min(1),
-      apiKey: z.string().optional(),
-      transport: z.enum(['http', 'jsonrpc', 'legacy', 'auto']).default('http'),
-      headers: z.string().optional(),       // JSON string
-      hitlMode: z.enum(['none', 'poll', 'confirm']).default('none'),
-      hitlConfirmUrl: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        name: z.string().min(1).max(50),
+        url: z.string().min(1),
+        apiKey: z.string().optional(),
+        transport: z.enum(['http', 'jsonrpc', 'legacy', 'auto']).default('http'),
+        headers: z.string().optional(), // JSON string
+        hitlMode: z.enum(['none', 'poll', 'confirm']).default('none'),
+        hitlConfirmUrl: z.string().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       // Validate URL format
-      try { new URL(input.url); } catch { throw new Error('Invalid URL format'); }
+      try {
+        new URL(input.url);
+      } catch {
+        throw new Error('Invalid URL format');
+      }
 
       // Check duplicate name
       const existing = await prisma.mcpServer.findFirst({ where: { name: input.name } });
@@ -65,6 +76,7 @@ export const mcpServerRouter = router({
       const apiKey = input.apiKey ? await encrypt(input.apiKey) : null;
       const headers = input.headers ? await encrypt(input.headers) : null;
 
+      const now = utcStamp();
       const srv = await prisma.mcpServer.create({
         data: {
           name: input.name,
@@ -74,6 +86,8 @@ export const mcpServerRouter = router({
           headers,
           hitlMode: input.hitlMode,
           hitlConfirmUrl: input.hitlConfirmUrl || null,
+          createdAt: now,
+          updatedAt: now,
         },
       });
 
@@ -82,17 +96,19 @@ export const mcpServerRouter = router({
 
   // ─── Update ───
   update: publicProcedure
-    .input(z.object({
-      id: z.string(),
-      name: z.string().min(1).max(50).optional(),
-      url: z.string().optional(),
-      apiKey: z.string().optional(),        // empty = keep existing
-      transport: z.enum(['http', 'jsonrpc', 'legacy', 'auto']).optional(),
-      headers: z.string().optional(),
-      hitlMode: z.enum(['none', 'poll', 'confirm']).optional(),
-      hitlConfirmUrl: z.string().optional(),
-      enabled: z.boolean().optional(),
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).max(50).optional(),
+        url: z.string().optional(),
+        apiKey: z.string().optional(), // empty = keep existing
+        transport: z.enum(['http', 'jsonrpc', 'legacy', 'auto']).optional(),
+        headers: z.string().optional(),
+        hitlMode: z.enum(['none', 'poll', 'confirm']).optional(),
+        hitlConfirmUrl: z.string().optional(),
+        enabled: z.boolean().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const { id, apiKey, headers, ...rest } = input;
 
@@ -106,7 +122,7 @@ export const mcpServerRouter = router({
         data.headers = headers ? await encrypt(headers) : null;
       }
 
-      data.updatedAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      data.updatedAt = utcStamp();
 
       // Clear status on config change
       if (rest.url || rest.transport) {
@@ -121,62 +137,50 @@ export const mcpServerRouter = router({
     }),
 
   // ─── Delete ───
-  delete: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      await mcpRegistry.disconnect(input.id);
-      await prisma.mcpServer.delete({ where: { id: input.id } });
-      return { ok: true };
-    }),
+  delete: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    await mcpRegistry.disconnect(input.id);
+    await prisma.mcpServer.delete({ where: { id: input.id } });
+    return { ok: true };
+  }),
 
   // ─── Test connection + discover tools ───
-  test: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      const result = await mcpRegistry.connect(input.id);
-      return {
-        ok: result.ok,
-        toolCount: result.tools.length,
-        tools: result.tools.map(t => ({ name: t.name, description: t.description?.substring(0, 100), risk: t.risk })),
-        error: result.error,
-        latencyMs: result.latencyMs,
-      };
-    }),
+  test: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    const result = await mcpRegistry.connect(input.id);
+    return {
+      ok: result.ok,
+      toolCount: result.tools.length,
+      tools: result.tools.map((t) => ({ name: t.name, description: t.description?.substring(0, 100), risk: t.risk })),
+      error: result.error,
+      latencyMs: result.latencyMs,
+    };
+  }),
 
   // ─── Refresh tools for a server ───
-  refreshTools: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      const tools = await mcpRegistry.refresh(input.id);
-      return { ok: true, toolCount: tools.length };
-    }),
+  refreshTools: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    const tools = await mcpRegistry.refresh(input.id);
+    return { ok: true, toolCount: tools.length };
+  }),
 
   // ─── Connect ───
-  connect: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      const result = await mcpRegistry.connect(input.id);
-      return { ok: result.ok, error: result.error };
-    }),
+  connect: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    const result = await mcpRegistry.connect(input.id);
+    return { ok: result.ok, error: result.error };
+  }),
 
   // ─── Disconnect ───
-  disconnect: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      await mcpRegistry.disconnect(input.id);
-      return { ok: true };
-    }),
+  disconnect: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    await mcpRegistry.disconnect(input.id);
+    return { ok: true };
+  }),
 
   // ─── Preview tools for a server (cached) ───
-  listTools: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const tools = mcpRegistry.getServerTools(input.id);
-      return tools.map(t => ({
-        name: t.name,
-        description: t.description?.substring(0, 200),
-        risk: t.risk,
-        hasSchema: !!(t.inputSchema && Object.keys(t.inputSchema.properties || {}).length > 0),
-      }));
-    }),
+  listTools: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const tools = mcpRegistry.getServerTools(input.id);
+    return tools.map((t) => ({
+      name: t.name,
+      description: t.description?.substring(0, 200),
+      risk: t.risk,
+      hasSchema: !!(t.inputSchema && Object.keys(t.inputSchema.properties || {}).length > 0),
+    }));
+  }),
 });

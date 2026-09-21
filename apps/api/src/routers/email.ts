@@ -4,6 +4,7 @@ import { encrypt, decrypt } from '../lib/crypto';
 import { emailManager, sendSMTP } from '@tomilite/email';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway';
 import { sendWithStoredSmtp } from '../lib/smtpSend';
+import { utcStamp } from '../lib/dbTime';
 export const emailRouter = router({
   // ─── Smart Email list (for notification badge + Task panel) ───
   listSmartEmails: publicProcedure
@@ -455,7 +456,7 @@ export const emailRouter = router({
         where: { projectId: 'proj-default' },
         _max: { issueNumber: true },
       });
-      const nowStr = new Date().toLocaleString('sv-SE').replace('T', ' ');
+      const nowStr = utcStamp();
       const issue = await prisma.issue.create({
         data: {
           projectId: 'proj-default',

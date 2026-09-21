@@ -1,5 +1,6 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
+import { localDayKey, parseUtc, parseUtcMs, utcStamp } from '../lib/dbTime.js';
 
 // ─── Shared scanning logic — used by periodic interval in server.ts ───
 export async function scanGitWorkDirs() {
@@ -9,20 +10,33 @@ export async function scanGitWorkDirs() {
 
   // Check git availability once
   let gitAvailable = false;
-  try { execSync('git --version', { stdio: 'pipe', timeout: 5000 }); gitAvailable = true; } catch {}
-  if (!gitAvailable) return { reposFound: 0, commitsFound: 0, error: 'Git not found. Install Git and ensure it is in system PATH.' };
+  try {
+    execSync('git --version', { stdio: 'pipe', timeout: 5000 });
+    gitAvailable = true;
+  } catch {}
+  if (!gitAvailable)
+    return { reposFound: 0, commitsFound: 0, error: 'Git not found. Install Git and ensure it is in system PATH.' };
 
   const workDirs = await prisma.gitWorkDir.findMany({ where: { enabled: true } });
-  if (workDirs.length === 0) return { reposFound: 0, commitsFound: 0, error: 'No work directories configured. Go to Settings → Git and add at least one directory.' };
+  if (workDirs.length === 0)
+    return {
+      reposFound: 0,
+      commitsFound: 0,
+      error: 'No work directories configured. Go to Settings → Git and add at least one directory.',
+    };
 
-  let reposFound = 0, commitsFound = 0;
+  let reposFound = 0,
+    commitsFound = 0;
 
   // Recursively find .git dirs up to maxDepth levels
   function findGitRepos(basePath: string, maxDepth: number): string[] {
     const results: string[] = [];
     function scan(dir: string, depth: number) {
       if (depth > maxDepth) return;
-      if (existsSync(join(dir, '.git'))) { results.push(dir); return; }
+      if (existsSync(join(dir, '.git'))) {
+        results.push(dir);
+        return;
+      }
       try {
         const entries = readdirSync(dir, { withFileTypes: true });
         for (const e of entries) {
@@ -37,7 +51,10 @@ export async function scanGitWorkDirs() {
 
   for (const wd of workDirs) {
     console.warn('[GitScan] dir:', wd.path, 'exists:', existsSync(wd.path));
-    if (!existsSync(wd.path)) { console.warn('[GitScan] path missing, skip'); continue; }
+    if (!existsSync(wd.path)) {
+      console.warn('[GitScan] path missing, skip');
+      continue;
+    }
     try {
       const repoPaths = findGitRepos(wd.path, 3);
       console.warn('[GitScan] found repos:', repoPaths.length);
@@ -57,18 +74,23 @@ export async function scanGitWorkDirs() {
         reposFound++;
 
         // Get new commits since last scan
-        const since = repo.lastScannedAt
-          ? `--since="${repo.lastScannedAt}"`
-          : '--since="24 hours ago"';
+        const since = repo.lastScannedAt ? `--since="${repo.lastScannedAt}"` : '--since="24 hours ago"';
         try {
-          const output = execSync(
-            `git -C "${cleanPath}" log --all ${since} --format="%H|%an|%ae|%aI|%s" --shortstat`,
-            { timeout: 15000, stdio: 'pipe', env: { ...process.env, LANG: 'C', LC_ALL: 'C' } }
-          ).toString();
+          const output = execSync(`git -C "${cleanPath}" log --all ${since} --format="%H|%an|%ae|%aI|%s" --shortstat`, {
+            timeout: 15000,
+            stdio: 'pipe',
+            env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
+          }).toString();
 
           const lines = output.split('\n');
-          let hash = '', author = '', email = '', timestamp = '', message = '';
-          let files = 0, adds = 0, dels = 0;
+          let hash = '',
+            author = '',
+            email = '',
+            timestamp = '',
+            message = '';
+          let files = 0,
+            adds = 0,
+            dels = 0;
 
           for (const line of lines) {
             const parts = line.split('|');
@@ -78,7 +100,9 @@ export async function scanGitWorkDirs() {
                 commitsFound++;
               }
               [hash, author, email, timestamp, message] = parts;
-              files = 0; adds = 0; dels = 0;
+              files = 0;
+              adds = 0;
+              dels = 0;
             } else if (line.includes('file changed')) {
               const fm = line.match(/(\d+)\s+files?\s+changed/);
               const am = line.match(/(\d+)\s+insertions?\(\+\)/);
@@ -92,24 +116,55 @@ export async function scanGitWorkDirs() {
             await saveCommit(repo.id, hash, author, email, message, timestamp, files, adds, dels);
             commitsFound++;
           }
-        } catch { /* git log failed, skip repo */ }
+        } catch {
+          /* git log failed, skip repo */
+        }
 
         await prisma.gitRepo.update({
-          where: { id: repo.id }, data: { lastScannedAt: new Date().toISOString() },
+          where: { id: repo.id },
+          data: { lastScannedAt: new Date().toISOString() },
         });
       }
-    } catch { /* scan failed */ }
+    } catch {
+      /* scan failed */
+    }
   }
   return { reposFound, commitsFound };
 }
 
 // ─── Helper: save commit + parse issue references ───
-async function saveCommit(repoId: string, hash: string, author: string, email: string, message: string, timestamp: string, filesChanged: number, additions: number, deletions: number) {
+async function saveCommit(
+  repoId: string,
+  hash: string,
+  author: string,
+  email: string,
+  message: string,
+  timestamp: string,
+  filesChanged: number,
+  additions: number,
+  deletions: number,
+) {
   const existing = await prisma.gitCommit.findFirst({ where: { hash } });
   if (existing) return existing;
 
+  // `timestamp` arrives as whatever the caller had — git's `%aI` (`+08:00`) from the
+  // scanner, an ISO `Z` from the hook — and is normalised to the naive-UTC shape every
+  // other timestamp column uses, so filters on this column line up. `createdAt` is
+  // stamped explicitly: its default is localtime. See lib/dbTime.ts.
+  const at = utcStamp(parseUtc(timestamp) ?? new Date());
   const commit = await prisma.gitCommit.create({
-    data: { repoId, hash, author, email, message: message.substring(0, 500), timestamp, filesChanged, additions, deletions },
+    data: {
+      repoId,
+      hash,
+      author,
+      email,
+      message: message.substring(0, 500),
+      timestamp: at,
+      createdAt: at,
+      filesChanged,
+      additions,
+      deletions,
+    },
   });
 
   // Parse issue references (fix #3, close TL-5, etc.)
@@ -134,13 +189,23 @@ async function saveCommit(repoId: string, hash: string, author: string, email: s
       else if (/implement/i.test(message)) action = 'implement';
 
       await prisma.gitCommitRef.create({
-        data: { repoId, commitHash: hash, message: message.substring(0, 500), issueKey: key, action, issueId: issue?.id || null },
+        data: {
+          repoId,
+          commitHash: hash,
+          message: message.substring(0, 500),
+          issueKey: key,
+          action,
+          issueId: issue?.id || null,
+        },
       });
 
       if (issue && (action === 'close' || action === 'fix')) {
         await prisma.issue.update({ where: { id: issue.id }, data: { status: 'done', remainingPoints: 0 } });
         await prisma.comment.create({
-          data: { issueId: issue.id, body: `🤖 Auto-closed by commit \`${hash.substring(0, 8)}\`\n> ${message.substring(0, 200)}` },
+          data: {
+            issueId: issue.id,
+            body: `🤖 Auto-closed by commit \`${hash.substring(0, 8)}\`\n> ${message.substring(0, 200)}`,
+          },
         });
       } else if (issue && action === 'implement' && issue.status === 'todo') {
         await prisma.issue.update({ where: { id: issue.id }, data: { status: 'in_progress' } });
@@ -153,28 +218,24 @@ async function saveCommit(repoId: string, hash: string, author: string, email: s
 // ─── Router ───
 export const gitRouter = router({
   // ─── Work Directories (user-configured, max 5) ───
-  listWorkDirs: publicProcedure.query(() =>
-    prisma.gitWorkDir.findMany({ orderBy: { createdAt: 'desc' } })),
+  listWorkDirs: publicProcedure.query(() => prisma.gitWorkDir.findMany({ orderBy: { createdAt: 'desc' } })),
 
-  addWorkDir: publicProcedure
-    .input(z.object({ path: z.string() }))
-    .mutation(async ({ input }) => {
-      const count = await prisma.gitWorkDir.count();
-      if (count >= 5) throw new Error('Maximum 5 work directories allowed');
-      const cleanPath = input.path.replace(/[\\/]+$/, '');
-      const result = await prisma.gitWorkDir.create({ data: { path: cleanPath } });
-      // Auto-scan after adding
-      scanGitWorkDirs().catch(() => {});
-      return result;
-    }),
+  addWorkDir: publicProcedure.input(z.object({ path: z.string() })).mutation(async ({ input }) => {
+    const count = await prisma.gitWorkDir.count();
+    if (count >= 5) throw new Error('Maximum 5 work directories allowed');
+    const cleanPath = input.path.replace(/[\\/]+$/, '');
+    const result = await prisma.gitWorkDir.create({ data: { path: cleanPath } });
+    // Auto-scan after adding
+    scanGitWorkDirs().catch(() => {});
+    return result;
+  }),
 
   removeWorkDir: publicProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => prisma.gitWorkDir.delete({ where: { id: input.id } })),
 
   // ─── Repos ───
-  listRepos: publicProcedure.query(() =>
-    prisma.gitRepo.findMany({ orderBy: { createdAt: 'desc' } })),
+  listRepos: publicProcedure.query(() => prisma.gitRepo.findMany({ orderBy: { createdAt: 'desc' } })),
 
   addRepo: publicProcedure
     .input(z.object({ name: z.string(), localPath: z.string(), branch: z.string().default('main') }))
@@ -190,7 +251,7 @@ export const gitRouter = router({
     .mutation(async ({ input }) => {
       const repo = await prisma.gitRepo.findFirst({ where: { localPath: input.path, enabled: true } });
       if (!repo) return { processed: false, reason: 'repo not found' };
-      await saveCommit(repo.id, input.hash, '', '', input.message, new Date().toISOString(), 0, 0, 0);
+      await saveCommit(repo.id, input.hash, '', '', input.message, utcStamp(), 0, 0, 0);
       return { processed: true };
     }),
 
@@ -206,32 +267,53 @@ export const gitRouter = router({
       const where: any = { archived: false };
       if (input.since) where.timestamp = { gte: input.since };
       const [commits, total] = await Promise.all([
-        prisma.gitCommit.findMany({ where, orderBy: { timestamp: 'desc' }, take: input.limit, skip: input.offset, include: { repo: true } }),
+        prisma.gitCommit.findMany({
+          where,
+          orderBy: { timestamp: 'desc' },
+          take: input.limit,
+          skip: input.offset,
+          include: { repo: true },
+        }),
         prisma.gitCommit.count({ where }),
       ]);
       return { commits, total };
     }),
 
   // ─── Daily commit summary ───
-  dailyCommitSummary: publicProcedure
-    .input(z.object({ date: z.string().optional() }))
-    .query(async ({ input }) => {
-      const date = input.date || new Date().toISOString().substring(0, 10);
-      const commits = await prisma.gitCommit.findMany({
-        where: { timestamp: { startsWith: date }, archived: false },
-        orderBy: { timestamp: 'desc' },
-      });
-      const repoCount = new Set(commits.map(c => c.repoId)).size;
-      let totalFiles = 0, totalAdds = 0, totalDels = 0;
-      for (const c of commits) { totalFiles += c.filesChanged; totalAdds += c.additions; totalDels += c.deletions; }
-      return { date, totalCommits: commits.length, repos: repoCount, totalFiles, totalAdds, totalDels, commits };
-    }),
+  dailyCommitSummary: publicProcedure.input(z.object({ date: z.string().optional() })).query(async ({ input }) => {
+    // A *local* calendar day, which is what a person means by "today", and the day the
+    // commit list is grouped by. `toISOString().substring(0,10)` gave the UTC day, so
+    // before 08:00 local this summarised yesterday. The window then filters on instants
+    // rather than on the text prefix, which a `+08:00` stamp never matched reliably.
+    const date = input.date || localDayKey(new Date());
+    const from = new Date(`${date}T00:00:00`);
+    const to = new Date(from.getTime() + 86400000);
+    const candidates = await prisma.gitCommit.findMany({
+      where: { timestamp: { gte: utcStamp(new Date(from.getTime() - 86400000)) }, archived: false },
+      orderBy: { timestamp: 'desc' },
+    });
+    const commits = candidates.filter((c) => {
+      const ms = parseUtcMs(c.timestamp);
+      return ms !== null && ms >= from.getTime() && ms < to.getTime();
+    });
+    const repoCount = new Set(commits.map((c) => c.repoId)).size;
+    let totalFiles = 0,
+      totalAdds = 0,
+      totalDels = 0;
+    for (const c of commits) {
+      totalFiles += c.filesChanged;
+      totalAdds += c.additions;
+      totalDels += c.deletions;
+    }
+    return { date, totalCommits: commits.length, repos: repoCount, totalFiles, totalAdds, totalDels, commits };
+  }),
 
   // ─── Recent refs ───
-  recentRefs: publicProcedure
-    .input(z.object({ limit: z.number().default(20) }))
-    .query(async ({ input }) =>
-      prisma.gitCommitRef.findMany({
-        orderBy: { createdAt: 'desc' }, take: input.limit, include: { repo: true },
-      })),
+  recentRefs: publicProcedure.input(z.object({ limit: z.number().default(20) })).query(async ({ input }) =>
+    prisma.gitCommitRef.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: input.limit,
+      include: { repo: true },
+    }),
+  ),
 });

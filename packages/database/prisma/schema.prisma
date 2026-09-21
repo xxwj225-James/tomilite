@@ -12,6 +12,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ═══ Timestamps ═══
+// Every timestamp is a String shaped `YYYY-MM-DD HH:MM:SS`. On the tables whose writers
+// were normalised it holds **UTC**, and readers parse it as UTC — helpers live in
+// apps/api/src/lib/dbTime.ts and apps/web/src/lib/dbTime.ts, and docs/architecture.md
+// carries the invariant and the migration that established it.
+//
+// The `datetime('now','localtime')` default is still declared on most models, including
+// the ones whose rows have been converted to UTC (lib/clockUtc.ts rewrites rows, not the
+// DDL — a default only matters for a row born without a stamp, and the normalised writers
+// all supply one). It stays live and load-bearing on the tables deliberately left on local
+// time, where writer, default and reader all agree — `Meeting*` and `ApiKey.createdAt` are
+// the cases, and `Meeting`'s audio-retention cutoff is computed in local time to match.
+// Those are self-consistent, so nothing renders them wrongly; but they are a second clock,
+// and a writer that reaches for `utcStamp()` in one of those columns would silently make it
+// mixed. The defect is two clocks in one column, never "a column is not UTC".
+//
+// The reverse mistake is just as real and is recorded here so it is not repeated:
+// `SmartEmail.date` was already UTC and its *reader* was wrong — the list and detail views
+// sliced its text, printing the UTC wall clock. A UTC column with a slicing reader looks
+// exactly like a local column with a correct one.
+//
+// Only `Issue` gets UTC defaults: its stamps drive the dates the task board renders, and
+// SQLite cannot change a default in place, so lib/clockUtc.ts rewrites that table's DDL
+// on existing installs to match these two lines.
+//
+// Rule for new code: never let a row be born from a default — write the stamp explicitly
+// (`utcStamp()`). See docs/architecture.md §Clock.
+
 // ═══ User Profile (single user) ═══
 model User {
   id             String   @id @default(uuid())
@@ -65,8 +93,12 @@ model Issue {
   sortOrder       Float    @default(0)
   dueDate         String?
   gitRepo         String?
-  createdAt       String   @default(dbgenerated("(datetime('now','localtime'))"))
-  updatedAt       String   @default(dbgenerated("(datetime('now','localtime'))"))
+  // UTC — both. These two are the defaults lib/clockUtc.ts rewrites on existing installs
+  // (SQLite cannot ALTER a default), because this is the table whose dates the task board
+  // renders: a mixed column here was a visibly wrong day. Every write path passes
+  // utcStamp(); the defaults only matter for a row inserted by something that forgot to.
+  createdAt       String   @default(dbgenerated("(datetime('now'))"))
+  updatedAt       String   @default(dbgenerated("(datetime('now'))"))
 
   project    Project       @relation(fields: [projectId], references: [id])
   parent     Issue?        @relation("IssueParent", fields: [parentId], references: [id], onDelete: SetNull)
@@ -490,7 +522,14 @@ model Meeting {
   audioBytes   Int     @default(0)
   sampleRate   Int     @default(16000)
   durationMs   Int     @default(0)
+  // Kept for the rows written when the model was selectable, and written on new rows as
+  // the one model the app targets. Always `base` now: the user does not choose a model,
+  // and nothing reads this column for a decision.
   whisperModel String  @default("base")
+  // What actually ran. `resolveSpeechModel` (apps/api/src/lib/meeting/models.ts) prefers
+  // `base` and falls back to the smallest installed model, so a disk holding only some
+  // other model still transcribes. Recorded for diagnostics; not shown in the UI.
+  transcribeModel String?
   lang         String  @default("auto")
 
   // Stage state — plain strings (not enums/JSON) so a boot-time sweep can find
@@ -613,9 +652,10 @@ model ChatSession {
   id           String @id @default(uuid())
   title        String @default("New Chat")
   tokenPercent Int    @default(0)
+  // Both stamps are written in UTC by chat.ts — the distillation idle check compares
+  // them against `utcStamp()` bounds (chatDistill.ts). The localtime default is a
+  // fallback the write side does not rely on.
   createdAt    String @default(dbgenerated("(datetime('now','localtime'))"))
-  // NOTE: written in UTC by chat.ts (unlike every other timestamp's localtime
-  // default) — the distillation idle check depends on that, see chatDistill.ts.
   updatedAt    String @default(dbgenerated("(datetime('now','localtime'))"))
   distillCursor String? // createdAt of the newest distilled message — copied verbatim
   distillAt     String? // last distillation attempt (UTC) — backoff gate

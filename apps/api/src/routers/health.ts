@@ -1,6 +1,8 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { t } from '../lib/i18n.js';
+import { isTask } from '../lib/taskScope.js';
+import { localDayKey, parseUtc, parseUtcMs, utcStamp } from '../lib/dbTime.js';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
 
 // ═══ AI Health Scorer — rule-based engine + optional LLM polish ═══
@@ -33,9 +35,12 @@ export const healthRouter = router({
   personalHealth: publicProcedure
     .input(z.object({ lang: z.string().default('en'), force: z.boolean().default(false) }))
     .query(async ({ input }) => {
-      // Return cached snapshot if within 2 hours and same language (unless forced)
+      // Return cached snapshot if within 2 hours and same language (unless forced).
+      // The cutoff is a UTC stamp because the column is UTC — see lib/dbTime.ts. A UTC
+      // stamp compared against the localtime this column used to hold never matched, so
+      // the cache below was simply never used and every call paid for a fresh LLM pass.
       if (!input.force) {
-        const twoHoursAgo = new Date(Date.now() - 2 * 3600000).toISOString().replace('T', ' ').substring(0, 19);
+        const twoHoursAgo = utcStamp(new Date(Date.now() - 2 * 3600000));
         const cached = await prisma.userHealthSnapshot.findFirst({
           where: { createdAt: { gte: twoHoursAgo }, lang: input.lang },
           orderBy: { createdAt: 'desc' },
@@ -64,22 +69,47 @@ export const healthRouter = router({
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Issues
-      const allIssues = await prisma.issue.findMany({ where: { projectId: 'proj-default' } });
+      // Issues — emails mirrored into the Issue table are not tasks, and neither is
+      // anything in a status the board cannot show. See lib/taskScope.ts for why
+      // this matters: it is the same set the task board and the Home stat card use.
+      const allIssues = (await prisma.issue.findMany({ where: { projectId: 'proj-default' } })).filter(isTask);
       const total = allIssues.length;
       const done = allIssues.filter((i) => i.status === 'done').length;
       const inProgress = allIssues.filter((i) => ['in_progress', 'in_review'].includes(i.status)).length;
       const todo = allIssues.filter((i) => i.status === 'todo').length;
-      const recentlyDone = allIssues.filter(
-        (i) => i.status === 'done' && i.updatedAt && now - new Date(i.updatedAt).getTime() < weekMs,
-      );
-      const stale = allIssues.filter(
-        (i) => i.status !== 'done' && i.createdAt && now - new Date(i.createdAt).getTime() > 14 * dayMs,
-      );
+      // Stamps are read as UTC — see lib/dbTime.ts. `new Date(stamp)` would parse them as
+      // local, which is off by the UTC offset and can move a row across the week/day
+      // boundary. An unreadable stamp is treated as "not recent", never as epoch 0.
+      const ageMs = (s: string | null) => {
+        const ms = parseUtcMs(s);
+        return ms === null ? null : now - ms;
+      };
+      const recentlyDone = allIssues.filter((i) => {
+        const age = ageMs(i.updatedAt);
+        return i.status === 'done' && age !== null && age < weekMs;
+      });
+      const stale = allIssues.filter((i) => {
+        const age = ageMs(i.createdAt);
+        return i.status !== 'done' && age !== null && age > 14 * dayMs;
+      });
 
-      // Git — use gitCommit (all commits), not gitCommitRef (only issue-linked)
-      const gitCommits = await prisma.gitCommit.findMany({
-        where: { timestamp: { gte: today.toISOString() }, archived: false },
+      // Git — use gitCommit (all commits), not gitCommitRef (only issue-linked).
+      //
+      // `GitCommit.timestamp` is the one column that stores an ISO string carrying its
+      // own offset (`2026-09-03T08:34:04+08:00`), so it cannot be filtered with the
+      // naive-UTC shape the other tables use. A `Z`-shaped cutoff compared against it is
+      // a text compare that reads the separator at index 10 and then a *date* — and the
+      // cutoff's date is the UTC one, which at UTC+8 is still yesterday until 08:00
+      // local. That pulled in the previous evening. The date prefix of this column *is*
+      // local, so it works as a deliberately loose lower bound; the real comparison is
+      // then done on instants.
+      const looseFrom = localDayKey(new Date(today.getTime() - dayMs));
+      const gitCandidates = await prisma.gitCommit.findMany({
+        where: { timestamp: { gte: looseFrom }, archived: false },
+      });
+      const gitCommits = gitCandidates.filter((c) => {
+        const ms = parseUtcMs(c.timestamp);
+        return ms !== null && ms >= today.getTime();
       });
 
       // Scores
@@ -166,11 +196,18 @@ Be warm, encouraging, and specific. Reference the actual numbers. Write in ${lan
         take: 200,
         select: { healthScore: true, createdAt: true },
       });
-      // Dedupe: keep only the first (most recent) snapshot per day
+      // Dedupe: keep only the first (most recent) snapshot per day.
+      //
+      // "Day" is the local calendar day, so the stamp is parsed as the UTC it is and
+      // then rendered in the host's zone. Slicing the stored text gave the UTC day
+      // instead, which for anything logged after midnight local (16:00 UTC) is the
+      // previous one — two snapshots a day apart could collapse into one bucket and a
+      // day could be skipped entirely.
       const seen = new Set<string>();
       const dailyScores: number[] = [];
       for (const s of raw) {
-        const day = s.createdAt.substring(0, 10);
+        const at = parseUtc(s.createdAt);
+        const day = at ? localDayKey(at) : s.createdAt.substring(0, 10);
         if (!seen.has(day)) {
           seen.add(day);
           dailyScores.unshift(s.healthScore);
@@ -181,8 +218,10 @@ Be warm, encouraging, and specific. Reference the actual numbers. Write in ${lan
       const prevAvg = dailyScores.length > 0 ? dailyScores.reduce((s, v) => s + v, 0) / dailyScores.length : overall;
       const direction = overall > prevAvg + 3 ? 'up' : overall < prevAvg - 3 ? 'down' : 'steady';
 
-      // Save snapshot
-      const now2 = new Date().toLocaleString('sv-SE').replace('T', ' ').substring(0, 19);
+      // Save snapshot. `utcStamp`, not `toLocaleString('sv-SE')` — the column default is
+      // localtime and this writer was matching it, which put every snapshot 8h ahead of
+      // the UTC cutoff the cache check above compares it against. See lib/dbTime.ts.
+      const now2 = utcStamp();
       await prisma.userHealthSnapshot.create({
         data: {
           healthScore: overall,
@@ -220,10 +259,19 @@ Be warm, encouraging, and specific. Reference the actual numbers. Write in ${lan
   }),
 
   taskStats: publicProcedure.query(async () => {
-    const issues = await prisma.issue.findMany({ where: { projectId: 'proj-default' } });
+    // The same set the task board's three tabs count, so the two views agree. This
+    // used to load every row — including the emails the Email panel mirrors into
+    // the Issue table and the `cancelled` ones no tab shows — so the card reported
+    // a total the board could not reach and a completion rate computed over
+    // newsletters. lib/taskScope.ts has the details.
+    const issues = (await prisma.issue.findMany({ where: { projectId: 'proj-default' } })).filter(isTask);
     const total = issues.length;
-    if (total === 0)
-      return { total: 0, byStatus: {}, byPriority: {}, byType: {}, completionRate: 0, done: 0, recentlyDone: 0 };
+    // No early return for `total === 0`. It used to exist and handed back `{}` for the
+    // three breakdown maps, while the path below hands back zero-filled ones — one
+    // payload with two shapes. The Home card renders its priority rows by walking
+    // `byPriority`, so an empty task board produced a card header with no rows under
+    // it. Over an empty list every loop below is a no-op, so the shortcut bought
+    // nothing but the inconsistency.
 
     const byStatus: Record<string, number> = {};
     for (const i of issues) {
@@ -246,15 +294,25 @@ Be warm, encouraging, and specific. Reference the actual numbers. Write in ${lan
     }
 
     const done = byStatus['done'] || 0;
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const recentlyDone = issues.filter((i) => i.status === 'done' && i.updatedAt && i.updatedAt >= weekAgo).length;
+    // Compared as timestamps, not as strings. `updatedAt` is written as
+    // `YYYY-MM-DD HH:MM:SS` and an ISO cutoff is `YYYY-MM-DDTHH:MM:SS.sssZ`, so a
+    // string compare reads the separator at index 10 — a space against a `T` — and
+    // silently sorts same-day rows to the wrong side of the cutoff. Read as UTC, per
+    // lib/dbTime.ts.
+    const weekAgo = Date.now() - 7 * 86400000;
+    const recentlyDone = issues.filter((i) => {
+      const ms = parseUtcMs(i.updatedAt);
+      return i.status === 'done' && ms !== null && ms >= weekAgo;
+    }).length;
 
     return {
       total,
       byStatus,
       byPriority,
       byType,
-      completionRate: Math.round((done / total) * 100),
+      // Guarded rather than left to the old early return: `done / 0` is `NaN`, and
+      // `NaN` leaves the API as `null`.
+      completionRate: total > 0 ? Math.round((done / total) * 100) : 0,
       done,
       recentlyDone,
     };

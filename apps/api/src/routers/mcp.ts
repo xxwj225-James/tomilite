@@ -1,5 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
+import { isTask } from '../lib/taskScope.js';
+import { utcStamp } from '../lib/dbTime.js';
 import crypto from 'crypto';
 
 // ═══ HITL (Human-in-the-Loop) ═══
@@ -27,7 +29,10 @@ interface HITLTask {
 
 const hitlTasks = new Map<string, HITLTask>();
 const HITL_TIMEOUTS: Record<RiskLevel, number> = {
-  read_only: 0, low: 300000, medium: 600000, high: 300000,
+  read_only: 0,
+  low: 300000,
+  medium: 600000,
+  high: 300000,
 }; // low/medium/high: 5/10/5 minutes — enough for human to notice and approve
 
 // Risk levels per tool (same as TomatoHub)
@@ -51,16 +56,20 @@ const TOOL_RISK: Record<string, RiskLevel> = {
   update_settings: 'medium',
 };
 
-function genToken() { return Math.random().toString(36).substring(2, 10); }
-function genTaskId() { return `hitl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; }
-
+function genToken() {
+  return Math.random().toString(36).substring(2, 10);
+}
+function genTaskId() {
+  return `hitl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
 
 export const mcpRouter = router({
   // ─── List available tools ───
   listTools: publicProcedure.query(() => ({
     tools: [
       {
-        name: 'create_issue', description: 'Create a new issue/task',
+        name: 'create_issue',
+        description: 'Create a new issue/task',
         risk: 'low',
         inputSchema: {
           type: 'object',
@@ -75,7 +84,8 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'list_issues', description: 'List project issues',
+        name: 'list_issues',
+        description: 'List project issues',
         risk: 'read_only',
         inputSchema: {
           type: 'object',
@@ -83,15 +93,21 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'get_issue', description: 'Get issue by number (TL-3) or fuzzy search by title keyword. Returns full details including description.',
+        name: 'get_issue',
+        description:
+          'Get issue by number (TL-3) or fuzzy search by title keyword. Returns full details including description.',
         risk: 'read_only',
         inputSchema: {
           type: 'object',
-          properties: { issueNumber: { type: 'number', description: 'Issue number e.g. 3 for TL-3' }, query: { type: 'string', description: 'Search by title keyword' } },
+          properties: {
+            issueNumber: { type: 'number', description: 'Issue number e.g. 3 for TL-3' },
+            query: { type: 'string', description: 'Search by title keyword' },
+          },
         },
       },
       {
-        name: 'update_issue', description: 'Update issue title/status/priority/description',
+        name: 'update_issue',
+        description: 'Update issue title/status/priority/description',
         risk: 'medium',
         inputSchema: {
           type: 'object',
@@ -106,38 +122,52 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'get_project_stats', description: 'Project statistics',
+        name: 'get_project_stats',
+        description: 'Project statistics',
         risk: 'read_only',
         inputSchema: { type: 'object', properties: {} },
       },
       {
-        name: 'search_notes', description: 'Search knowledge base',
+        name: 'search_notes',
+        description: 'Search knowledge base',
         risk: 'read_only',
         inputSchema: {
-          type: 'object', properties: { query: { type: 'string' } }, required: ['query'],
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
         },
       },
       {
-        name: 'list_notes', description: 'List all knowledge base notes. Returns id, title, category, and content snippet.',
+        name: 'list_notes',
+        description: 'List all knowledge base notes. Returns id, title, category, and content snippet.',
         risk: 'read_only',
         inputSchema: {
-          type: 'object', properties: { query: { type: 'string', description: 'Optional search keyword' }, limit: { type: 'number', default: 20 } },
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Optional search keyword' },
+            limit: { type: 'number', default: 20 },
+          },
         },
       },
       {
-        name: 'get_report', description: 'Get full content of a report by ID. Use after list_reports.',
+        name: 'get_report',
+        description: 'Get full content of a report by ID. Use after list_reports.',
         risk: 'read_only',
         inputSchema: {
-          type: 'object', properties: { id: { type: 'string', description: 'Report ID (UUID)' } }, required: ['id'],
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Report ID (UUID)' } },
+          required: ['id'],
         },
       },
       {
-        name: 'get_focus_status', description: 'Current developer focus state',
+        name: 'get_focus_status',
+        description: 'Current developer focus state',
         risk: 'read_only',
         inputSchema: { type: 'object', properties: {} },
       },
       {
-        name: 'create_report', description: 'Create a new daily/weekly report',
+        name: 'create_report',
+        description: 'Create a new daily/weekly report',
         risk: 'low',
         inputSchema: {
           type: 'object',
@@ -150,7 +180,8 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'update_report', description: 'Update an existing report',
+        name: 'update_report',
+        description: 'Update an existing report',
         risk: 'medium',
         inputSchema: {
           type: 'object',
@@ -163,7 +194,8 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'create_note', description: 'Create a new note/wiki page',
+        name: 'create_note',
+        description: 'Create a new note/wiki page',
         risk: 'low',
         inputSchema: {
           type: 'object',
@@ -176,7 +208,8 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'update_note', description: 'Update an existing note',
+        name: 'update_note',
+        description: 'Update an existing note',
         risk: 'medium',
         inputSchema: {
           type: 'object',
@@ -190,10 +223,13 @@ export const mcpRouter = router({
         },
       },
       {
-        name: 'delete_issue', description: 'Delete an issue ⚠️ irreversible',
+        name: 'delete_issue',
+        description: 'Delete an issue ⚠️ irreversible',
         risk: 'high',
         inputSchema: {
-          type: 'object', properties: { issueNumber: { type: 'number' } }, required: ['issueNumber'],
+          type: 'object',
+          properties: { issueNumber: { type: 'number' } },
+          required: ['issueNumber'],
         },
       },
     ],
@@ -201,12 +237,15 @@ export const mcpRouter = router({
 
   // ─── Execute tool (with HITL gating + API key auth) ───
   execute: publicProcedure
-    .input(z.object({
-      tool: z.string(),
-      args: z.record(z.unknown()).optional(),
-      arguments: z.record(z.unknown()).optional(), // MCP standard field name
-      idempotency_key: z.string().optional(),
-      api_key: z.string().optional(), }))
+    .input(
+      z.object({
+        tool: z.string(),
+        args: z.record(z.unknown()).optional(),
+        arguments: z.record(z.unknown()).optional(), // MCP standard field name
+        idempotency_key: z.string().optional(),
+        api_key: z.string().optional(),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       const { tool, args, arguments: argsAlt, idempotency_key, api_key } = input;
       // Accept api_key from body OR X-Api-Key header (standard MCP protocol)
@@ -232,7 +271,11 @@ export const mcpRouter = router({
       if (required) {
         for (const field of required) {
           if (a[field] === undefined || a[field] === null || (typeof a[field] === 'string' && !a[field].trim())) {
-            return { error: `Missing required field: ${field}`, tool, hint: 'Use tools/list to see required parameters for each tool' };
+            return {
+              error: `Missing required field: ${field}`,
+              tool,
+              hint: 'Use tools/list to see required parameters for each tool',
+            };
           }
         }
       }
@@ -247,7 +290,10 @@ export const mcpRouter = router({
       apiKeyData = await prisma.apiKey.findFirst({ where: { keyHash, isActive: true } });
       if (!apiKeyData) return { error: 'Invalid or inactive API key' };
       // Update usage
-      await prisma.apiKey.update({ where: { id: apiKeyData.id }, data: { lastUsedAt: new Date().toISOString(), useCount: (apiKeyData.useCount || 0) + 1 } });
+      await prisma.apiKey.update({
+        where: { id: apiKeyData.id },
+        data: { lastUsedAt: new Date().toISOString(), useCount: (apiKeyData.useCount || 0) + 1 },
+      });
 
       // Determine HITL behavior
       const hitlMode = apiKeyData?.hitlMode || 'manual'; // default manual
@@ -256,7 +302,12 @@ export const mcpRouter = router({
       if (hasArgs || idempotency_key) {
         for (const [, task] of hitlTasks) {
           if (task.idempotencyKey === idemKey && task.status !== 'expired') {
-            return { status: task.status, taskId: task.taskId, preview: task.preview, message: 'Task already submitted (idempotent)' };
+            return {
+              status: task.status,
+              taskId: task.taskId,
+              preview: task.preview,
+              message: 'Task already submitted (idempotent)',
+            };
           }
         }
       }
@@ -266,8 +317,15 @@ export const mcpRouter = router({
       const confirmToken = genToken();
 
       const task: HITLTask = {
-        taskId, toolName: tool, args: a, risk, preview, confirmToken,
-        idempotencyKey: idemKey, hitlMode, status: 'pending',
+        taskId,
+        toolName: tool,
+        args: a,
+        risk,
+        preview,
+        confirmToken,
+        idempotencyKey: idemKey,
+        hitlMode,
+        status: 'pending',
         createdAt: Date.now(),
         expiresAt: Date.now() + (HITL_TIMEOUTS[risk] || 300000),
       };
@@ -309,7 +367,9 @@ export const mcpRouter = router({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: 'TomiLite — Pending Approval', body: preview }),
         });
-      } catch { /* notification server may not be running */ }
+      } catch {
+        /* notification server may not be running */
+      }
 
       // Clean expired tasks periodically
       for (const [, t] of hitlTasks) {
@@ -330,7 +390,7 @@ export const mcpRouter = router({
           current.status = 'expired';
           return { status: 'expired', taskId, preview };
         }
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 1000));
       }
       return { status: 'expired', taskId, preview, error: 'Approval timeout (5 min)' };
     }),
@@ -338,23 +398,31 @@ export const mcpRouter = router({
   // ─── Confirm a HITL task (external MCP client) ───
   // Only works in auto mode. In manual mode, the human must approve via UI (confirmById).
   confirm: publicProcedure
-    .input(z.object({
-      taskId: z.string(),
-      confirmToken: z.string(),
-      api_key: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        taskId: z.string(),
+        confirmToken: z.string(),
+        api_key: z.string().optional(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const task = hitlTasks.get(input.taskId);
       if (!task) return { error: 'Task not found' };
       if (task.status !== 'pending') return { error: `Task already ${task.status}` };
-      if (Date.now() > task.expiresAt) { task.status = 'expired'; return { error: 'Task expired' }; }
+      if (Date.now() > task.expiresAt) {
+        task.status = 'expired';
+        return { error: 'Task expired' };
+      }
       if (input.confirmToken !== task.confirmToken) return { error: 'Invalid confirm token' };
 
       // HITL enforcement: in manual mode, external confirm is rejected.
       // The human must approve via the TomiLite UI (which calls confirmById).
       // This is what makes it Human-in-the-Loop, not two-phase commit.
       if (task.hitlMode === 'manual') {
-        return { error: 'Manual mode requires human approval. Please open the TomiLite UI to approve or deny this task.', taskId: task.taskId };
+        return {
+          error: 'Manual mode requires human approval. Please open the TomiLite UI to approve or deny this task.',
+          taskId: task.taskId,
+        };
       }
 
       task.status = 'approved';
@@ -366,21 +434,22 @@ export const mcpRouter = router({
     }),
 
   // ─── Confirm by task ID only (for TomiLite UI — human clicked Approve) ───
-  confirmById: publicProcedure
-    .input(z.object({ taskId: z.string() }))
-    .mutation(async ({ input }) => {
-      const task = hitlTasks.get(input.taskId);
-      if (!task) return { error: 'Task not found' };
-      if (task.status !== 'pending') return { error: `Task already ${task.status}` };
-      if (Date.now() > task.expiresAt) { task.status = 'expired'; return { error: 'Task expired' }; }
+  confirmById: publicProcedure.input(z.object({ taskId: z.string() })).mutation(async ({ input }) => {
+    const task = hitlTasks.get(input.taskId);
+    if (!task) return { error: 'Task not found' };
+    if (task.status !== 'pending') return { error: `Task already ${task.status}` };
+    if (Date.now() > task.expiresAt) {
+      task.status = 'expired';
+      return { error: 'Task expired' };
+    }
 
-      task.status = 'approved';
-      const result = await executeTool(task.toolName, task.args);
-      task.result = result;
-      if (task.auditLogId) await updateAuditLog(task.auditLogId, 'approved', result, 'human');
-      else await auditLog('approved', task.toolName, task.args, result, undefined, 'human');
-      return { status: 'approved', result, preview: task.preview };
-    }),
+    task.status = 'approved';
+    const result = await executeTool(task.toolName, task.args);
+    task.result = result;
+    if (task.auditLogId) await updateAuditLog(task.auditLogId, 'approved', result, 'human');
+    else await auditLog('approved', task.toolName, task.args, result, undefined, 'human');
+    return { status: 'approved', result, preview: task.preview };
+  }),
 
   // ─── Deny a HITL task ───
   deny: publicProcedure
@@ -395,74 +464,70 @@ export const mcpRouter = router({
     }),
 
   // ─── Poll task result (MCP client waits for human approval) ───
-  getTaskResult: publicProcedure
-    .input(z.object({ taskId: z.string() }))
-    .query(async ({ input }) => {
-      const task = hitlTasks.get(input.taskId);
-      if (task) {
-        if (task.status === 'approved' || task.status === 'executed') {
-          return { status: task.status, result: task.result, preview: task.preview };
-        }
-        if (task.status === 'denied') return { status: 'denied', preview: task.preview };
-        if (task.status === 'expired' || Date.now() > task.expiresAt) {
-          if (task.status === 'pending') task.status = 'expired';
-          return { status: 'expired', preview: task.preview };
-        }
-        return { status: 'pending', preview: task.preview };
+  getTaskResult: publicProcedure.input(z.object({ taskId: z.string() })).query(async ({ input }) => {
+    const task = hitlTasks.get(input.taskId);
+    if (task) {
+      if (task.status === 'approved' || task.status === 'executed') {
+        return { status: task.status, result: task.result, preview: task.preview };
       }
-      // Fallback: server restarted, check DB audit log by taskId pattern
-      const dbLog = await prisma.mcpAuditLog.findFirst({
-        where: { arguments: { contains: input.taskId } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!dbLog) return { error: 'Task not found', status: 'unknown' };
-      return {
-        status: dbLog.status,
-        result: dbLog.result ? JSON.parse(dbLog.result) : null,
-        preview: dbLog.arguments?.substring(0, 100),
-      };
-    }),
+      if (task.status === 'denied') return { status: 'denied', preview: task.preview };
+      if (task.status === 'expired' || Date.now() > task.expiresAt) {
+        if (task.status === 'pending') task.status = 'expired';
+        return { status: 'expired', preview: task.preview };
+      }
+      return { status: 'pending', preview: task.preview };
+    }
+    // Fallback: server restarted, check DB audit log by taskId pattern
+    const dbLog = await prisma.mcpAuditLog.findFirst({
+      where: { arguments: { contains: input.taskId } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!dbLog) return { error: 'Task not found', status: 'unknown' };
+    return {
+      status: dbLog.status,
+      result: dbLog.result ? JSON.parse(dbLog.result) : null,
+      preview: dbLog.arguments?.substring(0, 100),
+    };
+  }),
 
   // ─── Audit logs (DB + in-memory fallback for pre-DB-persistence tasks) ───
-  listAuditLogs: publicProcedure
-    .input(z.object({ limit: z.number().default(50) }))
-    .query(async ({ input }) => {
-      // Build a lookup: auditLogId → taskId (for approve/deny to work)
-      const auditToTask = new Map<string, string>();
-      for (const [taskId, task] of hitlTasks) {
-        if (task.auditLogId) auditToTask.set(task.auditLogId, taskId);
+  listAuditLogs: publicProcedure.input(z.object({ limit: z.number().default(50) })).query(async ({ input }) => {
+    // Build a lookup: auditLogId → taskId (for approve/deny to work)
+    const auditToTask = new Map<string, string>();
+    for (const [taskId, task] of hitlTasks) {
+      if (task.auditLogId) auditToTask.set(task.auditLogId, taskId);
+    }
+    const dbLogs = await prisma.mcpAuditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: input.limit,
+    });
+    // Attach _taskId so the UI can send the correct ID for approve/deny
+    const enriched = dbLogs.map((log) => ({
+      ...log,
+      _taskId: auditToTask.get(log.id) || null,
+    }));
+    // Merge in-memory pending tasks that don't have DB records yet
+    const orphans: any[] = [];
+    for (const [taskId, task] of hitlTasks) {
+      if (task.status === 'pending' && !task.auditLogId && Date.now() < task.expiresAt) {
+        orphans.push({
+          id: `mem-${taskId}`,
+          toolName: task.toolName,
+          arguments: task.preview,
+          status: 'pending',
+          result: null,
+          confirmedBy: '',
+          issueKey: null,
+          agentName: 'external',
+          apiKeyName: null,
+          createdAt: new Date(task.createdAt),
+          _taskId: taskId,
+        });
       }
-      const dbLogs = await prisma.mcpAuditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: input.limit,
-      });
-      // Attach _taskId so the UI can send the correct ID for approve/deny
-      const enriched = dbLogs.map(log => ({
-        ...log,
-        _taskId: auditToTask.get(log.id) || null,
-      }));
-      // Merge in-memory pending tasks that don't have DB records yet
-      const orphans: any[] = [];
-      for (const [taskId, task] of hitlTasks) {
-        if (task.status === 'pending' && !task.auditLogId && Date.now() < task.expiresAt) {
-          orphans.push({
-            id: `mem-${taskId}`,
-            toolName: task.toolName,
-            arguments: task.preview,
-            status: 'pending',
-            result: null,
-            confirmedBy: '',
-            issueKey: null,
-            agentName: 'external',
-            apiKeyName: null,
-            createdAt: new Date(task.createdAt),
-            _taskId: taskId,
-          });
-        }
-      }
-      orphans.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      return [...orphans, ...enriched].slice(0, input.limit);
-    }),
+    }
+    orphans.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return [...orphans, ...enriched].slice(0, input.limit);
+  }),
 
   auditStats: publicProcedure.query(async () => {
     const [total, executed, pending] = await Promise.all([
@@ -475,8 +540,9 @@ export const mcpRouter = router({
 
   // ─── Pending count (for notification badge) ───
   pendingCount: publicProcedure.query(async () => {
-    // Filter expired: DB rows older than max timeout (10 min) are stale
-    const cutoff = new Date(Date.now() - 600000).toISOString();
+    // Filter expired: DB rows older than max timeout (10 min) are stale. A UTC stamp,
+    // matching the column — an ISO `Z` string never compared equal to it. See dbTime.ts.
+    const cutoff = utcStamp(new Date(Date.now() - 600000));
     const count = await prisma.mcpAuditLog.count({
       where: { status: 'pending', createdAt: { gte: cutoff } },
     });
@@ -507,17 +573,28 @@ export const mcpRouter = router({
 });
 
 // ─── Audit helper ───
-async function auditLog(status: string, tool: string, args: Record<string, any>, result: any, apiKeyData?: any, confirmedBy?: string) {
+async function auditLog(
+  status: string,
+  tool: string,
+  args: Record<string, any>,
+  result: any,
+  apiKeyData?: any,
+  confirmedBy?: string,
+) {
   const record = await prisma.mcpAuditLog.create({
     data: {
       toolName: tool,
       arguments: JSON.stringify(args).substring(0, 1000),
       status,
-      result: result ? JSON.stringify(result).substring(0, 500) : null as any,
+      // Explicit, because the column default is localtime — see lib/dbTime.ts. Rows born
+      // from it read 8h ahead of the UTC cutoff `pendingCount` filters with, so the
+      // staleness filter never dropped anything.
+      createdAt: utcStamp(),
+      result: result ? JSON.stringify(result).substring(0, 500) : (null as any),
       confirmedBy: confirmedBy || 'system',
-      issueKey: result?.key || null as any,
+      issueKey: result?.key || (null as any),
       agentName: apiKeyData?.name ? `api:${apiKeyData.name}` : 'external',
-      apiKeyName: apiKeyData?.name || null as any,
+      apiKeyName: apiKeyData?.name || (null as any),
     },
   });
   return record;
@@ -528,7 +605,7 @@ async function updateAuditLog(id: string, status: string, result: any, confirmed
     where: { id },
     data: {
       status,
-      result: result ? JSON.stringify(result).substring(0, 500) : null as any,
+      result: result ? JSON.stringify(result).substring(0, 500) : (null as any),
       confirmedBy: confirmedBy || 'system',
     },
   });
@@ -558,7 +635,11 @@ async function executeTool(tool: string, args: Record<string, any>) {
       };
     }
     case 'create_issue': {
-      const maxNum = await prisma.issue.aggregate({ where: { projectId: 'proj-default' }, _max: { issueNumber: true } });
+      const maxNum = await prisma.issue.aggregate({
+        where: { projectId: 'proj-default' },
+        _max: { issueNumber: true },
+      });
+      const now = utcStamp();
       const issue = await prisma.issue.create({
         data: {
           projectId: 'proj-default',
@@ -569,6 +650,8 @@ async function executeTool(tool: string, args: Record<string, any>) {
           description: args.description || null,
           storyPoints: args.storyPoints || null,
           status: 'todo',
+          createdAt: now,
+          updatedAt: now,
         },
       });
       return { key: `TL-${issue.issueNumber}`, title: issue.title, type: issue.type, status: issue.status };
@@ -577,22 +660,53 @@ async function executeTool(tool: string, args: Record<string, any>) {
       const where: any = { projectId: 'proj-default' };
       if (args.status) where.status = args.status;
       const issues = await prisma.issue.findMany({ where, orderBy: { createdAt: 'desc' }, take: args.limit || 20 });
-      return issues.map(i => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority }));
+      return issues.map((i) => ({
+        key: `TL-${i.issueNumber}`,
+        title: i.title,
+        status: i.status,
+        priority: i.priority,
+      }));
     }
     case 'get_issue': {
       if (args.issueNumber) {
-        const issue = await prisma.issue.findFirst({ where: { projectId: 'proj-default', issueNumber: args.issueNumber } });
+        const issue = await prisma.issue.findFirst({
+          where: { projectId: 'proj-default', issueNumber: args.issueNumber },
+        });
         if (!issue) return { error: `TL-${args.issueNumber} not found` };
-        return { key: `TL-${issue.issueNumber}`, title: issue.title, status: issue.status, priority: issue.priority, type: issue.type, description: issue.description || '', storyPoints: issue.storyPoints, dueDate: issue.dueDate, createdAt: issue.createdAt };
+        return {
+          key: `TL-${issue.issueNumber}`,
+          title: issue.title,
+          status: issue.status,
+          priority: issue.priority,
+          type: issue.type,
+          description: issue.description || '',
+          storyPoints: issue.storyPoints,
+          dueDate: issue.dueDate,
+          createdAt: issue.createdAt,
+        };
       }
       if (args.query) {
-        const issues = await prisma.issue.findMany({ where: { projectId: 'proj-default', title: { contains: args.query } }, orderBy: { createdAt: 'desc' }, take: args.limit || 5 });
-        return issues.map(i => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority, type: i.type, description: (i.description || '').substring(0, 300), dueDate: i.dueDate }));
+        const issues = await prisma.issue.findMany({
+          where: { projectId: 'proj-default', title: { contains: args.query } },
+          orderBy: { createdAt: 'desc' },
+          take: args.limit || 5,
+        });
+        return issues.map((i) => ({
+          key: `TL-${i.issueNumber}`,
+          title: i.title,
+          status: i.status,
+          priority: i.priority,
+          type: i.type,
+          description: (i.description || '').substring(0, 300),
+          dueDate: i.dueDate,
+        }));
       }
       return { error: 'Provide issueNumber or query' };
     }
     case 'update_issue': {
-      const issue = await prisma.issue.findFirst({ where: { projectId: 'proj-default', issueNumber: args.issueNumber } });
+      const issue = await prisma.issue.findFirst({
+        where: { projectId: 'proj-default', issueNumber: args.issueNumber },
+      });
       if (!issue) return { error: `TL-${args.issueNumber} not found` };
       const data: any = {};
       if (args.title) data.title = args.title;
@@ -603,18 +717,37 @@ async function executeTool(tool: string, args: Record<string, any>) {
       return { key: `TL-${issue.issueNumber}`, updated: true };
     }
     case 'delete_issue': {
-      const issue = await prisma.issue.findFirst({ where: { projectId: 'proj-default', issueNumber: args.issueNumber } });
+      const issue = await prisma.issue.findFirst({
+        where: { projectId: 'proj-default', issueNumber: args.issueNumber },
+      });
       if (!issue) return { error: `TL-${args.issueNumber} not found` };
       await prisma.issue.delete({ where: { id: issue.id } });
       return { key: `TL-${args.issueNumber}`, deleted: true };
     }
     case 'get_project_stats': {
-      const issues = await prisma.issue.findMany({ where: { projectId: 'proj-default' } });
-      return { total: issues.length, todo: issues.filter(i => i.status === 'todo').length, inProgress: issues.filter(i => ['in_progress', 'in_review'].includes(i.status)).length, done: issues.filter(i => i.status === 'done').length };
+      // Same set Home and the task board count, so the agent does not tell the user
+      // a different number than the UI shows. See lib/taskScope.ts.
+      const issues = (await prisma.issue.findMany({ where: { projectId: 'proj-default' } })).filter(isTask);
+      return {
+        total: issues.length,
+        todo: issues.filter((i) => i.status === 'todo').length,
+        inProgress: issues.filter((i) => ['in_progress', 'in_review'].includes(i.status)).length,
+        done: issues.filter((i) => i.status === 'done').length,
+      };
     }
     case 'create_report': {
+      // Both stamps explicitly — the column defaults are localtime. See lib/dbTime.ts.
+      const createdAt = utcStamp();
       const report = await prisma.report.create({
-        data: { projectId: 'proj-default', reportType: args.reportType || 'daily', title: args.title, content: args.content, status: 'draft' },
+        data: {
+          projectId: 'proj-default',
+          reportType: args.reportType || 'daily',
+          title: args.title,
+          content: args.content,
+          status: 'draft',
+          createdAt,
+          generatedAt: createdAt,
+        },
       });
       return { id: report.id, title: report.title, reportType: report.reportType, status: report.status };
     }
@@ -628,8 +761,16 @@ async function executeTool(tool: string, args: Record<string, any>) {
       return { id: updated.id, title: updated.title, reportType: updated.reportType, status: updated.status };
     }
     case 'create_note': {
+      const now = utcStamp();
       const note = await prisma.knowledgePage.create({
-        data: { projectId: 'proj-default', title: args.title || 'Untitled', content: args.content || '', category: args.category || 'general' },
+        data: {
+          projectId: 'proj-default',
+          title: args.title || 'Untitled',
+          content: args.content || '',
+          category: args.category || 'general',
+          createdAt: now,
+          updatedAt: now,
+        },
       });
       return { id: note.id, title: note.title, category: note.category };
     }
@@ -644,24 +785,46 @@ async function executeTool(tool: string, args: Record<string, any>) {
       return { id: updated.id, title: updated.title, category: updated.category };
     }
     case 'search_notes': {
-      const pages = await prisma.knowledgePage.findMany({ where: { projectId: 'proj-default', OR: [{ title: { contains: args.query } }, { content: { contains: args.query } }] }, take: 10 });
-      return pages.map(p => ({ title: p.title, snippet: (p.content || '').substring(0, 200) }));
+      const pages = await prisma.knowledgePage.findMany({
+        where: {
+          projectId: 'proj-default',
+          OR: [{ title: { contains: args.query } }, { content: { contains: args.query } }],
+        },
+        take: 10,
+      });
+      return pages.map((p) => ({ title: p.title, snippet: (p.content || '').substring(0, 200) }));
     }
     case 'list_notes': {
       const nWhere: any = { projectId: 'proj-default' };
       if (args.query) nWhere.title = { contains: args.query };
-      const pages = await prisma.knowledgePage.findMany({ where: nWhere, orderBy: { updatedAt: 'desc' }, take: args.limit || 20 });
-      return pages.map(p => ({ id: p.id, title: p.title, category: p.category, snippet: (p.content || '').substring(0, 200) }));
+      const pages = await prisma.knowledgePage.findMany({
+        where: nWhere,
+        orderBy: { updatedAt: 'desc' },
+        take: args.limit || 20,
+      });
+      return pages.map((p) => ({
+        id: p.id,
+        title: p.title,
+        category: p.category,
+        snippet: (p.content || '').substring(0, 200),
+      }));
     }
     case 'get_report': {
       const report = await prisma.report.findUnique({ where: { id: args.id } });
       if (!report) return { error: 'Report not found' };
-      return { id: report.id, title: report.title, content: report.content || '', reportType: report.reportType, status: report.status };
+      return {
+        id: report.id,
+        title: report.title,
+        content: report.content || '',
+        reportType: report.reportType,
+        status: report.status,
+      };
     }
     case 'get_focus_status': {
       const user = await prisma.user.findFirst();
       return { focusState: user?.focusState || 'available', focusScore: user?.focusScore || 0 };
     }
-    default: return { error: `Unknown tool: ${tool}` };
+    default:
+      return { error: `Unknown tool: ${tool}` };
   }
 }

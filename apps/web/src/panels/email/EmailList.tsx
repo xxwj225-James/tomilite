@@ -3,6 +3,7 @@ import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { EmptyState } from '@/components/EmptyState';
+import { formatDbShort } from '@/lib/dbTime';
 
 // ═══ Email Mindmap View — category cards → tree lines → topic groups → email table ═══
 
@@ -56,8 +57,10 @@ function fromDisplay(addr: string) {
   // Fallback: just the raw address, strip angle brackets
   return addr.replace(/[<>]/g, '').trim().substring(0, 30);
 }
+// `date` is stored UTC (the mail's own `Date:` header, normalised by the sync), so slicing
+// the text printed the UTC wall clock — 8h early at UTC+8 on every row.
 function dateDisplay(d: string) {
-  return (d || '').substring(5, 16);
+  return formatDbShort(d);
 }
 
 // ─── SVG connecting lines ───

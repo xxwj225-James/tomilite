@@ -3,6 +3,7 @@ import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { semanticRank } from '../utils/search.js';
 import { agentLog } from '../utils/logger.js';
 import { toFtsMatch } from '../../lib/fts.js';
+import { utcStamp } from '../../lib/dbTime.js';
 
 /** List or search reports by title/content. Uses term-split OR search + FTS fallback. */
 export async function listReports(
@@ -57,7 +58,15 @@ export async function listReports(
           // primary path deliberately hides.
           const found = await prisma.report.findMany({
             where: { id: { in: ids }, archived: false },
-            select: { id: true, title: true, reportType: true, status: true, generatedAt: true, content: true, vector: true },
+            select: {
+              id: true,
+              title: true,
+              reportType: true,
+              status: true,
+              generatedAt: true,
+              content: true,
+              vector: true,
+            },
           });
           if (found.length > 0) {
             // Keep BM25 order — findMany's own ordering would discard it.
@@ -148,6 +157,9 @@ export async function createReport(
   args: Record<string, any>,
 ): Promise<{ id: string; title: string; reportType: string; status: string } | { error: string }> {
   if (!args.title && !args.content) return { error: 'Missing title or content.' };
+  // Both stamps explicitly — the column defaults are localtime and `generatedAt` is
+  // read against UTC cutoffs. See lib/dbTime.ts.
+  const now = utcStamp();
   const report = await prisma.report.create({
     data: {
       projectId: DEFAULT_PROJECT_ID,
@@ -155,6 +167,8 @@ export async function createReport(
       title: args.title,
       content: args.content,
       status: 'draft',
+      createdAt: now,
+      generatedAt: now,
     },
   });
   // Embedding is queued by the `embed_report_i` trigger, not called from here — see the

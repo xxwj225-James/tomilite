@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
+import { utcStamp } from '../lib/dbTime.js';
 import { exportToExcel, exportToDoc, exportToHtml, exportToPptx } from '../agent/tools/reportTools.js';
 
 // ─── Reusable schemas ───
@@ -43,11 +44,20 @@ export const wikiRouter = router({
         category: z.string().default('general'),
       }),
     )
-    .mutation(async ({ input }) => prisma.knowledgePage.create({ data: input })),
+    .mutation(async ({ input }) => {
+      // Stamps are written explicitly: these are String columns with a `localtime`
+      // default, not Prisma `DateTime` fields, so `@updatedAt` does not exist here and
+      // a row born from the default would be on the other clock — see lib/dbTime.ts.
+      const now = utcStamp();
+      return prisma.knowledgePage.create({ data: { ...input, createdAt: now, updatedAt: now } });
+    }),
 
   /**
    * Update an existing wiki page. Only provided fields are updated.
-   * updatedAt is handled automatically by Prisma's @updatedAt.
+   *
+   * `updatedAt` is NOT automatic — these are plain String columns, so it has to be set
+   * here, and (as elsewhere in the codebase) an update that forgets it leaves the row
+   * looking older than it is.
    */
   update: publicProcedure
     .input(
@@ -65,7 +75,7 @@ export const wikiRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'No fields to update' });
       }
       try {
-        return await prisma.knowledgePage.update({ where: { id }, data });
+        return await prisma.knowledgePage.update({ where: { id }, data: { ...data, updatedAt: utcStamp() } });
       } catch (error: any) {
         if (error?.code === 'P2025')
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Wiki page not found or already deleted' });

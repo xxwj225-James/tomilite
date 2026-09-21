@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { tr } from '@/lib/i18n';
+import { nowDbUtc } from '@/lib/dbTime';
 import { useLang } from '@/stores/useLang';
 
 // ═══ Notes State Hook — all state + business logic for NotesPanel ═══
@@ -261,7 +262,7 @@ export function useNotesState(
       } else {
         const created = await api.wiki.create({ projectId: 'proj-default', ...data });
         setSelected({ id: (created as any).id, title: data.title, content, category });
-        setNotes((prev) => [{ ...data, id: (created as any).id, updatedAt: new Date().toISOString() }, ...prev]);
+        setNotes((prev) => [{ ...data, id: (created as any).id, updatedAt: nowDbUtc() }, ...prev]);
       }
       noteEditedRef.current = false;
       onNoteAction?.(lang === 'zh' ? `保存了笔记《${data.title}》` : `Saved note "${data.title}"`);

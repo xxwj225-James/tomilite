@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { marked } from 'marked';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
-import { t } from '@/lib/i18n';
+import { t, type I18NKey } from '@/lib/i18n';
 import type { ActionItem, Decision, MeetingState } from './useMeetingState';
 
 // ═══ Meeting detail — transcript | minutes | action items ═══
@@ -412,10 +412,25 @@ function ActionsTab({ s }: { s: MeetingState }) {
   const items = s.detail?.actionItems || [];
 
   if (items.length === 0) {
+    // One sentence used to cover every way this list can be empty, and it only
+    // fitted one of them: "TomiLite looks for them when it writes the minutes" is
+    // an invitation to run the minutes, and it stayed on screen after the run that
+    // found none. An empty array is a valid SYNTH result (`pipeline.ts` synthPrompt:
+    // "Empty arrays are correct when the meeting decided or assigned nothing"), so
+    // "done and empty" is a different thing to report than "not run yet".
+    const aiStatus = s.meeting?.aiStatus;
+    const key: I18NKey =
+      aiStatus === 'done'
+        ? 'meeting.actions.emptyDone'
+        : aiStatus === 'running'
+          ? 'meeting.actions.emptyRunning'
+          : aiStatus === 'failed'
+            ? 'meeting.actions.emptyFailed'
+            : 'meeting.actions.empty';
     return (
       <div style={{ padding: 16 }}>
         <p className="text-ink-muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
-          {t('meeting.actions.empty', lang)}
+          {t(key, lang)}
         </p>
       </div>
     );

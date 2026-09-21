@@ -62,9 +62,25 @@ whisper-cli.exe -m <model> -f <wav> -oj -of <outBase> -np -pp -t <threads> -l <l
 - **Success is judged by "the output JSON exists and parses with a `transcription` array", never by exit code.** whisper.cpp exits 0 on unreadable audio while writing no JSON at all.
 - Cancelling kills the process, deletes the partial `.json`, sets `transcribeStatus='cancelled'` and **keeps the WAV** so the user can retry without re-recording.
 
-Models are downloaded on demand from `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<name>.bin` into `~/.tomilite/models/` (tiny 78 MB / base 148 MB / small 488 MB / medium 1.53 GB; **base** is the default and the one Settings recommends). Download progress streams over the SSE channel `model-download`. The MVP download has no resume, no checksum and no free-disk precheck.
+Models are downloaded on demand from `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-<name>.bin` into `~/.tomilite/models/` (tiny 78 MB / base 148 MB / small 488 MB / medium 1.53 GB). Download progress streams over the SSE channel `model-download`. The MVP download has no resume, no checksum and no free-disk precheck.
 
-Which model runs is resolved by `pickModel()`: the meeting's stored model first, then the default, then — if neither is on disk — the smallest installed model. That last step avoids the worst first-run outcome, where a user who deliberately downloaded `small` is told "no speech model installed" by a meeting created back when the default was `base`. The substituted name is written back to the meeting row. The smallest model wins the fallback rather than the largest, because silently running a 1.5 GB `medium` turns an hour-long meeting into an hour-long wait.
+**The model is not a setting.** TomiLite transcribes with `base` and nothing else is offered: Settings → Meetings shows one row — install it, or delete it — and no model name appears anywhere in the recorder, the editor or the transcript. A picker for this existed briefly and was removed: it needed three separate warnings to explain a fallback the user could not see, which is the symptom of a decision that should not have been the user's.
+
+**Which model runs** is resolved at transcription time by `resolveSpeechModel()` in `lib/meeting/models.ts`, with no input: `base` when it is on disk, otherwise **the smallest installed model**, otherwise `null` (`{ok:false, error:'no_model'}`). The fallback is not a compatibility shim for a removed feature — it is what keeps a disk that only holds a leftover `small` from being told "no model installed" when it can transcribe perfectly well. The _smallest_ wins rather than the largest, because silently running a 1.5 GB `medium` turns an hour-long meeting into an hour-long wait.
+
+`Meeting.whisperModel` is written as the constant `base` and nothing reads it to make a decision. `Meeting.transcribeModel` records what actually ran — the honest answer when a leftover model did the work — and is never rendered; it exists so a transcript can be traced back to its model after the fact. Leftover models are listed in Settings under "Other models on this machine" so they can be deleted rather than accumulating as invisible disk usage.
+
+**Chinese script is a post-pass, not a decoding hint.** whisper.cpp has no simplified/traditional switch — its entire Chinese vocabulary is the token `<|zh|>` — so `-l zh` says "Chinese" and the orthography is the model's own choice. `base` chooses Traditional, and on a real Mandarin recording every differing character came back Traditional (`認為`, `發布會`, `會不會`).
+
+`lib/meeting/script.ts` converts the finished transcript with OpenCC dictionaries (`opencc-js`, inlined — no file reads, no network, so it survives bundling into `server.cjs`). Settings → Meetings exposes `Simplified` / `Traditional` / `Don't convert`, default **Simplified**, stored as `textScript` in the same `meeting.defaults` blob as `lang` and `retentionDays`. It reads like a preference because it is one, and it is applied at transcription time rather than stored per meeting: change it, re-transcribe, get the other script.
+
+- **Only Chinese is converted** (`lang` starting with `zh`, plus `yue`/`cmn`), and the language tested is whisper's **detected** one — with `-l auto` the requested value is `auto` and says nothing.
+- **Character-level tables only** (`t → cn`, `cn → t`). The `tw`/`twp`/`hk` presets also rewrite Taiwan and Hong Kong _vocabulary_ (`軟體` → `软件`, `計程車` → `出租车`), which is a claim about what the speaker said rather than about how it is written. This pass changes the writing and nothing else.
+- **A conversion failure returns the input unchanged.** A transcript in the wrong script beats no transcript.
+
+`--prompt` was tried first and rejected. It does flip the script — `--prompt "以下是普通话的句子。"` produced fully Simplified output from the same audio — but it primes the whole decoder rather than selecting an orthography. Across four runs of one file it changed the _words_ too: the speaker's name came out three different ways, none of them the right one, and it invented punctuation the unprompted run did not produce. Trading transcript accuracy for character shapes is the wrong trade, and it is the reason this is a deterministic conversion instead.
+
+The conversion runs inside the transcription job, so it covers exactly what is stored: `MeetingSegment.text` and `Meeting.transcript`. Everything downstream — in-panel transcript search, the MAP/SYNTH prompt, the minutes, the agent's `get_meeting` — sees one script.
 
 **A recording that never finalized is repaired, not written off.** The WAV header is written as 44 zero bytes and back-filled on stop, so a recording that ends without `finalize()` — the app was killed, the machine slept, the renderer never sent the stop — has no `RIFF` magic. Every byte of its audio is fine, but it reads as empty from both ends: `readWavInfo` bails on the missing magic, and whisper.cpp rejects the file outright. `repairWavHeader()` rewrites those 44 bytes from the file size and the `<id>.meta.json` sidecar, and runs before the reader on both the retry path and the startup recovery sweep. Without it a meeting recorded that way reports `no_audio` forever, with the audio sitting on disk.
 
@@ -74,7 +90,7 @@ Measured on an 8-core machine: tiny, 8 threads, 660 s of audio → 77.7 s with b
 
 Three models in `packages/database/prisma/schema.prisma`:
 
-- **`Meeting`** — title, duration, source, audio filename, sample rate, whisper model; a status axis per stage (`transcribeStatus`, `aiStatus`, `minutesStatus`); `transcript`, `chunkSummaries`, `summary`, `decisions`, `speakers`, `minutes`, `minutesSubject`, attendees/`sendTo`/`sendCc`/`sentAt`; `stageLog`; consent and retention fields; `archived`.
+- **`Meeting`** — title, duration, source, audio filename, sample rate, `whisperModel` (a legacy column, always `'base'`, read by nothing) and `transcribeModel` (the one that actually ran, `null` until a transcription has been attempted; diagnostic only, never displayed); a status axis per stage (`transcribeStatus`, `aiStatus`, `minutesStatus`); `transcript`, `chunkSummaries`, `summary`, `decisions`, `speakers`, `minutes`, `minutesSubject`, attendees/`sendTo`/`sendCc`/`sentAt`; `stageLog`; consent and retention fields; `archived`.
 - **`MeetingSegment`** — `meetingId / idx / startMs / endMs / speaker / text`.
 - **`MeetingActionItem`** — `meetingId / idx / text / owner / dueDate / priority / status / issueId @unique`.
 
@@ -85,6 +101,8 @@ Statuses are plain `String` columns rather than enums or a JSON blob specificall
 > **SQLite foreign keys are not enabled in this codebase**, so `onDelete: Cascade` is documentation only. `meeting.delete` cascades manually inside a `$transaction`.
 
 Migration: `SCHEMA_VERSION` 20 → **21** in `apps/api/src/server.ts`, plus the matching idempotent entry in the `migrations` array (`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`).
+
+`transcribeModel` was added at `SCHEMA_VERSION` 24 → **25**, as a plain additive `ALTER TABLE "Meeting" ADD COLUMN "transcribeModel" TEXT`. Existing rows keep their `whisperModel` and get `NULL` for the new column, which is the honest value: for a meeting transcribed before that version, which model ran is genuinely unknowable, and nothing back-fills a guess.
 
 ### 5. Speaker labelling is deliberately honest
 
@@ -117,6 +135,12 @@ Idempotency is a double persistence boundary, so a retry never pays twice:
 4. `stageLog` records `{stage, model, inTokens, outTokens, costCny, ms, at}` per stage. Cost comes from the gateway's `X-LLM-Cost-Cny` response header and tokens from the `include_usage` frame; with a BYOK key both are absent and are recorded as `null`, not `0`.
 
 If the JSON fails to parse, the code falls back to three separate pro-model calls — more expensive, but it produces a result, and `stageLog` records which path ran. DeepSeek / Moonshot get `thinking: { type: 'disabled' }` (mirroring `email.ts`), including the MAP stage, which is extraction work where thinking is wasted tokens.
+
+**An empty array is a result, not a failure.** SYNTH returns all four fields in one call and only `summary` is required: `aiStatus: 'failed'` is written when the summary is empty, and never because of `decisions` or `actionItems`. `synthPrompt` says so explicitly — "Empty arrays are correct when the meeting decided or assigned nothing" — and it rules out the padding that would otherwise fill the list, by requiring an action item to be concrete and assignable ("Send the revised quote to the client") rather than a topic ("pricing"). A thirty-second clip whose digest contains only "he thinks" and "he suggests" therefore ends `aiStatus: 'done'` with zero rows, which is the honest outcome. On the persist side the only filters are "not an object" and "empty text"; `owner` and `dueDate` may be null and an unknown `priority` becomes `medium`.
+
+The action-items tab consequently has four empty states, chosen from `aiStatus`, because the one sentence it used to show — "TomiLite looks for them when it writes the minutes" — read as an invitation to run the minutes even after the run that found none: not run yet (the invitation), running, done-and-empty, and failed. The count itself is never rendered as `0 action items`. The follow-up draft is skipped outright when both lists are empty, so a conversational meeting does not pay for an email nobody will send.
+
+One case is still indistinguishable from the outside: in the degraded three-call path a failed `actionItems` call is folded into an empty array (and only successful calls reach `stageLog`), so "the model found none" and "that call failed" render the same. The tab says the minutes contain none, which is true of what was stored, but the distinction is not recorded anywhere.
 
 `meeting.estimate` returns `{ chars, estInputTokens, mapCalls, mapModel, synthModel, hosted }` where **`estInputTokens ≈ CJK chars / 1.5 + latin words / 4`** — a single chars/N divisor under-counts Chinese by roughly 2.5×, and this app is Chinese-first. Every number in the UI is prefixed "approx." and never presented as a quota.
 
@@ -154,7 +178,9 @@ All UI text goes through the centralized `meeting.*` block in `apps/web/src/lib/
 
 ### 9. Consent, privacy disclosure and retention
 
-Before the first recording, a blocking dialog explains that both the microphone **and** system audio are captured to a local file, and that recording may require the consent of **every** participant depending on jurisdiction (all-party-consent jurisdictions such as Germany and California/Illinois/Washington are named, alongside one-party-consent ones). The user must tick "I will obtain any consent required where I am" to continue. The acknowledgement is stored in `Meeting.consentAcknowledgedAt` and can be reviewed or reset in Settings → Meetings.
+Before the first recording, a blocking dialog explains that both the microphone **and** system audio are captured to a local file, and that recording may require the consent of **every** participant depending on jurisdiction (all-party-consent jurisdictions such as Germany and California/Illinois/Washington are named, alongside one-party-consent ones). The user must tick "I will obtain any consent required where I am" to continue. The standing acknowledgement is one `SystemConfig` row (`meeting.consentAcknowledgedAt`), read by the recorder and by Settings → Meetings, and cleared by `meeting.resetConsent`. Each meeting also carries its own `consentAcknowledgedAt`. **Reset deliberately clears only the standing row and leaves the per-meeting stamps alone** — those record that consent _was_ given for a particular recording, which is an audit trail, and withdrawing the standing acknowledgement must not erase it.
+
+The reset has to delete the stored row rather than flip a flag in the panel: an in-memory-only reset is undone by the next read of `SystemConfig`, so the date in Settings never changed and a reload brought it back. `deleteMany` rather than `delete`, so resetting twice is not an error.
 
 **This is not legal advice and TomiLite does not claim to determine legality for the user.**
 
@@ -170,7 +196,9 @@ The privacy disclosure in Settings is deliberately three separate lines rather t
 
 Retention defaults to 30 days (`0` = keep forever), and it is now enforced rather than advertised: `sweepMeetingAudioRetention()` (`apps/api/src/lib/meeting/retention.ts`) runs 10 minutes after boot and hourly thereafter, deleting the WAV and its sidecar for every meeting past its own window and stamping `audioDeletedAt`. It skips a recording in progress and one whose transcription is queued or running — both are still using the file — and only ever removes the **audio**: transcript, summary, decisions, minutes and action items stay, because they are small, they are what the meeting is worth afterwards, and removing them is what the explicit delete button is for. The cutoff is computed with the same day arithmetic as the `audioExpiresAt` the panel displays, so the badge cannot promise a date the sweep does not keep.
 
-`retentionDays` and `lang` are per meeting, taken from Settings → Meetings at creation time (`meeting.defaults`). They were previously written by that tab and read by nobody: the panel hard-coded `lang: 'auto'` and never sent a retention value at all, so the engine status, the language dropdown and the retention field all had no effect on new recordings.
+`retentionDays` and `lang` are per meeting, taken from Settings → Meetings at creation time (`meeting.defaults`). They were previously written by that tab and read by nobody: the panel hard-coded `lang: 'auto'` and never sent a retention value at all, so the engine status, the language dropdown and the retention field all had no effect on new recordings. `textScript` lives in the same blob but is read at **transcription** time, not at create — see §3.
+
+The tab reads that blob back with a plain `fetch('/api/system.getConfig')`, so it depends on the shape of that response. `system.getConfig` returns the stored **string**, not `{value}`; reading `.value` off it yielded `undefined`, the card rendered `DEFAULTS` forever, and every `persist({...defaults, field})` wrote those defaults back over the other fields — the language reverted to `auto` the moment you changed anything else.
 
 ### 10. Agent access
 
@@ -215,7 +243,7 @@ Both are strictly read-only — nothing writes, sends or deletes, and the follow
 | `apps/api/src/agent/tools/registry.ts`              | Two tool schemas + labels                                                                  |
 | `apps/api/src/agent/tools/dispatcher.ts`            | Two dispatch cases                                                                         |
 | `apps/api/src/agent/prompts/systemPrompt.ts`        | `MEETING LOOKUP` line — the data is in the DB, not in a repository                         |
-| `apps/web/src/panels/settings/MeetingTab.tsx`       | **New** — privacy block, engine status, models, defaults, consent record                   |
+| `apps/web/src/panels/settings/MeetingTab.tsx`       | **New** — privacy block, engine status, the speech model, defaults, consent record         |
 | `apps/web/src/lib/api.ts`                           | `meeting.*` client methods                                                                 |
 | `apps/web/src/lib/i18n.ts`                          | `meeting.*` keys (en / zh / ja)                                                            |
 | `apps/web/src/lib/constants.ts`                     | `MENU` + `MENU_LABEL`                                                                      |

@@ -11,6 +11,7 @@
 // Audio never leaves the machine. Only transcript text reaches an LLM, and the
 // Settings panel says so in exactly those words — see MeetingTab.tsx.
 import { prisma } from '@tomilite/database';
+import { utcStamp } from '../lib/dbTime.js';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { router, publicProcedure, z } from '../trpc';
@@ -31,8 +32,8 @@ import {
   deleteModel,
   downloadModel as downloadModelFile,
   installedModelNames,
-  pickModel,
   listModels,
+  resolveSpeechModel,
 } from '../lib/meeting/models';
 import { isSafeId, meetingWavPath } from '../lib/meeting/paths';
 import {
@@ -42,6 +43,7 @@ import {
   normalizeDecisions,
   runPipeline,
 } from '../lib/meeting/pipeline';
+import { DEFAULT_TEXT_SCRIPT, type TextScript } from '../lib/meeting/script';
 import { cancelWhisperJob, cleanupTempDir, runWhisperJob, whisperBusy } from '../lib/meeting/whisperJob';
 import { whisperBinStatus, whisperThreads } from '../lib/meeting/whisperBin';
 
@@ -377,7 +379,9 @@ async function startTranscription(meetingId: string): Promise<{ ok: boolean; err
   const bin = whisperBinStatus();
   if (!bin.ok) return { ok: false, error: 'no_binary' };
 
-  const picked = pickModel(meeting.whisperModel || DEFAULT_MODEL);
+  // The app picks; the user does not. `base` if it is on disk, else the smallest
+  // installed model, else nothing. See lib/meeting/models.ts.
+  const picked = resolveSpeechModel();
   if (!picked) return { ok: false, error: 'no_model' };
 
   const wavPath = meetingWavPath(meetingId);
@@ -396,11 +400,19 @@ async function startTranscription(meetingId: string): Promise<{ ok: boolean; err
       transcribeError: null,
       durationMs: info.durationMs || meeting.durationMs,
       jobStage: 'transcribe',
-      // Record the substitution, so the row doesn't keep claiming a model that
-      // isn't on disk and retries don't re-derive the same fallback.
-      whisperModel: picked.name,
+      // What ran, recorded without touching `whisperModel`. A fallback used to be
+      // written back into that column, which pinned a meeting to whatever happened to be
+      // installed the day it was recorded. Kept as a diagnostic record now — nothing in
+      // the UI shows it, but it is the only way to tell after the fact whether a
+      // transcript came from `base` or from a leftover model on disk.
+      transcribeModel: picked.name,
     },
   });
+
+  // Read at transcription time rather than at creation: this is a preference
+  // about how Chinese is written, not a property of the recording, so changing it
+  // and re-transcribing an old meeting does what it says.
+  const script = (await meetingDefaults()).textScript || DEFAULT_TEXT_SCRIPT;
 
   void (async () => {
     const result = await runWhisperJob({
@@ -409,6 +421,7 @@ async function startTranscription(meetingId: string): Promise<{ ok: boolean; err
       modelPath: picked.path,
       lang: meeting.lang,
       durationMs: info.durationMs,
+      script,
     });
 
     if (!result.ok) {
@@ -512,7 +525,10 @@ export const meetingRouter = router({
         source: m.source,
         durationMs: m.durationMs,
         audioBytes: m.audioBytes,
-        whisperModel: m.whisperModel,
+        // `whisperModel` is not sent: it is always the one model the app targets, so it
+        // would be a constant on every row. `transcribeModel` stays as the record of
+        // what actually ran (a leftover model on disk can still win the fallback).
+        transcribeModel: m.transcribeModel,
         lang: m.lang,
         transcribeStatus: m.transcribeStatus,
         transcribeProgress: m.transcribeProgress,
@@ -591,7 +607,6 @@ export const meetingRouter = router({
         // Meetings default", which is read below. A `.default('auto')` here
         // would shadow the user's configured language forever.
         lang: z.string().optional(),
-        whisperModel: z.string().default(DEFAULT_MODEL),
         retentionDays: z.number().min(0).optional(),
       }),
     )
@@ -605,7 +620,11 @@ export const meetingRouter = router({
           source: input.source,
           status: 'recording',
           lang: input.lang || cfg.lang || 'auto',
-          whisperModel: input.whisperModel,
+          // Written explicitly rather than left to the column default, and always the
+          // one model the app targets — the user does not choose. `resolveSpeechModel`
+          // (lib/meeting/models.ts) is what actually runs, and may fall back to another
+          // installed model if this one is not on disk.
+          whisperModel: DEFAULT_MODEL,
           retentionDays: input.retentionDays ?? cfg.retentionDays ?? 30,
           consentAcknowledgedAt: consent?.value || null,
         },
@@ -700,22 +719,12 @@ export const meetingRouter = router({
         sendCc: z.string().optional(),
         retentionDays: z.number().min(0).optional(),
         lang: z.string().optional(),
-        whisperModel: z.string().optional(),
         archived: z.boolean().optional(),
       }),
     )
     .mutation(async ({ input }) => {
       const data: Record<string, unknown> = { updatedAt: nowStr() };
-      for (const k of [
-        'title',
-        'minutes',
-        'minutesSubject',
-        'sendTo',
-        'sendCc',
-        'lang',
-        'whisperModel',
-        'archived',
-      ] as const) {
+      for (const k of ['title', 'minutes', 'minutesSubject', 'sendTo', 'sendCc', 'lang', 'archived'] as const) {
         if (input[k] !== undefined) data[k] = input[k];
       }
       if (input.attendees !== undefined) data.attendees = JSON.stringify(input.attendees);
@@ -989,8 +998,12 @@ export const meetingRouter = router({
           type,
           status: 'todo',
           priority: item.priority || 'medium',
-          createdAt: nowStr(),
-          updatedAt: nowStr(),
+          // NOT `nowStr()`. Every other writer of Issue stamps UTC and every reader
+          // parses it as UTC, so a local-time stamp here would land 8h in the future
+          // on the task list — the exact split-clock defect this migration removes.
+          // `Meeting`'s own columns stay local on purpose; `Issue` does not.
+          createdAt: utcStamp(),
+          updatedAt: utcStamp(),
         },
       });
 
@@ -1018,9 +1031,13 @@ export const meetingRouter = router({
     return { ...status, threads: whisperThreads() };
   }),
 
-  listModels: publicProcedure.query(() => ({
+  /**
+   * The catalog and what is on disk. `active` is used for two things now that no model
+   * is selectable: whether the one model the app targets has been downloaded, and which
+   * *other* models are lying around from an older version so they can be deleted.
+   */
+  listModels: publicProcedure.query(async () => ({
     models: listModels(),
-    defaultModel: DEFAULT_MODEL,
     downloading: modelDownload ? { name: modelDownload.name } : null,
     active: installedModelNames(),
   })),
@@ -1091,6 +1108,24 @@ export const meetingRouter = router({
       .catch(() => {});
     return { ok: true, acknowledgedAt: at };
   }),
+
+  /**
+   * Put the consent notice back, so it is shown before the next recording.
+   *
+   * This has to clear the stored row, not just in-memory state: `consent` above reads
+   * `SystemConfig`, so a reset that only flipped a flag in one panel was undone by the
+   * next render that re-read it — which is why the button in Settings appeared to do
+   * nothing at all.
+   *
+   * `deleteMany` rather than `delete`: absent row is not an error, and the caller may
+   * reset twice. Per-meeting `consentAcknowledgedAt` stamps are deliberately left
+   * alone — those record that consent *was* given for a particular recording, which is
+   * an audit trail. Withdrawing the standing acknowledgement must not erase it.
+   */
+  resetConsent: publicProcedure.mutation(async () => {
+    await prisma.systemConfig.deleteMany({ where: { key: CONSENT_KEY } });
+    return { ok: true, acknowledgedAt: null };
+  }),
 });
 
 // ─── Helpers ───
@@ -1100,8 +1135,15 @@ export const meetingRouter = router({
  * Read on every create so the retention and language fields there actually
  * govern new recordings instead of being written and forgotten — before this,
  * the panel hard-coded `lang: 'auto'` and never sent a retention value at all.
+ *
+ * `textScript` is read at transcription time instead of at create; see
+ * `startTranscription`.
  */
-async function meetingDefaults(): Promise<{ lang?: string; retentionDays?: number }> {
+async function meetingDefaults(): Promise<{
+  lang?: string;
+  retentionDays?: number;
+  textScript?: TextScript;
+}> {
   try {
     const cfg = await prisma.systemConfig.findUnique({ where: { key: 'meeting.defaults' } });
     return cfg?.value ? JSON.parse(cfg.value) : {};

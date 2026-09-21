@@ -1,11 +1,17 @@
 import { prisma } from '@tomilite/database';
+import { utcStamp } from '../../lib/dbTime.js';
 import { executeEmailTool } from '../../routers/emailTools.js';
 
 /** List unprocessed emails (smart inbox) */
 export async function listEmails(args: Record<string, any>): Promise<any> {
   const where: any = { isProcessed: false };
   if (args.category) where.category = args.category;
-  return prisma.smartEmail.findMany({ where, take: args.limit || 10, orderBy: { createdAt: 'desc' }, select: { id: true, subject: true, fromAddr: true, category: true, summary: true, replyDraft: true, date: true } });
+  return prisma.smartEmail.findMany({
+    where,
+    take: args.limit || 10,
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, subject: true, fromAddr: true, category: true, summary: true, replyDraft: true, date: true },
+  });
 }
 
 /** Edit reply draft for an email */
@@ -18,15 +24,25 @@ export async function editEmailReply(args: Record<string, any>): Promise<any> {
 export async function sendEmailReply(args: Record<string, any>): Promise<any> {
   const email = await prisma.smartEmail.findUnique({ where: { id: args.emailId } });
   if (!email) return { ok: false, error: 'Email not found' };
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  await prisma.smartEmail.update({ where: { id: args.emailId }, data: { isProcessed: true, isReplied: true, processedAt: now } });
-  const smtp = await executeEmailTool('send_email', { to: email.fromAddr, subject: 'Re: ' + email.subject, body: args.body || email.replyDraft });
+  const now = utcStamp();
+  await prisma.smartEmail.update({
+    where: { id: args.emailId },
+    data: { isProcessed: true, isReplied: true, processedAt: now },
+  });
+  const smtp = await executeEmailTool('send_email', {
+    to: email.fromAddr,
+    subject: 'Re: ' + email.subject,
+    body: args.body || email.replyDraft,
+  });
   return smtp;
 }
 
 /** Read original email body (full text from IMAP when available) */
 export async function readEmailOriginal(args: Record<string, any>): Promise<any> {
-  const email = await prisma.smartEmail.findUnique({ where: { id: args.emailId }, select: { id: true, subject: true, bodySnapshot: true, uid: true } });
+  const email = await prisma.smartEmail.findUnique({
+    where: { id: args.emailId },
+    select: { id: true, subject: true, bodySnapshot: true, uid: true },
+  });
   if (!email) return { error: 'Email not found' };
   // Try fetching full body from IMAP
   try {
@@ -38,19 +54,24 @@ export async function readEmailOriginal(args: Record<string, any>): Promise<any>
         try {
           const full = await connector.fetchFullMessage(email.uid);
           return { subject: email.subject, body: full.text || full.html || email.bodySnapshot || '' };
-        } catch { /* fallback to bodySnapshot */ }
+        } catch {
+          /* fallback to bodySnapshot */
+        }
       }
     }
-  } catch { /* fallback */ }
+  } catch {
+    /* fallback */
+  }
   return { subject: email.subject, body: email.bodySnapshot || '(No body stored)' };
 }
 
 /** Dismiss email (mark processed, no reply) */
 export async function dismissEmail(args: Record<string, any>): Promise<any> {
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const now = utcStamp();
   await prisma.smartEmail.update({ where: { id: args.emailId }, data: { isProcessed: true, processedAt: now } });
   const email = await prisma.smartEmail.findUnique({ where: { id: args.emailId }, select: { issueId: true } });
-  if (email?.issueId) await prisma.issue.update({ where: { id: email.issueId }, data: { status: 'done', updatedAt: now } });
+  if (email?.issueId)
+    await prisma.issue.update({ where: { id: email.issueId }, data: { status: 'done', updatedAt: now } });
   return { ok: true, dismissed: true };
 }
 
