@@ -88,6 +88,7 @@ TomiLite 是**本地优先**的：任务、笔记、邮件、日报、聊天记�
 1. **设置 → LLM**：填入你自己的 API Key（DeepSeek / Qwen / Kimi / OpenAI / …）并测试连接 —— 或选 **Hosted** 用邮箱登录，直接用官方网关试用，无需 Key
 2. **设置 → 邮件**：添加 IMAP 账号以启用邮件处理（可选）
 3. **设置 → MCP 服务器**：连接外部 MCP 服务器供 Agent 使用（可选）
+4. **设置 → API 密钥**：生成一把密钥，让外部 AI 客户端（Claude Code、WorkBuddy…）来操作 TomiLite。该页会给出两种传输各自可直接粘贴的配置，并填入本机安装的真实路径（可选）
 
 ### 开发
 
@@ -130,7 +131,8 @@ packages/
 - **本地优先**：SQLite 存在 `~/.tomilite/`，不依赖云服务
 - **Agent 工具调用**：基于原生 fetch 实现 OpenAI 兼容的 `tools`/`tool_choice` 协议 —— 各家 provider 的差异按 baseUrl 分别处理
 - **MCP 客户端**：自动协商 TomiHub 风格 / JSON-RPC / 旧版协议；发现的工具注入为 `mcp__<server>__<tool>` 函数；API Key 静态加密，绝不发给 LLM
-- **人工介入**：外部 MCP 客户端的写操作需在 MCP 面板中审批
+- **MCP 服务端**：是真正的协议服务端，而不只是一个长得像 MCP 的 HTTP 端点 —— stdio（`mcp-stdio.cjs`，由 `TomiLite.exe` 自己当 Node 跑，因为安装包里没有 `node.exe`）与 StreamableHTTP（`POST /api/mcp`）。两代协议都支持：无状态的 2026-07-28 修订版，以及更早的 `initialize` 握手世代，按请求逐个判定
+- **人工介入**：外部 MCP 客户端的写操作需在 MCP 面板中审批。客户端放弃等待时拿到的是"尚未执行任何操作，请批准后重试"，而不是一条超时；即使批准来晚了，工具照样执行，结果也取得回来
 - **数据库迁移**：只做增量、带版本号（`SCHEMA_VERSION`，见 `apps/api/src/server.ts`）
 
 ## 文档
@@ -140,6 +142,7 @@ packages/
 - [MCP 客户端](docs/mcp-client.md) —— 连接外部 MCP 服务器
 - [邮件 AI 收件箱](docs/email-ai.md) —— AI 邮件分类与处理
 - [任务面板](docs/tasks-panel.md) —— 看板、拖拽改状态、任务编辑器
+- [知识地图](docs/knowledge-map.md) —— AI 归纳的主题树、`[[链接]]` 与语义最近
 - [UI 设计系统](docs/ui-design-system.md) —— 设计令牌、主题、组件
 - [安全](docs/SECURITY.md) —— 本地优先的安全模型
 - [隐私与遥测](docs/telemetry.md) —— 可选的匿名使用统计

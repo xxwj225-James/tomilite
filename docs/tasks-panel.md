@@ -70,7 +70,7 @@ The planned `J`/`K`/`Enter`/`N`/`Space`/`Escape` shortcuts were not built.
 ### 8. Kept Functionality
 
 - Search box, type filter, priority filter (persisted to DB via `systemConfig` `taskSort` / `taskFilter`), sortable columns.
-- New Issue creation (toolbar button → blank TasksEditor form), edit/delete, batch select + batch delete.
+- New Issue creation (toolbar button → blank TasksEditor form), edit/delete.
 
 ### 9. Batch Task Creation from Chat — per-row actions
 
@@ -88,14 +88,135 @@ No backend or database change was involved.
   `force_create_issue` results for the turn and emits the batch card from the 2nd task on
 - One turn can only carry one card: export > dedup-blocked > batch > single
 
+### 10. Mirrored Tasks (imported from Redmine)
+
+The panel can now contain rows this app did not write. `Issue.source` is `'redmine'` on
+them, `Issue.sourceId` is the tracker's own issue number as a string, and together they
+are the merge key the sync upserts on. `source` is `NULL` on everything this app writes.
+
+**They are counted by everything.** The user chose this explicitly: the task board's tab
+badges, the Home totals, `health.personalHealth`, the morning brief's overdue list and the
+agent's `list_issues` all include mirrored rows. Nothing here filters on `source`, and
+nothing should start to. The defence for the choice is that the sync pulls
+`assigned_to_id=me` — these are tickets assigned to *this* user, not an arbitrary
+project's throughput — so the statistics describe the user's real workload. The visible
+consequence is that the staleness score can fall, because a ticket assigned three years
+ago and never closed is genuinely stale.
+
+`isTask` and `isImported` are two separate questions and stay separate:
+
+| Question | Function | Answer |
+| --- | --- | --- |
+| Is this counted as a task? | `isTask(row)` | Yes — mirrored rows are tasks |
+| May this app write to it? | `isImported(row)` | No — read-only |
+
+**The read-only contract.** Five places could write to an `Issue`, and every one refuses
+a mirrored row:
+
+| Writer | Behaviour |
+| --- | --- |
+| `issue.update` (`routers/issue.ts`) | `FORBIDDEN` — "Mirrored from an external tracker — read-only here" |
+| `issue.delete` (`routers/issue.ts`) | `FORBIDDEN` — points at detach instead |
+| `issueTools.updateIssue` (agent) | Returns `{ error: '#1234 is mirrored from Redmine and is read-only here' }` |
+| `mcp.ts` `update_issue` (MCP server) | Same — a **second, independent implementation**, easy to miss |
+| `git.ts` commit scanner | Skips the auto-close branch; the `gitCommitRef` link is still created |
+
+The git one is the least obvious and the most surprising if it fires: the scanner matches
+`/\b(fix|close|resolve)\s+#(\d+)/` in any commit message and sets that issue to `done`.
+Without the guard, **somebody else's commit message could close a mirrored ticket**, and
+the next sync would quietly reopen it.
+
+**Detach is the escape hatch.** `issue.detach` clears both `source` and `sourceId`,
+turning the row into an ordinary local task that can be edited and deleted. It is
+reachable from the task editor, and it is the only way out of the read-only rule —
+without it, a user who wants 50 noisy mirrored tickets gone has no move at all, because
+deleting is refused and the next sync re-creates what it does not recognise.
+
+> **Detach is not permanent.** The row keeps its place in the database but loses its
+> merge key, so the next sync sees a ticket it has never mirrored and creates a second
+> copy. Both columns could not be cleared *and* detachment be permanent; keeping
+> `sourceId` would leave a row that still carries a tracker's identity while the sync no
+> longer recognises it — a half-attached state that is worse than either. The UI says the
+> ticket can come back.
+
+`redmine.disconnect` offers the same three dispositions for *all* mirrored rows at once
+(`keep` / `detach` / `delete`), and requires the caller to choose. There is no safe
+default: `keep` strands several hundred rows that are read-only *and* no longer
+refreshable, which is exactly the dead end detach exists to prevent.
+
+**The row is labelled.** A mirrored row shows an `Imported` badge next to its title
+(`tasks.mirrored`), its editor hides Edit and Delete and shows Detach plus a banner
+explaining why, and it cannot be dragged between columns — a drag would be a local write
+that the next sync reverts, so the drag appears to work and then undoes itself.
+
+**`issueKey`.** The number a user reads comes from `lib/issueKey.ts` on the web side and
+`lib/taskScope.ts` on the API side (duplicated, because the web bundle cannot import from
+the API package; same arrangement as `lib/dbTime.ts`):
+
+```ts
+i.source === 'redmine' && i.sourceId ? '#' + i.sourceId : 'TL-' + i.issueNumber
+```
+
+So a mirrored row shows Redmine's own `#1234`, which is the number its colleagues, its
+commits and its email threads all use. `issueNumber` keeps its local-sequence meaning and
+is **not** set to the tracker's id — see the comment on `issueKey` for the collision that
+would eventually cause.
+
+### Known limitation: `take: 200`
+
+`issue.list` returns at most 200 rows, and the board's tabs filter that page client-side.
+The badges are counted in SQL over the whole set, so a badge can legitimately say 300
+while the tab shows fewer rows. This predates mirroring, but mirroring makes it reachable:
+with more than 200 mirrored tickets the tail of the list is not on screen.
+
+The list is ordered `[{ source: 'asc' }, { updatedAt: 'desc' }]`, which is load-bearing
+rather than cosmetic — SQLite sorts `NULL` before any non-null value in `ASC`, and `NULL`
+source is exactly "this app wrote it", so the user's own tasks always win the 200 slots
+and mirrored rows take what is left. Without it, a sync of 400 tickets (whose `updatedAt`
+is fresh enough to sort first) fills the page entirely and a tab can render zero rows
+while its badge says 37. The user's own tasks would not be truncated — they would be
+**absent**.
+
+### Related: the hourly archiver deletes old `done` tasks
+
+`startBackgroundTasks()` in `server.ts` runs an hourly sweep whose comment says "hide from
+UI, never delete". That is true for `GitCommit` and `SmartEmail`, which set
+`archived: true`, and **false for `Issue`**, which the sweep hard-deletes:
+
+```ts
+prisma.issue.deleteMany({ where: { status: 'done', updatedAt: { lt: cutoffIssue }, source: null } })
+```
+
+The `source: null` predicate is the whole safety of that line and it is not a filter of
+convenience. A mirrored row is not stale work the user abandoned — it is a copy of someone
+else's tracker, where `status: 'done'` means the *ticket was closed*, not that the user
+finished it. Closed tickets are overwhelmingly the ones older than 90 days, and the sync
+cursor has already moved past them, so without the predicate importing 400 tickets would
+have become 87 within the hour, silently and permanently.
+
+> **The sweep still hard-deletes the user's own finished tasks**, and this batch did not
+> change that. It cascades to that task's comments, changelog, git-ref links and board
+> cards, and clears `parentId` on its subtasks (`onDelete: SetNull`), leaving them on the
+> board as orphans. It is pre-existing behaviour, unrelated to mirroring, and it is
+> recorded here because the comment above it claimed otherwise and because it is the kind
+> of thing that should be a deliberate decision rather than a surprise.
+
 ## Files Shipped
 
 | File                                        | Change                                                                                                          |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `apps/web/src/panels/tasks/TasksList.tsx`   | Tabbed table, drag-to-status with ghost element, drag hint, resizable columns, pagination, email-type filtering |
-| `apps/web/src/panels/tasks/TasksPanel.tsx`  | Thin shell — list ↔ editor switching, unsaved-changes / delete / batch-delete confirm dialogs                   |
+| `apps/web/src/panels/tasks/TasksPanel.tsx`  | Thin shell — list ↔ editor switching, unsaved-changes / delete confirm dialogs                                 |
 | `apps/web/src/panels/tasks/useTaskState.ts` | State + handlers; listens for `tl-select-task` / `tl-close-task-editor`; persists sort/filter                   |
-| `apps/web/src/panels/tasks/TasksEditor.tsx` | Pre-filled editor form (title/description/status/priority/type/SP/due date), save/delete                        |
+| `apps/web/src/panels/tasks/TasksEditor.tsx` | Pre-filled editor form (title/description/status/priority/type/SP/due date), save/delete; mirrored rows: no Edit/Delete, Detach instead |
+| `apps/web/src/lib/issueKey.ts`              | `issueKey()` — `#<sourceId>` for mirrored rows, `TL-<issueNumber>` otherwise                                   |
+| `apps/web/src/panels/tasks/RedmineSection.tsx` | Connect / test / preview / sync / disconnect, with the three-way disconnect choice                        |
+| `apps/web/src/panels/tasks/ImportTasksDialog.tsx` | The modal that wraps `RedmineSection`, opened from the task list; unmounts on close, which is what stops the status poll |
+| `apps/api/src/lib/taskScope.ts`             | `isImported()` + the API-side `issueKey`                                                                       |
+| `apps/api/src/routers/issue.ts`             | `list` `orderBy` (mirrored rows last), `taskCounts`, read-only guard in `update`/`delete`, `detach`            |
+| `apps/api/src/routers/redmine.ts`           | The 8 procedures + cursor + sync algorithm — see [architecture.md](architecture.md) §6.15                      |
+| `apps/api/src/lib/redmineClient.ts`         | HTTP layer: API-key header, 30s timeout, `fetchWithProxyFallback` (honours the bypass list), 403-with-HTML tolerance |
+| `apps/api/src/lib/redmineMap.ts`            | The three name→status/type/priority tables; zero runtime imports so they can be exercised directly             |
 
 ## Verification
 
@@ -108,3 +229,12 @@ No backend or database change was involved.
 7. Ask the agent to "create 3 tasks" → **one table with 3 rows** in the chat; row 2's
    编辑 opens the 2nd task in `TasksEditor`, and row 1's 删除 removes only the 1st
    (re-check `SELECT issueNumber, title FROM Issue ORDER BY issueNumber DESC LIMIT 5`)
+8. After a Redmine sync: every mirrored row shows `#<id>` and an `Imported` badge; opening
+   one shows the read-only banner with **no Edit and no Delete**; dragging one does nothing
+9. `issue.update` / `issue.delete` on a mirrored id → `FORBIDDEN`, row unchanged; the
+   agent's `update_issue` and the MCP `update_issue` tool → an error string, not a write
+10. Detach a mirrored row → it becomes editable (`source`/`sourceId` both cleared) and the
+    **next sync re-creates the ticket** as a second row, as the UI warns
+11. Sync twice with no upstream change → second run reports `updated: 0, created: 0`
+12. `redmine.disconnect` with `keep` → rows stay but are no longer refreshable; with
+    `detach` → all of them become editable local tasks

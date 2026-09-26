@@ -72,30 +72,38 @@ Browser ↔ Vite Dev Server (:3002) ↔ tRPC API (:3091) ↔ SQLite
 
 ---
 
-## 4. API Routes (20 routers)
+## 4. API Routes (21 routers)
 
 | Router      | Endpoint                                                                                                                                                                                                                                                                                                   | Function                                    |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `issue`     | list, create, update, delete, updateRank                                                                                                                                                                                                                                                                   | Issue CRUD + drag-sort                      |
+| `issue`     | list, taskCounts, byId, create, update, delete, detach, children, updateRank                                                                                                                                                                                                                               | Issue CRUD + drag-sort + mirror detach      |
 | `board`     | getBoard, moveCard                                                                                                                                                                                                                                                                                         | Kanban + drag & drop                        |
-| `wiki`      | list, create, update, delete                                                                                                                                                                                                                                                                               | Wiki CRUD                                   |
+| `wiki`      | list, count, byId, create, update, delete, exportNote, importNotes                                                                                                                                                                                                                                         | Wiki CRUD + note import                     |
 | `git`       | listWorkDirs, addWorkDir, removeWorkDir, listRepos, addRepo, removeRepo, handleHook, recentRefs                                                                                                                                                                                                            | Git repos + commit linkage                  |
 | `focus`     | heartbeat, status, endSession                                                                                                                                                                                                                                                                              | IDE focus tracking                          |
 | `system`    | currentVersion, getHomeDir, notifyCount, clearNotifications, mcpPendingCount, getMotto, generateMotto, saveMotto, getConfig, setConfig, saveLanguage, embedStatus, reembed (isSetupCompleted/markSetupCompleted kept as legacy dead code)                                                                  | System config + notifications               |
 | `llm`       | getConfig, saveConfig, saveProvider, testConnection                                                                                                                                                                                                                                                        | LLM configuration                           |
 | `email`     | listSmartEmails, fetchFullEmail, getBody, markRead, markProcessed, cleanup, getConfig, sendReport, saveIMAP, getDraft, saveDraft, generateDraft, imapStatus, connectIMAP, disconnectIMAP, saveConfig, sendEmail, testSmtp, testIMAP, stats, createLinkedTask, unlinkTask, subGroupByCategory, groupByTopic | Email integration (SmartEmail triage)       |
 | `agent`     | /api/agent/stream (SSE), chat, getBoardStatus, getProjectStats, status, classifyIntent                                                                                                                                                                                                                     | AI Agent + tools                            |
-| `mcp`       | listTools, execute, confirm, confirmById, deny, getTaskResult, listPending, listAuditLogs, auditStats, pendingCount                                                                                                                                                                                        | MCP + HITL                                  |
+| `mcp`       | listTools, execute, confirm, confirmById, deny, getTaskResult, listPending, listAuditLogs, auditStats, pendingCount, transportInfo                                                                                                                                                                          | MCP + HITL                                  |
 | `mcpServer` | list, create, update, delete, test, refreshTools, connect, disconnect, listTools                                                                                                                                                                                                                           | MCP server CRUD (per-server config)         |
 | `apikey`    | list, generate, revoke, delete, verify                                                                                                                                                                                                                                                                     | Inbound API Key management (SHA-256 hashed) |
 | `health`    | personalHealth, healthHistory                                                                                                                                                                                                                                                                              | 5-dimension health score                    |
 | `search`    | search, reviewIssue, knowledgeMap                                                                                                                                                                                                                                                                          | FTS5 search + AI Review                     |
 | `learn`     | capture, reflect, getContext, stats                                                                                                                                                                                                                                                                        | Self-learning                               |
-| `knowledge` | generate, getLatest                                                                                                                                                                                                                                                                                        | Knowledge Map                               |
+| `knowledge` | map, organize, neighbors, suggestLinks, applyLinks, distillCandidates, suggestDistill, applyDistill                                                                                                                                                                                                                                                         | Knowledge Map (tree + backlinks) — §6.5     |
 | `report`    | list, getLatest, save, delete, markSent                                                                                                                                                                                                                                                                    | Reports CRUD                                |
 | `feedback`  | list, create, updateStatus, delete                                                                                                                                                                                                                                                                         | Feedback CRUD                               |
 | `chat`      | listSessions, createSession, renameSession, deleteSession, getMessages, addMessage, listThreads, updateMessage, clearMessages                                                                                                                                                                              | Chat sessions + messages (per-session)      |
+| `redmine`   | getConfig, saveConfig, testConnection, vocabularies, preview, sync, status, disconnect                                                                                                                                                                                                                     | Read-only ticket mirror (§6.15)             |
 | `standup`   | getMorningStatus, getMorningBrief, getEveningStatus, getEveningReport, getSettings, saveSettings                                                                                                                                                                                                           | Morning check-in + evening auto-report      |
+
+**One route is not tRPC**: `POST /api/mcp` (`apps/api/src/mcp/http.ts`) is the
+StreamableHTTP MCP endpoint. It is mounted before the tRPC handler in `server.ts`, speaks
+JSON-RPC rather than the tRPC envelope, and is dispatched by the same code the stdio
+transport uses. It shares no procedure with the table above — but it reaches the same tool
+implementations through `/api/mcp.execute`, so there is exactly one place where risk, HITL
+and auditing are decided. See §6.9 and [mcp-client.md](mcp-client.md) §6.
 
 ---
 
@@ -224,6 +232,22 @@ a mixed column, so they are left alone deliberately.
 The defect was never "a column is not UTC" — it was **two clocks in one column**, or a
 reader that assumes the wrong one. That is the test to apply before touching any of these.
 
+**One external timestamp, two different treatments — do not unify them.** The Redmine
+connector (§6.15) reads a field called `updated_on` and uses it for two purposes that look
+like the same thing and must not be handled the same way:
+
+| Used as | Treatment | Why |
+| --- | --- | --- |
+| `Issue.updatedAt` | `utcStamp(new Date(updated_on))` → naive UTC | It is a stored stamp; the invariant above applies to every `*At` column without exception. Storing Redmine's raw string would put a `T`-bearing ISO value in a column compared as text — and `'2026-01-07T…'` sorts after **every** `'2026-01-07 …'`, so a mirrored row would win every `ORDER BY updatedAt DESC` tie and the task board would float stale tickets to the top. |
+| the incremental sync cursor | stored **verbatim**, in `SystemConfig['redmine.cursor']` | It is never compared to a column. It is sent straight back as the `updated_since` query parameter, and Redmine requires `YYYY-MM-DDTHH:MM:SSZ` — the exact shape it handed out. Converting it means reconstructing a format the server already specified, from a value the server already gave us. |
+
+Both live in the same file, a few lines apart, and reading either one alone makes the other
+look wrong. `ChatSession.distillCursor` is the precedent for the second row: a watermark
+copied verbatim from a foreign writer, deliberately not normalised. Normalising the cursor
+is a no-op today at UTC+0 and a silent one-hour data skip in a DST zone; normalising in the
+other direction (storing the ISO into the column) passes every test written on a machine
+whose clock is UTC and breaks on the user's.
+
 ### 5.2 The task set — what counts as a task
 
 `apps/api/src/lib/taskScope.ts` is the single definition:
@@ -250,6 +274,15 @@ rather than an error:
   derived from the fetched array silently under-reports once the table passes that, so the
   Home panel and the task board would disagree again the moment they fetched differently.
   `issue.taskCounts` counts in SQL over the whole set and is what the tab badges render.
+
+**`isImported` answers a different question, and that is why it is a second function.**
+Rows mirrored from an external tracker (`source !== null`, see [Redmine import](#615-redmine-import--read-only-mirror))
+are tasks — they are counted by every caller above, deliberately and with no scope switch.
+They are also the only rows this app may not write to. `isTask` answers "does this count
+as work"; `isImported` answers "may this app modify it". Folding them into one predicate
+would force a choice between under-counting the user's workload and letting a local edit
+be silently reverted by the next sync. The four writers that guard on `isImported` are
+listed in [tasks-panel.md](tasks-panel.md).
 
 ---
 
@@ -309,10 +342,25 @@ LLM-polished summary (optional); snapshots stored in `user_health_snapshots`.
 **The index** (`apps/api/src/lib/ftsIndex.ts`) is built and repaired by
 `ensureSearchIndexes()`, which runs on every boot _before_ the server listens:
 
-- `global_fts` is a regular (non-contentless) fts5 table over five source tables —
-  `Issue`, `KnowledgePage`, `SmartEmail`, `GitCommit`, `Report` — with `type` and `ref_id`
-  marked `UNINDEXED`. `UNINDEXED` matters: previously `type` was searchable, so a query
-  for `note` matched every note through the type column rather than through content
+- `global_fts` is a regular (non-contentless) fts5 table over seven source tables —
+  `Issue`, `KnowledgePage`, `SmartEmail`, `GitCommit`, `Report`, `ChatMessage`, `Meeting` —
+  with `type` and `ref_id` marked `UNINDEXED`. `UNINDEXED` matters: previously `type` was
+  searchable, so a query for `note` matched every note through the type column rather than
+  through content
+- **A chat message is indexed with an empty `title` and its text in `body`**, and a meeting
+  as one row (title + minutes + summary + transcript) rather than one row per transcript
+  segment. The empty title is deliberate: a message has no short title to index, and
+  storing the session title there instead would mean rewriting every one of the session's
+  messages on each rename. The palette shows the session title, which `searchCore` joins at
+  read time. The meeting choice keeps the index proportional to the library rather than to
+  how much was said in it — a meeting's segments are its transcript, and the panel already
+  searches inside them with `meeting.searchSegments`. Both `ChatMessage` and `Meeting`
+  declare `updateOf`, so their triggers are `AFTER UPDATE OF <the indexed columns>` rather
+  than `AFTER UPDATE`: transcription writes `transcribeStatus`/`aiStatus`/`jobStage`
+  repeatedly, and a bare trigger would copy the whole transcript into the index each time
+- **`git` is indexed but is not a search result.** `GitCommit` stays in the index because
+  the agent's `search_local_data` reads it; the palette's endpoint filters it out with an
+  explicit `type IN (...)` list, since the six kinds it shows do not include commits
 - **Tokenizer is `trigram`** (SQLite ≥3.34): any substring of ≥3 characters matches,
   which is what makes Chinese search work at all. The previous `porter unicode61`
   tokenizer treated a whole run of Han/Kana as ONE token, so a CJK query matched only when
@@ -454,6 +502,31 @@ zero.
   cross-lingual and 2-character queries work. (The old `semanticRank` gated on
   `score > 0.5`, a value calibrated for OpenAI embeddings that e5 satisfies for every
   query; it now gates on whether the _candidates_ have usable vectors at all.)
+- **The second reader of `decodeVector` is `knowledge.neighbors`** (§6.5), which returns the
+  top-N stored vectors by cosine for one note. It is a separate procedure because `map` must
+  never carry ~3 KB of vector per row on a call made at every panel activation. It returns
+  the score and the UI deliberately does not render it — same measurement as above. Whether
+  a neighbour list is possible at all is decided by `decodeVector(x) !== null`, never by the
+  score, since `cosineSimilarity` returns `0` for both orthogonal and missing vectors; the
+  failure is reported as `no-vector` / `no-peers` / `note-missing` rather than as an empty
+  list.
+
+- **The global search palette (`lib/searchCore.ts`) takes the no-threshold property as a
+  design constraint rather than fighting it.** Its keyword list and its cosine list are
+  fused the same way, but with `w_semantic = 0.5` against `w_keyword = 1.0`. Equal weights
+  would make keyword #1 and semantic #1 tie exactly at `1/(k+1)`, so fusion would degenerate
+  into strict alternation: a query that matches a message verbatim would come back with an
+  unrelated note between every hit. At 0.5, semantic #1 (`0.5/61 = 0.008197`) still ranks
+  below keyword #60 (`1/120 = 0.008333`), so every keyword hit outranks every semantic one —
+  a property the UI depends on, and one `scripts/test-search.mts` asserts. The constant is
+  tied to the keyword list's length; changing one requires changing the other, and the test
+  is what notices.
+- **Rows found only by meaning are labelled in the UI**, and the panel says when the
+  semantic list is unavailable or still warming. This follows directly from the table above:
+  since no threshold can filter a bad query's nearest neighbours, the user is the only thing
+  that can tell a lucky semantic hit from a wrong one, and an unlabelled row gives them
+  nothing to judge with. For the same reason a deep link carries its provenance — a chat hit
+  knows its session, a meeting hit knows whether the term came from its transcript.
 
 - **Degradation is total and quiet**: no model installed → `embedQuery` returns `null` →
   the embedding list is empty → RRF reduces to BM25 order → keyword search and every other
@@ -470,7 +543,78 @@ zero.
 
 ### 6.5 Knowledge Map
 
-Project-wide overview; the LLM synthesizes a 3-sentence summary + recommended reading.
+A tree of AI-named topics whose **leaves are real notes**, plus a per-note card carrying
+outgoing links, backlinks and semantic neighbours. Nothing in it is prose the user cannot
+open, and generating it is a button — never a side effect of opening the home panel.
+
+The tree is stored as note **ids only** in `SystemConfig['knowledge.map.v1']` (no schema
+change); titles and counts are joined from live rows at read time, so a deleted note cannot
+leave a dangling entry. Its invalidation key is the sorted note-id set plus the language,
+not a content hash — a tree that reshuffles on every save is worse than no tree. Every
+structural safeguard exists because the alternative silently corrupts more than one note:
+
+- notes go in **numbered**, the model answers with **numbers only**, so a hallucinated title
+  is not a failure mode that has to be caught;
+- `minIndex === 1 && maxIndex === n` is asserted first — a 0-based answer offsets **every**
+  leaf by one while coverage checks still pass;
+- depth ≤ 3, ≤ 12 children, ≥ 2 children per internal node, root topics in `[2, ceil(n/4)]`
+  (coverage alone is satisfied by one bucket holding all 39 notes);
+- pruning **promotes** survivors to the grandparent rather than cascading, re-asserts
+  coverage afterwards, and rejects the whole tree if a leaf would be lost;
+- `finish_reason === 'length'` is failure — a truncated tree is never stored;
+- anything that fails falls back to a category-derived tree marked `degraded`, so the user
+  never sees an error, and **no note can leave the map**.
+
+Links are explicit `[[Title]]` (parse, resolve, inverse for backlinks — `lib/noteLinks.ts`)
+plus the stored vectors. A title is **not** a unique key: on the reference corpus 7 of 39
+notes shared a title across 3 groups, so an ambiguous link renders with its candidate count
+and expands rather than silently picking one, and an ambiguous title is never proposed as a
+backfill target. Backfill writes an append-only section behind a `<!-- tl-links:v1 -->`
+sentinel, which makes the operation idempotent — an existing section is rewritten from the
+sentinel to EOF and **nothing above it is touched**. `suggestLinks` (model, read-only) and
+`applyLinks` (no model, writes the ticked set verbatim) are separate calls on purpose: at
+any temperature, re-deriving on apply means the set reviewed and the set written can differ.
+
+On the card there is exactly **one** header button, labelled `Organize notes` / `Organize new
+notes` / `Re-organize`, and the two reasons the stored tree no longer matches the request are
+rendered as banners above it: `stale` (loose notes exist) and `lang` (the tree was generated
+in another language, whose topic names are baked in and change only on the next run). Both
+fields had been in the response since the map was first written and neither was ever shown,
+which made a language switch look like nothing had happened. A failed re-read keeps the
+previous tree, so that case carries its own banner and inline retry.
+
+Tasks, report months and meetings reach this map too — but as **notes**, through the harvest
+dialog, not as a second kind of leaf. A leaf is a note id, and everything the map does with one
+(open the note, resolve `[[links]]`, score semantic neighbours) needs that id, so a task row
+would be a row the rest of the feature cannot walk. Folding a finished task, a month of reports
+or a meeting's decisions into a note means it inherits the FTS index, the embedding queue, the
+link graph and a place in the tree without any of that being written twice — the same mechanism
+`chatDistill.ts` (§6.14) has used since v2.6, applied to three more sources. No schema change:
+the three new `KnowledgePage.source` values (`task_distill` / `report_distill` /
+`meeting_distill`) ride the existing `@@index([source, sourceId])`.
+
+The harvest is **three procedures, because the first one must be free**:
+`distillCandidates` (no model) lists what is eligible and why the rest is not, so the user sees
+a count before a bill — the router's standing rule is that reading is free and generating costs
+money. `suggestDistill` spends, one call per candidate, and writes nothing; a failure costs
+that candidate only. `applyDistill` writes the reviewed text verbatim and never calls a model,
+because re-deriving on apply would let the set reviewed and the set written differ. Eligibility,
+watermarks and the per-run ceilings live in the pure `lib/distillCandidates.ts`. A stale-note
+guard (`note-changed`) refuses a body that moved between review and write — stricter than
+`applyLinks`, which merges into a section, because this replaces the whole body. Quota
+exhaustion shares `distill.pausedUntil` with the background chat distillation: the brake is a
+fact about the account, not about a feature.
+
+A strip of task counts used to sit under the tree (the **project pulse**). It is gone: it
+described a project rather than any knowledge in it, which is what the notes are for. Its
+counts came from `lib/taskCounts.ts`, which remains the implementation of `issue.taskCounts`
+(the board's badges) — only this second caller was removed. The one gap its removal left is
+filled in the card's empty state, which now carries the harvest button: that is the screen a
+user with an empty library lands on, and a map needs notes to draw.
+
+See `docs/knowledge-map.md` for the full invariants, the backfill flow, the harvest rules and
+the known limits (`[[Title]]` is a chip only inside this card; renaming a note breaks inbound
+links).
 
 ### 6.6 Agent Self-Learning
 
@@ -492,12 +636,23 @@ Project-wide overview; the LLM synthesizes a 3-sentence summary + recommended re
 
 ### 6.9 MCP + HITL
 
+**Outbound (TomiLite is the client):**
+
 - **Protocol client** (`apps/api/src/agent/mcp/client.ts`): auto-negotiating transport supporting legacy (POST `/tools/call`), plain method-envelope, and standard JSON-RPC responses; HTTPS or localhost only for remote servers
 - **Tool injection** (`apps/api/src/agent/mcp/inject.ts`): discovered tools are injected as `mcp__<server>__<tool>` function schemas (capped at 25); credentials are attached server-side and never sent to the LLM
 - **Registry** (`registry.ts`): in-memory cache with 30s TTL + lazy discovery, decrypts per-server API keys on demand
-- **Risk gate**: `read_only` executes directly; `low`/`medium`/`high` are queued for human approval (HITL), auto-approved only when the API key's `hitlMode` is `auto`
 - Inbound MCP server CRUD via the `mcpServer` router (per-server URL, transport, headers, API key, enable flag); every call audited in `McpAuditLog`
+
+**Inbound (TomiLite is the server):**
+
+- **Transports**: stdio (`apps/api/src/mcp/stdio.ts` → `apps/api/dist/mcp-stdio.cjs`, run by `TomiLite.exe` under `ELECTRON_RUN_AS_NODE=1`) and StreamableHTTP (`POST /api/mcp`, `apps/api/src/mcp/http.ts`). Both are front ends over one pure dispatcher (`dispatch.ts`) and one tool catalogue (`catalogue.ts`)
+- **Dual-era protocol**: 2026-07-28 is stateless — no `initialize`, no session; every request carries a `_meta` envelope and `server/discover` is a MUST. The era is decided per request by the presence of `_meta`, which is what makes the HTTP endpoint stateless. Legacy clients (`initialize`-based) are served by the same code path
+- **Risk gate**: `read_only` executes directly; `low`/`medium`/`high` are queued for human approval (HITL), auto-approved only when the API key's `hitlMode` is `auto`. Risk now comes from each tool's own definition in the catalogue, so it cannot disagree with the advertised schema
+- **Scopes**: an API key without `write` is refused any non-`read_only` tool
 - API Key management (`apikey` router) + audit log
+
+The full protocol contract — era table, `tools/call` success/failure mapping, the bounded
+approval wait, and the known limitations — is in [mcp-client.md](mcp-client.md) §6.
 
 ### 6.10 OTA Updates
 
@@ -550,6 +705,10 @@ working on the same project across many sessions does not start from zero.
   to drop chit-chat, restatements, and anything already in the note
 - **One rolling note per session** (`KnowledgePage` where `source='chat_distill'`,
   `sourceId=<ChatSession.id>`, `category='chat'`), rewritten on each run
+- **The link section is spliced out and back** — because "rewritten on each run" means the
+  `title` and `content` are overwritten whole, so a `[[Title]]` backfill (§6.5) added to a
+  chat summary would be wiped by the next distillation. The section behind
+  `<!-- tl-links:v1 -->` is removed before the prompt and restored onto the result verbatim
 - The watermark (`ChatSession.distillCursor`) advances **only after a successful
   write** — a crash or a bad response replays that window instead of losing it.
   `worthSaving:false` also advances it, or the same window would be re-billed forever
@@ -560,6 +719,181 @@ working on the same project across many sessions does not start from zero.
   `feature_closed` / `account_disabled` reply from the gateway parks the whole job for
   6 h (`SystemConfig['distill.pausedUntil']`) — background work must never burn a
   metered trial's last quota. `SystemConfig['distill.enabled'] = '0'` disables it
+
+### 6.15 Redmine Import — Read-Only Mirror
+
+The user's real workload lives in a company Redmine; the task board, the health score, the
+morning brief and the agent's `list_issues` saw none of it. This connector copies the
+tickets **assigned to the configured user** into `Issue` as read-only mirrors, so those
+four pipelines see the work without the app ever becoming a second source of truth.
+
+**One direction only.** Nothing is written back to Redmine, and there is no code path that
+could — which is what makes the read-only contract in `docs/tasks-panel.md` hold. A ticket
+changed locally would be overwritten by the next sync, so every local write entry point
+refuses a mirrored row; detach is the documented escape hatch.
+
+**Sync** (`apps/api/src/routers/redmine.ts`, `lib/redmineClient.ts`):
+
+- GETs only: `/users/current.json` (key check), `/projects.json`, `/trackers.json`,
+  `/issue_statuses.json`, `/enumerations/issue_priorities.json`, `/issues.json`
+- `assigned_to_id=me` and **`status_id=*`** — without the latter Redmine returns only open
+  issues, and the mirror would silently shrink every time a ticket was closed
+- `sort=updated_on:desc`, which is a correctness choice rather than a preference: paging an
+  **ascending** sort while someone else edits issues permanently skips rows (a row edited
+  during the walk moves to the end, past the cursor), whereas a descending sort can only
+  produce **duplicates**, which the `(source, sourceId)` upsert absorbs
+- `limit=100` per page, `maxPages` 50, and the response always reports `hasMore` — a
+  truncated run deliberately does **not** advance the cursor, so the next run resumes
+  instead of losing the tail
+- Cursor: verbatim `updated_on`, sent back shifted one second earlier. Redmine's
+  `updated_since` may be `>` or `>=` depending on version, and a one-second re-read is free
+  while a one-second skip is unrecoverable
+- Config is enabled/disabled per server; the 4-minute-after-boot + 30-minute interval in
+  `startBackgroundTasks()` no-ops without a config, and concurrent runs share one in-flight
+  promise rather than racing
+
+**Vocabulary is read from the server, never hardcoded.** Tracker / status / priority names
+and ids are per-install and usually localised, so any id baked in here is one server's
+accident. Closed-ness is decided **only** by the status's own `is_closed` flag — never by
+its name — because it is the one rule that survives an administrator renaming "Closed" to
+"完了". Names are only used as a hint for the four local statuses; unknown names fall to
+`todo`, unknown types to `task` (never `email`, which `TASK_WHERE` excludes — a ticket
+that mapped to `email` would vanish from every counter while still sitting in the table).
+The maps are three pure tables in `lib/redmineMap.ts` with zero runtime imports, so they
+can be exercised directly with `node --experimental-strip-types`.
+
+**Two credential decisions**, both recorded in [SECURITY.md](SECURITY.md): the API key is
+AES-256-GCM encrypted at rest and never returned to the renderer, and plain `http://` is
+allowed because an intranet Redmine is the normal case — the UI warns that the key travels
+in clear text.
+
+### 6.16 Note Import (Markdown, saved web pages, web archives)
+
+Existing notes become TomiLite notes, so the knowledge map has something to organise.
+`KnowledgePage` already carried `source` / `sourceId` / `@@index([source, sourceId])` from
+§6.14; this is its second consumer, and **no schema change has been needed for any of the
+three formats** — each one is a value in `IMPORT_SOURCES` and nothing else.
+`'import:enex'` was a fourth until it was retired (below); the rows it wrote are untouched.
+
+The two entry points are the notes panel's import dialog (notes) and the tasks panel's
+import dialog (`RedmineSection`, for mirrored issues). They used to share a Settings tab;
+neither produces anything a settings page can show.
+
+- **Parsing runs in the renderer, not the API.** Every existing file read in this repo goes
+  through the browser File API, and doing it here buys progress reporting and a cancel
+  button for free — the API alternative needs SSE or a status column plus an orphan
+  sweeper.
+- **One button, three formats, one run.** The dialog used to carry a section per format,
+  each with its own hidden input and its own four sentences — buttons the user had to tell
+  apart before starting, when the file's own name already says what it is. There is now one
+  `<input type="file" multiple>` and its `accept` is built from the same table the bucketing
+  uses (`apps/web/src/lib/import/buckets.ts`), so a file the picker offers and a file an
+  importer claims cannot come apart — a disagreement there is silent: the note simply never
+  arrives and no count mentions it. The pick is split by extension because
+  `wiki.importNotes` takes **one `source` per batch** and its schema rejects an unknown one
+  *for the whole batch*, so the renderer calls it once per format, in a fixed order, and
+  merges the tallies, warnings and cancellation into one outcome. The progress bar is
+  offset by the dispatcher rather than by `importFiles`, which counts every call from zero.
+  Bucketing across sources is safe because the existence check, the in-batch dedup and
+  `overwrite` are all keyed by the composite `(source, sourceId)`.
+- **Picking stages, the button runs.** The pick used to start the run as soon as the file
+  dialog closed, which left the selection — the only moment a wrong pick can still be
+  caught — with nothing on screen. The files now sit in `files` state, listed with the
+  bucket `bucketOf` answers for each (the same call the dispatcher makes, so a file let
+  through by "All files" is named as skipped before the run rather than counted after it),
+  and 「确认导入」 starts it. A cancelled file dialog leaves the previous selection alone
+  instead of clearing it, and the list survives a failed or stopped run — a file dialog
+  cannot be reopened onto a previous selection, so throwing the list away there would mean
+  re-picking by hand; re-running is idempotent, which makes that a resume.
+- **A file pick cannot see folders, so a saved web page loses its images.** An `.html`
+  export keeps its images in a `<name>_files` folder beside it and a picker hands over only
+  the files selected, so every image reference resolves as *missing* and becomes a
+  placeholder line — counted per note, with the first missing name reported, and stated in
+  the dialog before the run rather than discovered after it. `.mht` is unaffected: it
+  carries its resources inside the file, which makes it the format to prefer when images
+  matter. `makeResourceIndex` and `parseHtmlNote`'s `resolve` still take a file list and
+  would work unchanged if a folder could be handed over, so this is a limit of the picker
+  and not of the parser — but it is unreachable from the UI, and only
+  `scripts/test-import-mime.mts` still exercises it.
+- **Markdown arrives as a multi-file pick, so the dialog asks for the notebook.** A file
+  picker hands over bare names with no directory, which removes both things the old folder
+  pick derived from the path: the category (it was the subfolder) and the uniqueness of the
+  merge key. The category is an optional field — empty means `imported` — and it applies to
+  Markdown only, because the other two formats name their own notebook in their file name.
+  Two files with the same name in one batch are de-duplicated before writing and reported,
+  since the name is all that identifies them.
+- **`.enex` support has been removed.** The parser is gone (`enex.ts`, `enml.ts`, the
+  `md5` helper only it used), the picker no longer offers the extension, and `'import:enex'`
+  is no longer a value `wiki.importNotes` accepts. Three reasons, in the order they carry
+  weight. It was the one part of this feature with **no test, no fixture and no sample
+  export** in the repo — the two web formats have all three — so its behaviour on a real
+  file was a claim rather than an observation, and this is the shape of parser that fails
+  into a *plausible* note. It was reachable only through a section named after the one
+  application that writes it, which is what made the dialog look like it had four things to
+  explain instead of one. And 7.x does not write `.enex` at all, so the section addressed an
+  upgrade path whose file the source application's current menu no longer produces.
+  **Notes already imported from `.enex` are not affected**: `source` is a stored column, not
+  a parser, and those rows still open, search and edit, with the generic `import:*` badge.
+  What is gone is the ability to import *more* of them.
+- **Formats are named by extension, never after the application that writes them** — in the
+  UI and in the code. An application name in the copy goes stale the moment its export menu
+  changes, it tells a user of that application nothing about the file they actually have,
+  and it invites a section per vendor. The 印象笔记 and `YinXiangBiJi` strings that remain in
+  `lib/import/` are provenance, not UI: they name the real 2026-09-22 export a parser was
+  built against, and `scripts/test-import-mime.mts` asserts the behaviour read off it.
+- **`.notes` is not supported, and deliberately not explained in the UI.** It is the other
+  thing that application's current client exports: an encrypted private format with no
+  published spec and no third-party parser. The only honest advice would be a procedure the
+  user cannot follow from inside the app.
+- **MIME is parsed in the renderer, like everything else — and byte-wise.** `mailparser` is
+  already bundled into the API, but everything downstream of it is DOM- and turndown-shaped
+  (note bounds, `src` resolution, the image budget, the `data-tl-ph` placeholder path,
+  `htmlToMarkdown`), and turndown is not an API dependency at all. The alternative is a
+  `Uint8Array` → JSON round trip that inflates both ends by 33% for a container full of
+  inlined images, over an `api.ts` whose only bare-bytes precedent is capped at 16 MB — for
+  no gain, and at the cost of the per-note progress the renderer gets for free. `mht.ts`
+  walks the container as **bytes**, not as text: the WHATWG encoding standard aliases
+  `iso-8859-1` to windows-1252, so the renderer has no byte-preserving `TextDecoder` and
+  decoding before splitting would corrupt every byte in `0x80`–`0x9F`.
+- **One HTML file is one note; a whole-notebook export is reported, not split.** The
+  export's note divider is `<a name="506"/>` — self-closing, which `text/html` does not
+  allow, so the parser leaves the anchor open and it ends up wrapping the rest of the file;
+  the DOM therefore shows one note no matter how many are in the file, and splitting would
+  have to happen at the string level. The predicate that tells a divider apart from the
+  empty in-page anchors a clipped web page is full of is unproven on one sample, and getting
+  it wrong does not degrade the import: it shreds a notebook into fragments each with an
+  invented title and id. So the importer counts the dividers and says so in the summary.
+  See the header of `lib/import/html.ts` for the argument and for where a splitter would go.
+- **`sourceId` is derived, never positional.** None of these formats carries a note id, and
+  numbering by import order would shift every id the moment a note was deleted and
+  re-exported, re-importing the whole notebook. Each format uses what it actually carries:
+  Markdown and HTML use the file's own path — which is why renaming the note *in TomiLite*
+  or editing its heading does not mint a second copy — and `.mht` uses notebook + title
+  because it has no path worth speaking of. None of them uses the export's own timestamp,
+  which records when the export ran rather than when the note was written. The rules live in
+  one place (`lib/import/sourceId.ts`), which is also the only place a key is made.
+- **The import sources are one list, not two.** `wiki.ts` declares `IMPORT_SOURCES` and
+  derives both the input type and the `z.enum` from it. The renderer sends one row per note,
+  and a source the schema does not know rejects the **whole batch** — so "added the importer,
+  forgot the enum" would be an import that parses three hundred notes and writes none. That
+  list is only ever read as a check on incoming input and never as a filter on stored rows,
+  which is what makes retiring an importer a one-line deletion rather than a migration.
+- **Idempotent by lookup, not by constraint.** No `@@unique` — both columns are nullable, so
+  SQLite treats every `NULL` pair as distinct and the constraint would protect exactly none
+  of the rows that need it, while turning the rolling-note rewrite in §6.14 into a `P2002`.
+  Dedup is a batched `findMany` on the composite index plus in-batch dedup and a
+  module-level serialiser; the default is **skip**, and `overwrite: true` is the opt-in.
+- Attachments: images inline as data URLs under a small size cap, everything else a
+  placeholder line. The cap is what keeps it safe — FTS copies `content` into `global_fts`,
+  so the database grows at roughly twice the base64 size and an image-heavy note becomes
+  unmatchable text.
+- **Encrypted passages are no longer detected or counted.** The per-note `<en-crypt>` /
+  `base64:aes` check belonged to the `.enex` importer and went with it, so a summary can no
+  longer say "N encrypted notes skipped, and why". An encrypted passage that somehow
+  reaches one of the remaining formats arrives as whatever bytes the export left in the
+  file, is imported as ordinary body text, and is counted as nothing in particular. This is
+  the one piece of *user-visible* reporting that the retirement costs, and it is in the
+  release notes for that reason.
 
 ---
 
@@ -584,9 +918,11 @@ See `CLAUDE.md` (8 parts):
 | AI Health Scorer  | `/api/health.personalHealth`                                                                                                                                                           |
 | pgvector Search   | FTS5 (trigram, CJK-capable) + local ONNX embeddings fused with RRF — see 6.4.1                                                                                                         |
 | AI Issue Review   | `/api/search.reviewIssue`                                                                                                                                                              |
-| Knowledge Map     | `/api/search.knowledgeMap`                                                                                                                                                             |
+| Knowledge Map     | `/api/knowledge.map` (`organize` / `neighbors` / `suggestLinks` / `applyLinks` / `distillCandidates` / `suggestDistill` / `applyDistill`) — see 6.5; `search.knowledgeMap` is a retired predecessor                                                                              |
 | AI Evolution      | `/api/learn.*`                                                                                                                                                                         |
-| MCP Server + HITL | `/api/mcp.*` + `/api/apikey.*` + `/api/mcpServer.*`                                                                                                                                    |
+| Ticket Import     | `/api/redmine.*` — one-way incremental mirror, read-only locally — see 6.15                                                                                                            |
+| Note Import       | `/api/wiki.importNotes` + renderer-side parsers (`apps/web/src/lib/import/`) — see 6.16                                                                                                 |
+| MCP Server + HITL | `/api/mcp` (StreamableHTTP) + `/api/mcp.*` + `/api/apikey.*` + `/api/mcpServer.*` + the stdio shim `apps/api/dist/mcp-stdio.cjs`                                                                                                                                    |
 | i18n              | Keyed `t(key, lang)` dictionary in `apps/web/src/lib/i18n.ts` (en/zh/ja; th/mi/ru reserved, fallback to en); legacy inline `tr(lang, zh, ja, en)` still used for a few App.tsx strings |
 | OTA               | `electron-updater` with `github` provider (owner `xxwj225-James`, repo `tomilite`), not a website provider                                                                             |
 | Celery Batch Jobs | `setInterval` background tasks started at startup (`startBackgroundTasks` in `server.ts`)                                                                                              |

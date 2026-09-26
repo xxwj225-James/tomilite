@@ -90,6 +90,7 @@ The only other outbound traffic is **optional, opt-in anonymous usage statistics
 1. **Settings → LLM**: add your own API key (DeepSeek / Qwen / Kimi / OpenAI / …) and test the connection — or pick **Hosted** to sign in with an email and use the official gateway trial, no key needed
 2. **Settings → Email**: add an IMAP account for email triage (optional)
 3. **Settings → MCP Servers**: connect external MCP servers the agent can use (optional)
+4. **Settings → API Keys**: generate a key to let an external AI client (Claude Code, WorkBuddy, …) drive TomiLite. The tab shows a ready-to-paste config for both transports, with this install's real paths filled in (optional)
 
 ### Development
 
@@ -132,7 +133,8 @@ Key design points:
 - **Local-first**: SQLite in `~/.tomilite/`, no cloud dependency
 - **Agent tool calling**: OpenAI-compatible `tools`/`tool_choice` protocol over raw fetch — provider differences handled per-baseUrl
 - **MCP client**: auto-negotiates TomiHub-style / JSON-RPC / legacy protocols; discovered tools are injected as `mcp__<server>__<tool>` functions; API keys encrypted at rest, never sent to the LLM
-- **Human-in-the-loop**: external MCP clients' write operations require approval in the MCP panel
+- **MCP server**: a real protocol server, not just an MCP-shaped HTTP endpoint — stdio (`mcp-stdio.cjs`, run by `TomiLite.exe` itself, since the installer ships no `node.exe`) and StreamableHTTP (`POST /api/mcp`). Both eras are served: the stateless 2026-07-28 revision and the earlier `initialize` handshake, decided per request
+- **Human-in-the-loop**: external MCP clients' write operations require approval in the MCP panel. A client that gives up waiting gets "nothing has been executed, approve and retry" rather than a timeout — and an approval that lands late still runs the tool and keeps the result
 - **Schema migrations**: additive-only, versioned (`SCHEMA_VERSION` in `apps/api/src/server.ts`)
 
 ## Documentation
@@ -142,6 +144,7 @@ Key design points:
 - [MCP Client](docs/mcp-client.md) — connecting TomiLite to external MCP servers
 - [Email AI Inbox](docs/email-ai.md) — AI email classification and processing
 - [Tasks Panel](docs/tasks-panel.md) — kanban board, drag-to-status, task editor
+- [Knowledge Map](docs/knowledge-map.md) — AI-named topic tree, `[[links]]`, semantic neighbours
 - [UI Design System](docs/ui-design-system.md) — design tokens, themes, components
 - [Security](docs/SECURITY.md) — local-first security model
 - [Privacy & Telemetry](docs/telemetry.md) — opt-in anonymous usage statistics

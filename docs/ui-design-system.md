@@ -166,6 +166,7 @@ from the main process). Not done.
 | Shadows    | `--shadow-xs` (0 1px 2px) → `--shadow-xl` (0 16px 48px), layered shadows                                                                              |
 | Motion     | `--dur-1: 120ms` … `--dur-4: 400ms`; `--ease-out` (enter/exit), `--ease-in-out` (state change), `--ease-spring` (travel); `--move-sm/md/lg: 4/8/16px` |
 | Transition | `--transition-fast/base/slow` = `--dur-1/2/3` + `--ease-out`. Legacy aliases kept so older call sites pick up the curves unchanged                    |
+| Celebration | `--celebration-ms` — set inline by `components/Celebration.tsx` from `CELEBRATION_MS` (1800); the stylesheet derives every internal beat with `calc()` (pieces 0.8×, the line 0.88×) and hard-codes no lifetime |
 | Semantic   | `--brand-soft` / `--red-soft` derived with `color-mix()` from `--brand` / `--red`; `--red: #ef4444`; `--on-accent`; `--on-warning`                    |
 | Type scale | `--text-xs: 11px`, `--text-sm: 12px`, `--text-base: 14px`, `--text-md: 16px`, `--text-lg: 20px`, `--text-xl: 24px`                                    |
 
@@ -339,6 +340,62 @@ Line heights: `1.5`, `1.6` (base body and messages)
 
 - `.form-input / .form-select / .form-textarea`: `background:var(--bg); border:1px solid var(--edge); border-radius:var(--radius-md); padding:var(--space-2) var(--space-3); font-size:var(--text-sm)`; focus ring `box-shadow:0 0 0 3px var(--brand-soft)`
 
+#### `<select>` must always own its current value
+
+A `<select>` whose `value` matches no `<option>` does not fall back to the first one — it
+renders **empty**, in both the browser and React. The state still holds the real value, so
+the control silently misrepresents the data, and the next interaction writes the
+mismatch: the user sees a blank field, picks something to "fix" it, and the original value
+is gone with no undo.
+
+This is reachable whenever a stored value comes from a writer outside the component's own
+list — a model, an import, a migration. `NotesEditor`'s category `<select>` hardcoded
+`general | architecture | api_docs | runbook` while `chat_distill` was already writing
+`chat`, so distillation notes rendered as uncategorised and were moved out of their
+notebook by the first pick. Note import multiplied the same bug by the number of folders
+in the user's disk.
+
+**The pattern:** compute whether the current value is in the list; if not, render it as its
+own `<option>` ahead of the "real" ones.
+
+```tsx
+const KNOWN = ['general', 'architecture', 'api_docs', 'runbook'];
+{!KNOWN.includes(p.category) && (
+  <option value={p.category}>{p.category || t('notes.uncategorized', lang)}</option>
+)}
+```
+
+Use the raw stored value as the label — it is data the user typed or chose elsewhere, and
+a translated label over an untranslated value is the same lie in a nicer font. Only the
+empty case needs a string, because there is nothing to show.
+
+The same rule applies to a `<select>` fed by a server vocabulary (Redmine trackers,
+statuses, priorities): the vocabulary is fetched, so a value cached from a previous
+session can be missing from this one.
+
+### Settings tabs
+
+`SettingsPanel.tsx` holds one flat `ALL_TABS` list, a `tabColor` map, and a
+`settingsIcon` switch. `appearance` is deliberately last.
+
+- **`tabColor` reuses tokens rather than inventing them.** The palette defines four
+  accents per theme and they are already shared (`--blue` is `email` and `meeting`;
+  `--purple` is `standup` and `appearance`).
+- **A tab that produces something belongs to the panel that shows the result.** `import`
+  used to sit at the end of this strip; it filled the notes library and the task board,
+  while the settings tabs all configure a connection the panels then use. It is now a
+  dialog in each of those two panels.
+- **`--cyan` is referenced by `mcpServers` and defined in no theme block**, so it resolves
+  to nothing and that tab's icon falls back to inherited colour. It is a live example of
+  the failure mode this rule exists to prevent; fixing it means either defining the token
+  in all four themes or moving that tab onto an existing accent, and it is unrelated to
+  this batch.
+- **The `settingsIcon` switch needs an explicit case per tab.** Its `default` returns
+  `null`, so a missing case is not an error — the tab simply has no icon, which is easy to
+  miss on a tab nobody opened yet.
+- **`tabLabel` goes through `t()`**, not the local `Record` map it replaced. A tab added
+  without an i18n key renders the key itself in every language.
+
 ### Messages
 
 - `.msg-bubble`: `padding:var(--space-3) var(--space-4); max-width:85%; border-radius:var(--radius-lg)`
@@ -376,6 +433,31 @@ Three rules worth keeping:
   state (which _is_ how those panels create — they persist on save) and meeting
   calls `requestStart`, the same entry point the recorder bar uses, so the
   recording-consent prompt is not bypassed.
+
+### Celebrations
+
+`components/Celebration.tsx`, portalled to `document.body` at `z-index: 900` (above panels
+and nav, below `.modal-overlay`), `pointer-events: none`, `inset: 0`. Two elements:
+
+- `.celebration-burst` — 24 spans, one `@keyframes` for all of them. Each piece differs only
+  by inline custom properties (`--dx/--dy/--up/--rot/--delay/--piece-color/--piece-w/--piece-h`),
+  which is enough because custom properties are not interpolated themselves: `translate3d(0,0,0)`
+  is substituted at computed-value time into `translate3d(37px,-180px,0)`, and *that* is what
+  animates.
+- `.celebration-line` — one `.card`-shaped line of text, `role="status"`.
+
+Colours are the theme's own `--brand` / `--green` / `--amber` / `--purple` / `--blue`, one per
+piece by position. Not `--red` (this app's failure colour) and not `--muted` (grey) — a
+celebration painted in the error tint reads as a warning.
+
+**`prefers-reduced-motion` needs two exemptions, and both are load-bearing.** The global block
+sets `animation-duration: 1ms !important` on `*`, and both keyframes end on `opacity: 0` —
+so collapsing them to 1ms does not make them fast, it makes them draw **nothing at all**. So:
+the JS skips the burst entirely rather than shortening it (`lib/motion.ts`'s
+`prefersReducedMotion()`), and inside the reduced-motion block
+`.celebration-line { animation: none !important }` plus `.celebration-piece { display: none !important }`
+say the same thing again in the stylesheet. What such a user gets is the text capsule,
+instantly, held for the full duration and then gone — which is the point of the feature.
 
 ---
 
