@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { t } from '@/lib/i18n';
+import { prefersReducedMotion } from '@/lib/motion';
 
 // ═══ Note TOC — a 目次 generated from the note's markdown headings ═══
 //
@@ -157,7 +158,7 @@ export function NoteToc({
     const el = getHeaders()?.[i];
     if (!el) return;
     setActive(i); // answer the click now; the scroll handler will confirm it
-    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reduce = prefersReducedMotion();
     el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
   };
 

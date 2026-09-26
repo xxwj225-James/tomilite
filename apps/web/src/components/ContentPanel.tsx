@@ -105,6 +105,10 @@ interface Props {
       status: string;
       priority: string;
       storyPoints?: number;
+      // Carried so the chat context can name a mirrored row by its own tracker's
+      // number instead of a local one — see lib/issueKey.ts.
+      source?: string | null;
+      sourceId?: string | null;
     } | null,
   ) => void;
   onEditingReport?: (report: { title: string; content: string; id?: string } | null) => void;

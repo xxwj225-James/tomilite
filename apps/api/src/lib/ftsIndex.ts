@@ -24,9 +24,11 @@
 // server.ts), so no request can observe a half-dropped index. Its DDL is wrapped in
 // one transaction, and triggers are dropped BEFORE the table they write to: if the
 // process dies between DROP TABLE global_fts and the trigger recreation, every
-// INSERT into Issue/KnowledgePage/SmartEmail/GitCommit/Report would throw
-// "no such table: main.global_fts" for the rest of the session. Do not reorder those
-// statements, and do not move this call into startBackgroundTasks() for a faster boot.
+// INSERT into a source table (Issue/KnowledgePage/SmartEmail/GitCommit/Report, and
+// since the 7-source revision also ChatMessage/Meeting — so chat is in that blast
+// radius too, not just search) would throw "no such table: main.global_fts" for the
+// rest of the session. Do not reorder those statements, and do not move this call
+// into startBackgroundTasks() for a faster boot.
 
 import { existsSync, statSync, statfsSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -53,12 +55,40 @@ const VACUUM_KEY = 'ftsVacuumPending';
 
 // Source tables, in the same shape the original initFTS5 used (server.ts history).
 // `type` is the discriminator stored in global_fts.type and matched by every trigger.
-const SOURCES: Array<{ type: string; table: string; title: string; body: string; id: string }> = [
+//
+// `updateOf`, when present, names the columns whose change is worth re-indexing and
+// makes the UPDATE trigger an `AFTER UPDATE OF <cols>`. Two of these tables are
+// written for reasons that have nothing to do with their indexed text, so a bare
+// `AFTER UPDATE ON` would re-tokenize them on every such write:
+//   * ChatMessage — five renderer call sites call updateMessage({card}) to cancel,
+//     delete or force-resolve a card; only `text` changes the indexed body.
+//   * Meeting — the transcription job writes transcribeProgress on every percent,
+//     which would otherwise rewrite the whole transcript into the index ~100x.
+// Same reasoning the embed triggers already carry (see EMBED_TABLES below).
+//
+// Chat puts its message text in `body` with an EMPTY `title`, unlike every other
+// source. There is no short title to put there (the session title would need a JOIN
+// to ChatSession, and a rename would then have to rewrite every one of its message
+// rows — global_fts has only ref_id, so it could not even find them). The caller
+// resolves the session title instead, which makes a rename cost zero index writes.
+// No length cap: measured on a real snapshot, ChatMessage held 188 rows / 54k chars
+// total (longest 16.8k), so capping at 4k would only have made one real message's
+// remaining 12.8k chars unsearchable in exchange for no meaningful size win.
+const SOURCES: Array<{ type: string; table: string; title: string; body: string; id: string; updateOf?: string[] }> = [
   { type: 'issue', table: 'Issue', title: 'title', body: "COALESCE(description,'')", id: 'id' },
   { type: 'note', table: 'KnowledgePage', title: 'title', body: "COALESCE(content,'')", id: 'id' },
   { type: 'email', table: 'SmartEmail', title: 'subject', body: "COALESCE(bodySnapshot,summary,'')", id: 'id' },
   { type: 'git', table: 'GitCommit', title: 'message', body: 'author', id: 'id' },
   { type: 'report', table: 'Report', title: 'title', body: "COALESCE(content,'')", id: 'id' },
+  { type: 'chat', table: 'ChatMessage', title: "''", body: "COALESCE(text,'')", id: 'id', updateOf: ['text'] },
+  {
+    type: 'meeting',
+    table: 'Meeting',
+    title: 'title',
+    body: "COALESCE(minutes,'')||' '||COALESCE(summary,'')||' '||COALESCE(transcript,'')",
+    id: 'id',
+    updateOf: ['title', 'minutes', 'summary', 'transcript'],
+  },
 ];
 
 // `type` and `ref_id` are UNINDEXED: they are read back by the triggers and by the
@@ -72,17 +102,24 @@ const FTS_DDL = `CREATE VIRTUAL TABLE global_fts USING fts5(
   tokenize = 'trigram'
 )`;
 
-// The 15 sync triggers. Unchanged in body from the original initFTS5 — they never
+// The 21 sync triggers. The body is unchanged from the original initFTS5 — they never
 // mention the tokenizer, and their `WHERE ref_id=... AND type=...` predicates work
 // exactly the same against UNINDEXED columns (verified). Do not convert them to
 // rowid lookups: that would need a schema change for no benefit.
-const FTS_TRIGGER_KEYS = ['issue', 'note', 'email', 'git', 'report'];
+//
+// The four maps below are parallel by `key` and must stay in step. They are not
+// folded into SOURCES because the SELECT form takes bare columns and the trigger
+// form takes `new.`-prefixed ones; a shared builder would need an identifier-
+// rewriting pass, which is the kind of clever this file deliberately avoids.
+const FTS_TRIGGER_KEYS = ['issue', 'note', 'email', 'git', 'report', 'chat', 'meeting'];
 const FTS_SOURCE_TABLE: Record<string, string> = {
   issue: 'Issue',
   note: 'KnowledgePage',
   email: 'SmartEmail',
   git: 'GitCommit',
   report: 'Report',
+  chat: 'ChatMessage',
+  meeting: 'Meeting',
 };
 const FTS_INSERT: Record<string, string> = {
   issue: "VALUES('issue',new.title,new.description,new.id)",
@@ -90,6 +127,9 @@ const FTS_INSERT: Record<string, string> = {
   email: "VALUES('email',new.subject,COALESCE(new.bodySnapshot,new.summary,''),new.id)",
   git: "VALUES('git',new.message,new.author,new.id)",
   report: "VALUES('report',new.title,new.content,new.id)",
+  chat: "VALUES('chat','',COALESCE(new.text,''),new.id)",
+  meeting:
+    "VALUES('meeting',new.title,COALESCE(new.minutes,'')||' '||COALESCE(new.summary,'')||' '||COALESCE(new.transcript,''),new.id)",
 };
 const FTS_UPDATE_SET: Record<string, string> = {
   issue: 'SET title=new.title, body=new.description',
@@ -97,17 +137,26 @@ const FTS_UPDATE_SET: Record<string, string> = {
   email: "SET title=new.subject, body=COALESCE(new.bodySnapshot,new.summary,'')",
   git: 'SET title=new.message, body=new.author',
   report: 'SET title=new.title, body=new.content',
+  chat: "SET title='', body=COALESCE(new.text,'')",
+  meeting:
+    "SET title=new.title, body=COALESCE(new.minutes,'')||' '||COALESCE(new.summary,'')||' '||COALESCE(new.transcript,'')",
+};
+/** Per-type column list for `AFTER UPDATE OF`. Absent = fire on any column. */
+const FTS_UPDATE_OF: Record<string, string> = {
+  chat: 'text',
+  meeting: 'title, minutes, summary, transcript',
 };
 
 function ftsTriggers(): string[] {
   const out: string[] = [];
   for (const key of FTS_TRIGGER_KEYS) {
     const t = FTS_SOURCE_TABLE[key];
+    const of = FTS_UPDATE_OF[key];
     out.push(
       `CREATE TRIGGER fts_${key}_i AFTER INSERT ON ${t} BEGIN INSERT INTO global_fts(type,title,body,ref_id) ${FTS_INSERT[key]}; END`,
     );
     out.push(
-      `CREATE TRIGGER fts_${key}_u AFTER UPDATE ON ${t} BEGIN UPDATE global_fts ${FTS_UPDATE_SET[key]} WHERE ref_id=new.id AND type='${key}'; END`,
+      `CREATE TRIGGER fts_${key}_u AFTER UPDATE${of ? ` OF ${of}` : ''} ON ${t} BEGIN UPDATE global_fts ${FTS_UPDATE_SET[key]} WHERE ref_id=new.id AND type='${key}'; END`,
     );
     out.push(
       `CREATE TRIGGER fts_${key}_d AFTER DELETE ON ${t} BEGIN DELETE FROM global_fts WHERE ref_id=old.id AND type='${key}'; END`,

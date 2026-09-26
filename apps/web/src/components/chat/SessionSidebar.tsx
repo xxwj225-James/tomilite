@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import { t } from '@/lib/i18n';
 import { parseDbUtc } from '@/lib/dbTime';
@@ -40,7 +40,16 @@ function groupByDay(sessions: SessionRow[], lang: Lang) {
   return buckets.filter((b) => b.items.length > 0);
 }
 
-// ═══ Session sidebar — new chat, session list with rename/delete, token meter ═══
+// ═══ Session sidebar — search, new chat, app menu, session list, token meter ═══
+// `nav` is the app menu (MenuNav). It is a slot rather than a direct import so
+// this file stays about sessions: what belongs between the new-chat button and
+// the list is the caller's business, and the sidebar only owns the spacing.
+//
+// `search` is the same arrangement for the global-search button, and it sits ABOVE
+// the new-chat button rather than below it — it is the one control here that does
+// not act on the session list, so it reads as the top-level entry it is. As with
+// `nav`, the button itself (and the palette it opens) lives in the caller: they
+// cannot be mounted inside `.session-sidebar`, which is `overflow: hidden`.
 export function SessionSidebar({
   sessions,
   currentSessionId,
@@ -57,6 +66,8 @@ export function SessionSidebar({
   onRenameCancel,
   onDelete,
   onCompress,
+  nav,
+  search,
 }: {
   sessions: SessionRow[];
   currentSessionId: string;
@@ -73,6 +84,8 @@ export function SessionSidebar({
   onRenameCancel: () => void;
   onDelete: (sid: string) => void;
   onCompress: () => void;
+  nav?: ReactNode;
+  search?: ReactNode;
 }) {
   const lang = useLang();
   const pct = Math.min(100, Math.round((displayTokens / Math.max(maxTokens, 1)) * 100));
@@ -95,10 +108,12 @@ export function SessionSidebar({
   return (
     <div className="session-sidebar">
       <div className="session-sidebar-hd">
+        {search}
         <button className="session-new-btn" onClick={onNew}>
           {t('menu.newChat', lang)}
         </button>
       </div>
+      {nav}
       <div className="session-list">
         {groups.map((g) => (
           <div key={g.key}>

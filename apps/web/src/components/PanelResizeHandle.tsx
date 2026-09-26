@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 
-// ─── Panel resize handle — drag to resize the sibling panel ───
+// ─── Panel resize handle — drag to resize the adjacent panel ───
+// The panel is this handle's PREVIOUS sibling: the row is [panel][handle][chat],
+// so the handle rides the panel's right edge and the chat column sits beyond it.
+// Both the node lookup and the drag sign depend on that: a rightward drag grows
+// the panel it is attached to, so `startWidth + dx` — the `- dx` this used to
+// carry was the convention of a panel docked on the opposite side, and keeping
+// it here would run the resize backwards.
 export function PanelResizeHandle({ panelOpen }: { panelOpen: boolean }) {
   const handleRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -14,7 +20,7 @@ export function PanelResizeHandle({ panelOpen }: { panelOpen: boolean }) {
     }
     const onDown = (e: MouseEvent) => {
       e.preventDefault();
-      const panel = handle.nextElementSibling as HTMLElement;
+      const panel = handle.previousElementSibling as HTMLElement;
       if (!panel) return;
       panel.style.transition = 'none';
       panelRef.current = panel;
@@ -22,7 +28,7 @@ export function PanelResizeHandle({ panelOpen }: { panelOpen: boolean }) {
       const startWidth = panel.offsetWidth;
       const onMove = (ev: MouseEvent) => {
         const dx = ev.clientX - startX;
-        const newWidth = Math.max(300, Math.min(800, startWidth - dx));
+        const newWidth = Math.max(300, Math.min(800, startWidth + dx));
         if (panelRef.current) {
           panelRef.current.style.width = newWidth + 'px';
           panelRef.current.style.flex = '0 0 ' + newWidth + 'px';

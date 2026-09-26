@@ -161,6 +161,19 @@ const I18N = {
     zh: '叠加在上方主题之上。立即生效，重启后仍保留。',
     ja: '上のテーマに重ねて適用されます。すぐに反映され、再起動後も保持されます。',
   },
+  // Celebrations are device-local like the two above: they decide what this machine draws,
+  // and nothing on the server reads the flag.
+  'appearance.celebrations': { en: 'Celebrations', zh: '庆祝动画', ja: 'お祝い' },
+  'appearance.celebrationsEnable': {
+    en: 'Show a celebration when a milestone is reached',
+    zh: '达成里程碑时播放庆祝动画',
+    ja: 'マイルストーン達成時にお祝いを表示',
+  },
+  'appearance.celebrationsHint': {
+    en: 'A short confetti burst at round numbers: finished tasks, notes in the knowledge map, or a health score of excellent. Each milestone plays once, ever.',
+    zh: '在整数关口播放一小段彩纸动画：完成的任务数、知识地图里的笔记数、或健康分达到「优秀」。每个里程碑只播一次。',
+    ja: '節目の数で短い紙吹雪を表示します:完了タスク数、ナレッジマップのノート数、ヘルススコア「優秀」。各マイルストーンは一度だけ再生されます。',
+  },
   'chat.download': { en: 'Download', zh: '下载', ja: 'ダウンロード', th: 'ดาวน์โหลด', mi: 'Tikiake', ru: 'Скачать' },
   'chat.uploadFile': {
     en: 'Upload file',
@@ -253,6 +266,7 @@ const I18N = {
   'btn.edit': { en: '✏️ Edit', zh: '✏️ 编辑', ja: '✏️ 編集', th: '✏️ แก้ไข', mi: '✏️ Whakatika', ru: '✏️ Правка' },
   'btn.delete': { en: '🗑 Delete', zh: '🗑 删除', ja: '🗑 削除', th: '🗑 ลบ', mi: '🗑 Mukua', ru: '🗑 Удалить' },
   'btn.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル', th: 'ยกเลิก', mi: 'Whakakore', ru: 'Отмена' },
+  'btn.close': { en: 'Close', zh: '关闭', ja: '閉じる' },
   'btn.save': { en: 'Save', zh: '保存', ja: '保存', th: 'บันทึก', mi: 'Tiaki', ru: 'Сохранить' },
   'btn.saving': {
     en: 'Saving...',
@@ -465,14 +479,424 @@ const I18N = {
     mi: '🧠 Mahere Mātauranga',
     ru: '🧠 Карта знаний',
   },
+  // The map is a tree over the user's own notes, so the old subtitle ("generated from your
+  // tasks and notes") now describes something the card no longer is — tasks are not in it,
+  // and nothing in it is *written* by the model. `th`/`mi` are dropped rather than left
+  // stale: the claim changed, and the file's own policy is that those two fall back to en.
   'home.aiGenerated': {
-    en: '🤖 AI-generated from your tasks and notes',
-    zh: '🤖 AI 根据你的任务和笔记自动提炼生成',
-    ja: '🤖 AIがタスクとノートから自動生成',
-    th: '🤖 AI สร้างจากงานและบันทึก',
-    mi: '🤖 AI i hanga mai i ō mahi me ō tuhipoka',
-    ru: '🤖 AI создано из задач и заметок',
+    en: '🤖 Topics named by AI — every note in it is yours',
+    zh: '🤖 主题由 AI 命名，内容全部来自你的笔记',
+    ja: '🤖 テーマは AI が命名、内容はすべてあなたのノート',
+    ru: '🤖 Темы названы AI — заметки ваши',
   },
+
+  // ═══ Celebration ═══
+  //
+  // One line, and it names the rung that was crossed rather than the value on screen — see
+  // `decide()` in lib/achievements. Every line states what happened and nothing more: an
+  // adjective ("great work!") could not be wrong, but it would also be the only part of the
+  // message that is not a fact about the user's own data.
+  //
+  // `tasksFirst` exists for a visible English bug, not for elegance: "{n} tasks done" renders
+  // as "1 tasks done" at the first rung. Introducing a plural system for one string is not
+  // worth it, so the component special-cases rung 0; if the first rung is ever dropped, this
+  // key goes with it.
+  'celebrate.tasksFirst': { en: 'First task done', zh: '第一个任务完成', ja: '最初のタスク完了' },
+  'celebrate.tasks': { en: '{n} tasks done', zh: '已完成 {n} 个任务', ja: 'タスク {n} 件完了' },
+  'celebrate.notes': {
+    en: '{n} notes in the knowledge map',
+    zh: '知识地图已有 {n} 篇笔记',
+    ja: 'ナレッジマップにノート {n} 件',
+  },
+  // No `{n}`: the level is a machine code from the API, and this line is the only place that
+  // names it for the user — so a threshold change cannot show up as a renamed number.
+  'celebrate.excellent': {
+    en: 'Health score is excellent',
+    zh: '健康分达到「优秀」',
+    ja: 'ヘルススコアが「優秀」になりました',
+  },
+
+  // ═══ Knowledge map card ═══
+  //
+  // Every string here renders structured data. The only machine codes that reach the UI are
+  // `degraded` and `detail`, and they are translated rather than printed: a user shown
+  // "index-range" has been told nothing they can act on.
+  'kmap.organize': { en: 'Organize notes', zh: '生成知识地图', ja: 'マップを生成' },
+  'kmap.reorganize': { en: 'Re-organize', zh: '重新归纳', ja: '再生成' },
+  // The stale case gets its own label because the two buttons that used to sit here were
+  // indistinguishable: a re-read cannot rename a topic, so after a language switch the
+  // "refresh" icon did nothing visible. This label names the action that does work.
+  'kmap.organizeNew': { en: 'Organize new notes', zh: '归纳新笔记', ja: '新しいノートを整理' },
+  'kmap.organizing': { en: 'Organizing…', zh: '正在归纳…', ja: '生成中…' },
+  'kmap.stats': {
+    en: '{placed} of {total} notes in topics',
+    zh: '已归类 {placed} / 共 {total} 篇',
+    ja: '分類済み {placed} / 全 {total} 件',
+  },
+  'kmap.statsIssues': {
+    en: '{duplicates} placed twice, {invalid} indices out of range',
+    zh: '{duplicates} 处重复归置，{invalid} 个越界序号',
+    ja: '重複 {duplicates} 件、範囲外 {invalid} 件',
+  },
+  'kmap.needNotes': { en: 'No notes yet.', zh: '知识库里还没有笔记。', ja: 'ノートがまだありません。' },
+  // The one screen a user with an empty library should land on. A map needs notes; the
+  // harvest button is the shortest path to having some, so the empty state carries it
+  // rather than leaving them to find it in the header.
+  'kmap.needNotesHint': {
+    en: 'Finished tasks, past reports and meetings can become notes here.',
+    zh: '已完成的任务、过往的报告、会议记录都可以在这里变成笔记。',
+    ja: '完了したタスク・過去のレポート・会議はここでノートにできます。',
+  },
+  'kmap.empty': { en: 'This map has not been built yet.', zh: '还没有生成过知识地图。', ja: 'まだマップがありません。' },
+  'kmap.emptyHint': {
+    en: 'AI groups your notes under topic names. The notes themselves are never modified.',
+    zh: 'AI 会把笔记归纳到主题下；笔记本身不会被改动。',
+    ja: 'AI がノートをテーマ別に整理します。ノート自体は変更されません。',
+  },
+  'kmap.loadFailed': { en: 'Could not read the map.', zh: '读取知识地图失败。', ja: 'マップを読み込めませんでした。' },
+  'kmap.retry': { en: 'Retry', zh: '重试', ja: '再試行' },
+  // Said out loud rather than silently showing the previous tree. `load` keeps the old map on
+  // failure, so without this line a failed re-read is indistinguishable from no new data.
+  'kmap.reloadFailed': {
+    en: 'Could not re-read the map — showing the previous result.',
+    zh: '读取失败，显示的是上次的结果。',
+    ja: '再読み込みに失敗しました。前回の結果を表示しています。',
+  },
+  // The two reasons the stored tree no longer matches the request. Both were computed by the
+  // server from the day the map was written (`stale` folds in the note-id set *and* the
+  // language) and neither had ever been rendered.
+  'kmap.staleNotes': {
+    en: '{n} new notes are not in the map yet',
+    zh: '有 {n} 篇新笔记还没归入地图',
+    ja: '新しいノート {n} 件がまだマップに入っていません',
+  },
+  'kmap.staleLang': {
+    en: 'This map was generated in {lang} — topic names change only when you organize again.',
+    zh: '这张地图是用{lang}生成的 —— 换语言后需要重新归纳，主题名才会变。',
+    ja: 'このマップは{lang}で生成されました。テーマ名は再整理したときだけ変わります。',
+  },
+  // Notes newer than the tree are shown as a 「新笔记」 node rather than described by a
+  // sentence — the node is also where you click through to them, so a counter would be a
+  // second, useless way of saying the same thing.
+  'kmap.newNotes': { en: 'New notes', zh: '新笔记', ja: '新しいノート' },
+  'kmap.unfiled': { en: 'Unfiled', zh: '未归类', ja: '未分類' },
+  'kmap.pickNote': {
+    en: 'Pick a note from the tree.',
+    zh: '从左边的树里选一篇笔记。',
+    ja: '左のツリーからノートを選んでください。',
+  },
+  'kmap.openNote': { en: 'Open note', zh: '打开笔记', ja: 'ノートを開く' },
+  'kmap.sameTitle': { en: '{n} notes share this title', zh: '有 {n} 篇同名笔记', ja: '同名のノートが {n} 件' },
+  'kmap.degraded.no-llm': {
+    en: 'No LLM is configured — showing notes grouped by category.',
+    zh: '未配置 LLM，下面按「分类」展示。',
+    ja: 'LLM が未設定のため、カテゴリ別に表示しています。',
+  },
+  'kmap.degraded.invalid': {
+    en: "The model's answer was unusable — showing notes grouped by category.",
+    zh: 'AI 返回的结果不可用，下面按「分类」展示。',
+    ja: 'AI の応答を利用できなかったため、カテゴリ別に表示しています。',
+  },
+  'kmap.degraded.categories': {
+    en: 'Too many notes to organize at once — grouped by category.',
+    zh: '笔记太多，本次按「分类」展示。',
+    ja: 'ノートが多すぎるため、カテゴリ別に表示しています。',
+  },
+  'kmap.detail.tooManyNotes': { en: 'More than 400 notes', zh: '笔记超过 400 篇', ja: 'ノートが 400 件超' },
+  'kmap.detail.truncated': {
+    en: 'The AI answer was cut off at the output limit',
+    zh: 'AI 的回答被输出长度上限截断',
+    ja: 'AI の応答が出力上限で途切れました',
+  },
+  'kmap.detail.llmError': {
+    en: 'The model call failed (network or key)',
+    zh: '调用模型失败（网络或密钥）',
+    ja: 'モデル呼び出しに失敗（ネットワークまたはキー）',
+  },
+  'kmap.detail.malformed': {
+    en: 'The AI returned a structure that failed validation',
+    zh: 'AI 返回的结构没有通过校验',
+    ja: 'AI の返した構造が検証を通りませんでした',
+  },
+
+  // ═══ Links between notes ═══
+  'kmap.outLinks': { en: 'Links out', zh: '出链', ja: '外向きリンク' },
+  'kmap.backLinks': { en: 'Back-links', zh: '反链', ja: '被リンク' },
+  'kmap.noLinks': { en: 'No [[links]] in or out yet', zh: '还没有 [[链接]]', ja: '[[リンク]] はまだありません' },
+  'kmap.brokenLink': { en: 'No note has this title', zh: '没有这篇笔记', ja: 'このタイトルのノートはありません' },
+
+  // ═══ Neighbours in embedding space ═══
+  'kmap.semantic': { en: 'Nearest by meaning', zh: '语义最近', ja: '意味が近い' },
+  'kmap.semanticHint': {
+    en: 'Ordered by vector distance. No similarity cut-off is applied, so no score is shown.',
+    zh: '按向量距离排序。没有可用的相似度阈值，所以不显示分数。',
+    ja: 'ベクトル距離順です。有効なしきい値がないためスコアは表示しません。',
+  },
+  'kmap.embed.disabled': {
+    en: 'Local semantic search is turned off',
+    zh: '本机已关闭语义检索',
+    ja: 'ローカルの意味検索は無効です',
+  },
+  'kmap.embed.downloading': {
+    en: 'Downloading the semantic model…',
+    zh: '正在下载语义模型…',
+    ja: '意味モデルをダウンロード中…',
+  },
+  'kmap.embed.absent': {
+    en: 'The semantic model has not been downloaded',
+    zh: '语义模型还没有下载',
+    ja: '意味モデルが未ダウンロードです',
+  },
+  'kmap.embed.failed': {
+    en: 'The semantic model failed to load',
+    zh: '语义模型加载失败',
+    ja: '意味モデルの読み込みに失敗しました',
+  },
+  'kmap.embed.noVector': { en: 'This note has no vector yet', zh: '这篇笔记还没有向量', ja: 'このノートは未ベクトル化です' },
+  'kmap.embed.noPeers': { en: 'No other note has a vector yet', zh: '其他笔记都还没有向量', ja: '他のノートにまだベクトルがありません' },
+  'kmap.embed.pending': { en: '{n} notes still queued', zh: '还有 {n} 篇在队列里', ja: '{n} 件がキューに残っています' },
+  'kmap.embed.retry': { en: 'Rebuild vectors', zh: '重建向量', ja: 'ベクトルを再構築' },
+  'kmap.embed.queued': { en: 'Queued {n} notes.', zh: '已排队 {n} 篇。', ja: '{n} 件をキューに追加しました。' },
+  'kmap.embedFailed': { en: 'Could not reach the embedding service.', zh: '无法访问向量服务。', ja: 'ベクトルサービスに接続できません。' },
+  // ═══ Fixing a topic the model named badly ═══
+  // The 「⋯」 menu on a topic row, and the three things behind it. All three are local: no
+  // model, no tokens, no note is ever written or removed. A bad topic name is sticky by
+  // design (`priorTopicNames` asks the model to reuse what exists), so without these there
+  // is no way to correct one at all.
+  'kmap.topic.more': { en: 'Topic actions', zh: '主题操作', ja: 'トピックの操作' },
+  'kmap.topic.rename': { en: 'Rename', zh: '重命名', ja: '名前を変更' },
+  'kmap.topic.merge': { en: 'Merge into…', zh: '合并到…', ja: '統合先…' },
+  'kmap.topic.delete': { en: 'Delete', zh: '删除', ja: '削除' },
+  'kmap.topic.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'kmap.topic.renamed': { en: 'Renamed to “{name}”.', zh: '已重命名为「{name}」。', ja: '「{name}」に変更しました。' },
+  'kmap.topic.deleted': {
+    en: 'Deleted “{name}”. Its notes are still in the map.',
+    zh: '已删除「{name}」，笔记都还在。',
+    ja: '「{name}」を削除しました。ノートは残っています。',
+  },
+  'kmap.topic.merged': {
+    en: 'Merged “{a}” into “{b}”.',
+    zh: '已把「{a}」合并进「{b}」。',
+    ja: '「{a}」を「{b}」に統合しました。',
+  },
+  // The delete prompt has to say where the notes go, because "delete" on a row that owns
+  // notes reads as "delete the notes" — and it does not do that.
+  'kmap.topic.deleteTitle': { en: 'Remove this topic?', zh: '移除这个主题？', ja: 'このトピックを削除しますか？' },
+  'kmap.topic.deleteBody': {
+    en: '“{name}” leaves the map, but nothing under it is deleted: its {n} notes move to {where}, and its sub-topics take its place.',
+    zh: '「{name}」会从地图上移除，但它下面的东西一个都不会删：{n} 篇笔记会移到{where}，子主题上移接管它的位置。',
+    ja: '「{name}」はマップから消えますが、その下のものは何も削除されません。{n} 件のノートは{where}に移動し、サブトピックがその位置を引き継ぎます。',
+  },
+  'kmap.topic.deleteBodyEmpty': {
+    en: '“{name}” leaves the map. It has no notes of its own, so all that moves is its sub-topics, up into its place.',
+    zh: '「{name}」会从地图上移除。它自己名下一篇笔记都没有，所以移动的只有它的子主题 —— 上移接管它的位置。',
+    ja: '「{name}」はマップから消えます。このトピック自身のノートはないため、移動するのはサブトピックだけです。',
+  },
+  /** Fills `{where}` in the sentence above — the other value is `kmap.unfiled`. */
+  'kmap.topic.parent': { en: 'its parent topic', zh: '父主题', ja: '親トピック' },
+  'kmap.topic.mergeTitle': { en: 'Merge “{name}” into…', zh: '把「{name}」合并到…', ja: '「{name}」の統合先' },
+  'kmap.topic.mergeLead': {
+    en: 'Pick the topic that should absorb this one. Its notes and sub-topics move there, and nothing is deleted.',
+    zh: '选一个主题来吸收它。它的笔记和子主题都会移过去，不会删掉任何东西。',
+    ja: 'このトピックを吸収するトピックを選んでください。ノートとサブトピックはそこへ移動し、何も削除されません。',
+  },
+  'kmap.topic.mergeEmpty': {
+    en: 'There is no other topic to merge into yet.',
+    zh: '还没有其它主题可以合并。',
+    ja: '統合できる別のトピックがまだありません。',
+  },
+  // One line per refusal from `editTree`. These are machine codes, so they are mapped
+  // through a table rather than interpolated into a key — a code with no line here would
+  // otherwise be a missing-key lookup.
+  'kmap.topic.fail.not-found': {
+    en: 'That topic is no longer in the map. Reopen the card and try again.',
+    zh: '地图上已经找不到这个主题了，重新打开卡片再试。',
+    ja: 'そのトピックはもうマップにありません。カードを開き直してください。',
+  },
+  'kmap.topic.fail.tree-changed': {
+    en: 'The map changed since this card was drawn. Reopen it and try again.',
+    zh: '地图已经变了，重新打开卡片再试。',
+    ja: 'マップが変わっています。カードを開き直してください。',
+  },
+  'kmap.topic.fail.not-a-topic': {
+    en: 'This row is not a topic you can edit.',
+    zh: '这一行不是可以编辑的主题。',
+    ja: 'この行は編集できるトピックではありません。',
+  },
+  'kmap.topic.fail.empty-name': {
+    en: 'A topic name cannot be empty.',
+    zh: '主题名不能是空的。',
+    ja: 'トピック名を空にはできません。',
+  },
+  'kmap.topic.fail.same-node': {
+    en: 'A topic cannot be merged into itself.',
+    zh: '不能把主题合并到它自己。',
+    ja: 'トピック自身には統合できません。',
+  },
+  'kmap.topic.fail.into-descendant': {
+    en: 'A topic cannot be merged into one of its own sub-topics.',
+    zh: '不能把主题合并进它自己的子主题。',
+    ja: 'トピック自身のサブトピックには統合できません。',
+  },
+  'kmap.topic.fail.no-target': {
+    en: 'The destination topic is no longer in the map. Reopen the card and try again.',
+    zh: '目标主题已经不在地图上了，重新打开卡片再试。',
+    ja: '統合先のトピックはもうマップにありません。カードを開き直してください。',
+  },
+  // The backstop in `editTree`. It should be unreachable; if it is ever printed, a surgical
+  // bug was caught before it could drop a note.
+  'kmap.topic.fail.lost-notes': {
+    en: 'That edit would have dropped a note, so it was not applied. The map is unchanged.',
+    zh: '这次编辑会丢笔记，所以没有执行。地图没有变动。',
+    ja: 'この編集ではノートが失われるため、実行しませんでした。マップは変わっていません。',
+  },
+  'kmap.topic.failed': { en: 'Could not reach the API.', zh: '无法访问接口。', ja: 'API に接続できませんでした。' },
+  // ═══ Harvesting knowledge out of tasks, reports and meetings ═══
+  // The dialog behind the map card's 「整理知识」 button. Three sources, one note each, and
+  // one free pass in front of the paid one so the user sees a count before a bill.
+  'distill.open': { en: 'Harvest knowledge', zh: '整理知识', ja: '知識を整理' },
+  'distill.title': { en: 'Harvest knowledge into notes', zh: '把知识整理成笔记', ja: '知識をノートに整理' },
+  'distill.lead': {
+    en: 'A finished task, a month of reports and a meeting’s decisions are folded into notes of your own — one note per source. Nothing is written until you review it.',
+    zh: '把一个完成的任务、一个月的报告、一场会议的决定，各整理成一篇你自己的笔记 —— 每个来源一篇。你看过之前不会写入任何东西。',
+    ja: '完了したタスク、1 か月分のレポート、会議の決定を、それぞれ自分のノート 1 件にまとめます。確認するまで何も書き込みません。',
+  },
+  // The scope row. `distill.count` is the sentence that must be read *before* the button
+  // that spends money, which is why it is stated as a count and not as "ready".
+  'distill.sources': { en: 'Sources', zh: '来源', ja: '対象' },
+  'distill.kind.task': { en: 'Finished tasks', zh: '已完成任务', ja: '完了タスク' },
+  'distill.kind.report': { en: 'Report months', zh: '报告月份', ja: 'レポート月' },
+  'distill.kind.meeting': { en: 'Meetings', zh: '会议', ja: '会議' },
+  'distill.sinceLabel': { en: 'From the last', zh: '时间范围', ja: '期間' },
+  'distill.sinceDays': { en: '{n} days', zh: '最近 {n} 天', ja: '直近 {n} 日' },
+  'distill.sinceAll': { en: 'All of it', zh: '全部', ja: 'すべて' },
+  'distill.count': {
+    en: '{n} sources to harvest',
+    zh: '将整理 {n} 个来源',
+    ja: '{n} 件を整理します',
+  },
+  'distill.deferred': {
+    en: '{n} more are over this run’s limit — the next press starts there.',
+    zh: '还有 {n} 个超出本次上限，下次会从那里接着来。',
+    ja: 'さらに {n} 件が今回の上限を超えています。次回はそこから始まります。',
+  },
+  'distill.start': { en: 'Harvest', zh: '开始整理', ja: '整理を開始' },
+  'distill.running': { en: 'Reading the sources…', zh: '正在阅读来源…', ja: 'ソースを読み込み中…' },
+  'distill.apply': { en: 'Write {n} notes', zh: '写入 {n} 篇笔记', ja: '{n} 件を書き込む' },
+  'distill.applying': { en: 'Writing…', zh: '写入中…', ja: '書き込み中…' },
+  'distill.done': { en: 'Wrote {n} notes.', zh: '写入了 {n} 篇笔记。', ja: '{n} 件のノートを書き込みました。' },
+  'distill.doneUnchanged': { en: '{n} were already up to date.', zh: '{n} 篇内容没有变化。', ja: '{n} 件は最新のままです。' },
+  'distill.total': { en: '{n} proposals · {t} tokens', zh: '{n} 条候选 · {t} tokens', ja: '候補 {n} 件 · {t} tokens' },
+  'distill.merges': { en: 'merges into “{title}”', zh: '并入「{title}」', ja: '「{title}」に統合' },
+  'distill.truncated': {
+    en: 'Longer than the budget — this note may be missing its tail.',
+    zh: '内容超出预算，这篇笔记可能缺了结尾。',
+    ja: '予算を超えているため、このノートは末尾が欠けている可能性があります。',
+  },
+  'distill.edit': { en: 'Edit', zh: '编辑', ja: '編集' },
+  'distill.titlePlaceholder': { en: 'Note title', zh: '笔记标题', ja: 'ノートのタイトル' },
+  // The five empty states. They look identical on screen and need opposite responses:
+  // nothing here / you have seen it all / the model found nothing worth keeping (a correct
+  // and common answer) / no model configured / spending is paused.
+  'distill.none.everything': { en: 'Nothing to harvest', zh: '没有可整理的来源', ja: '整理できる対象がありません' },
+  'distill.none.noMaterial': { en: '{n} have no content to work from', zh: '{n} 个没有内容可整理', ja: '{n} 件は中身がありません' },
+  'distill.none.notDone': { en: '{n} are still open', zh: '{n} 个还没完成', ja: '{n} 件は未完了です' },
+  'distill.none.noDecisions': { en: '{n} have no decisions', zh: '{n} 个没有决议', ja: '{n} 件は決定がありません' },
+  'distill.none.outOfScope': { en: '{n} are outside the range', zh: '{n} 个不在时间范围内', ja: '{n} 件は期間外です' },
+  'distill.none.reviewed': { en: '{n} have been harvested already', zh: '{n} 个已经整理过', ja: '{n} 件は整理済みです' },
+  'distill.none.reviewedHint': {
+    en: 'Tick “re-harvest everything” to see them again.',
+    zh: '勾选「重新整理全部」可以再看一遍。',
+    ja: '「すべて再整理」を選ぶと再び表示されます。',
+  },
+  'distill.force': { en: 'Re-harvest everything', zh: '重新整理全部', ja: 'すべて再整理' },
+  'distill.nothingDurable': {
+    en: 'The model read every source and found nothing worth keeping. That is a normal answer for routine work.',
+    zh: '模型读完了所有来源，认为没有值得留下的东西。对日常性工作来说这是正常结果。',
+    ja: 'モデルはすべて読みましたが、残す価値のある内容はないと判断しました。日常的な作業ではよくある結果です。',
+  },
+  'distill.paused': {
+    en: 'Spending is paused until {at} — the quota ran out.',
+    zh: '消费已暂停到 {at} —— 配额用完了。',
+    ja: '消費は {at} まで停止中です — クォータを使い切りました。',
+  },
+  'distill.noSources': { en: 'Pick at least one source.', zh: '至少选择一种来源。', ja: '対象を 1 つ以上選んでください。' },
+  'distill.noLlm': { en: 'No model is configured, so nothing can be read.', zh: '还没有配置模型，无法阅读来源。', ja: 'モデルが未設定のため読み込めません。' },
+  'distill.failed': { en: 'Failed: {why}', zh: '失败：{why}', ja: '失敗: {why}' },
+  'distill.network': { en: 'could not reach the API server', zh: '无法连接 API 服务器', ja: 'APIサーバーに接続できません' },
+  'distill.skippedCount': { en: '{n} sources were left out.', zh: '{n} 个来源被跳过。', ja: '{n} 件をスキップしました。' },
+  'distill.partial': { en: 'Some sources failed: {why}', zh: '部分来源失败：{why}', ja: '一部が失敗: {why}' },
+  'distill.why.open-in-editor': {
+    en: 'open in the editor',
+    zh: '正在编辑器中打开',
+    ja: 'エディターで開いています',
+  },
+  'distill.why.no-material': { en: 'nothing to read', zh: '没有可读的内容', ja: '読む内容がありません' },
+  'distill.why.nothing-durable': { en: 'nothing worth keeping', zh: '没有值得留下的东西', ja: '残す価値がありません' },
+  'distill.why.truncated': { en: 'the answer was cut off', zh: '回答被截断', ja: '回答が途切れました' },
+  'distill.why.parse': { en: 'unreadable answer', zh: '回答无法解析', ja: '回答を解析できません' },
+  'distill.why.llm-error': { en: 'the model call failed', zh: '模型调用失败', ja: 'モデル呼び出しに失敗' },
+  'distill.why.source-missing': { en: 'the source is gone', zh: '来源已不存在', ja: 'ソースが存在しません' },
+  'distill.why.note-changed': {
+    en: 'the note was edited after you reviewed it',
+    zh: '这篇笔记在你审阅之后又被改过',
+    ja: '確認後にノートが編集されました',
+  },
+
+  // ═══ Backfilling links into existing notes ═══
+  // No emoji here: the button that renders this already draws a link icon of its own
+  // (`NotesList`), so a 🔗 in the string showed up as two icons side by side.
+  'notes.findLinks': { en: 'Find links', zh: '补链接', ja: 'リンク補完' },
+  'links.title': { en: 'Find links between notes', zh: '给笔记补链接', ja: 'ノート間のリンクを補完' },
+  'links.lead': {
+    en: 'The AI reads your notes and proposes links between related ones. Nothing is written until you confirm.',
+    zh: 'AI 会读你的笔记，提议互相相关的链接。你确认之前不会写入任何内容。',
+    ja: 'AI がノートを読み、関連するものを提案します。確認するまで書き込みません。',
+  },
+  'links.start': { en: 'Analyze', zh: '开始分析', ja: '分析を開始' },
+  'links.analyzing': { en: 'Analyzing…', zh: '正在分析…', ja: '分析中…' },
+  'links.none': { en: 'No links to propose.', zh: '没有找到需要补的链接。', ja: '提案するリンクはありません。' },
+  'links.apply': { en: 'Write {n} selected', zh: '写入选中的 {n} 条', ja: '選択した {n} 件を書き込む' },
+  'links.applying': { en: 'Writing…', zh: '写入中…', ja: '書き込み中…' },
+  'links.done': { en: 'Updated {n} notes.', zh: '写入了 {n} 篇笔记。', ja: '{n} 件のノートを更新しました。' },
+  'links.doneUnchanged': { en: '{n} already had these links.', zh: '{n} 篇没有变化。', ja: '{n} 件は変化なし。' },
+  'links.failed': { en: 'Analysis failed: {why}', zh: '分析失败：{why}', ja: '分析に失敗: {why}' },
+  'links.unlinkable': {
+    en: 'Several notes share these titles, so they cannot be link targets: {titles}',
+    zh: '这些标题有多篇同名笔记，无法作为链接目标：{titles}',
+    ja: 'これらのタイトルは複数のノートが持つため、リンク先にできません: {titles}',
+  },
+  'links.total': { en: '{n} notes · {m} proposals', zh: '{n} 篇笔记 · {m} 条建议', ja: '{n} 件 · 提案 {m} 件' },
+  'links.skippedOpen': {
+    en: '{n} notes are open in the editor and were skipped.',
+    zh: '{n} 篇正在编辑器里打开，已跳过。',
+    ja: '{n} 件はエディタで開かれているためスキップしました。',
+  },
+  'links.skippedReviewed': {
+    en: '{n} notes were reviewed before and have not changed.',
+    zh: '{n} 篇上次已确认过且没有改动。',
+    ja: '{n} 件は確認済みで変更がありません。',
+  },
+  'links.skippedOther': { en: '{n} notes were skipped.', zh: '{n} 篇被跳过。', ja: '{n} 件をスキップしました。' },
+  'links.force': { en: 'Re-analyze everything', zh: '重新分析全部', ja: 'すべて再分析' },
+  'links.missing': { en: 'The note was deleted.', zh: '笔记已被删除。', ja: 'ノートは削除されました。' },
+  'links.openInEditor': {
+    en: 'Open in the editor; close it and run again.',
+    zh: '正在编辑器里打开；关闭后再跑一次。',
+    ja: 'エディタで開かれています。閉じてから再実行してください。',
+  },
+  'links.close': { en: 'Close', zh: '关闭', ja: '閉じる' },
+  'links.selectAll': { en: 'Select all', zh: '全选', ja: 'すべて選択' },
+  'links.selectNone': { en: 'Clear', zh: '全不选', ja: '選択解除' },
+  'links.network': { en: 'Could not reach the API server.', zh: '无法连接 API 服务器。', ja: 'APIサーバーに接続できません。' },
+  // Named, not summarized: "some notes were not analyzed" and "your notes are unrelated"
+  // render as the same empty list otherwise.
+  'links.partial': {
+    en: 'Some notes were not analyzed: {why}',
+    zh: '有笔记没能分析完：{why}',
+    ja: '一部のノートは分析できませんでした: {why}',
+  },
+
   'home.loading': {
     en: 'Loading...',
     zh: '加载中...',
@@ -494,7 +918,15 @@ const I18N = {
   'notes.title': { en: 'Title', zh: '标题', ja: 'タイトル', th: 'ชื่อเรื่อง', mi: 'Taitara', ru: 'Заголовок' },
   'notes.category': { en: 'Category', zh: '分类', ja: 'カテゴリ', th: 'หมวดหมู่', mi: 'Kāwai', ru: 'Категория' },
   // Marker for notes written by the background chat distillation (category 'chat')
+  // The four machine-written categories. They are labelled here, next to the rest, because
+  // a category that has no label prints as its raw value — which is exactly what
+  // `NotesList` used to do for `chat`, and would then have done for these three.
   'notes.categoryChat': { en: '💬 Chat summary', zh: '💬 会话纪要', ja: '💬 会話メモ' },
+  'notes.categoryTask': { en: '✅ From a task', zh: '✅ 来自任务', ja: '✅ タスクから' },
+  'notes.categoryReport': { en: '📊 From a report', zh: '📊 来自报告', ja: '📊 レポートから' },
+  'notes.categoryMeeting': { en: '🗣 From a meeting', zh: '🗣 来自会议', ja: '🗣 会議から' },
+  // Label for the empty category in the editor's <select>. Every other value shows itself.
+  'notes.uncategorized': { en: 'Uncategorized', zh: '未分类', ja: '未分類', th: 'ไม่มีหมวดหมู่', mi: 'Kāore he kāwai', ru: 'Без категории' },
   'notes.updated': { en: 'Updated', zh: '更新', ja: '更新', th: 'อัปเดต', mi: 'Whakahoutia', ru: 'Обновлено' },
   'notes.clickToSort': {
     en: 'Click to sort',
@@ -567,6 +999,37 @@ const I18N = {
     th: 'ลบบันทึกนี้? ไม่สามารถยกเลิกได้',
     mi: 'Mukua tēnei tuhipoka? Kāore e taea te whakakore.',
     ru: 'Удалить заметку? Это необратимо.',
+  },
+  'notes.deleteSelected': {
+    en: 'Delete {n} selected',
+    zh: '删除选中的 {n} 篇',
+    ja: '選択した {n} 件を削除',
+  },
+  'notes.selectAll': {
+    en: 'Select everything shown',
+    zh: '全选筛选结果',
+    ja: '表示中をすべて選択',
+  },
+  'notes.batchDeleteTitle': { en: 'Batch delete', zh: '批量删除', ja: '一括削除' },
+  'notes.batchDeleteConfirm': {
+    en: 'Delete {n} selected note(s)? This cannot be undone.',
+    zh: '删除选中的 {n} 篇笔记？此操作无法撤销。',
+    ja: '選択した {n} 件のノートを削除しますか？元に戻せません。',
+  },
+  'notes.batchDeleting': {
+    en: 'Deleting… ({done}/{total})',
+    zh: '正在删除…（{done}/{total}）',
+    ja: '削除中…（{done}/{total}）',
+  },
+  'notes.batchDeleteFailed': {
+    en: '{n} note(s) could not be deleted; the rest were.',
+    zh: '{n} 篇删除失败，其余已删除。',
+    ja: '{n} 件を削除できませんでした（残りは削除済み）。',
+  },
+  'notes.batchDeleted': {
+    en: 'Deleted {n} notes',
+    zh: '删除了 {n} 篇笔记',
+    ja: 'ノートを {n} 件削除しました',
   },
   'notes.saveFailed': {
     en: 'Save Failed',
@@ -1322,6 +1785,81 @@ const I18N = {
   'mcp.denied': { en: '✕ Denied', zh: '✕ 已拒绝', ja: '✕ 拒否済み' },
   'mcp.actionFailed': { en: 'Action failed', zh: '操作失败', ja: '操作に失敗しました' },
 
+  // ═══ Settings → API Keys ═══
+  'apikey.generateTitle': { en: 'Generate API Key', zh: '生成 API 密钥', ja: 'APIキーを生成' },
+  'apikey.nameLabel': { en: 'Key Name', zh: '密钥名称', ja: 'キー名' },
+  'apikey.namePlaceholder': { en: 'e.g. cursor-mcp', zh: '例如: cursor-mcp', ja: '例: cursor-mcp' },
+  'apikey.hitlLabel': { en: 'HITL Mode', zh: 'HITL 模式', ja: 'HITL モード' },
+  'apikey.hitlManual': {
+    en: 'Manual (all writes require confirmation)',
+    zh: '手动（读取以外需确认）',
+    ja: '手動（読み取り以外は確認が必要）',
+  },
+  'apikey.hitlAuto': {
+    en: 'Auto (auto-approve all operations)',
+    zh: '自动（自动批准所有操作）',
+    ja: '自動（すべての操作を自動承認）',
+  },
+  'apikey.generate': { en: 'Generate Key', zh: '生成密钥', ja: 'APIキーを生成' },
+  'apikey.usageTitle': { en: 'Usage', zh: '使用方法', ja: '使用方法' },
+  'apikey.stdioTitle': { en: 'Claude Code / any MCP client', zh: 'Claude Code / 任意 MCP 客户端', ja: 'Claude Code / 任意の MCP クライアント' },
+  'apikey.stdioLead': {
+    en: 'Add this to .mcp.json in your project root (Claude Code), or to your client’s own MCP config file:',
+    zh: '把下面这段加到项目根目录的 .mcp.json（Claude Code），或你的客户端自己的 MCP 配置文件里：',
+    ja: 'これをプロジェクトルートの .mcp.json（Claude Code）、またはお使いのクライアントの MCP 設定ファイルに追加します：',
+  },
+  'apikey.keyNote': {
+    en: 'Replace the key placeholder with the key you generate below — it is shown only once.',
+    zh: '把密钥占位符替换为下方生成的完整密钥 —— 它只显示一次。',
+    ja: 'キーのプレースホルダーを下で生成したキーに置き換えてください。キーは一度しか表示されません。',
+  },
+  'apikey.httpTitle': { en: 'Local HTTP endpoint', zh: '本地 HTTP 端点', ja: 'ローカル HTTP エンドポイント' },
+  'apikey.httpLead': {
+    en: 'If your client speaks Streamable HTTP instead of stdio, point it at this URL and send your key in an X-Api-Key header:',
+    zh: '如果你的客户端用的是 Streamable HTTP 而不是 stdio，把它指向这个地址，并用 X-Api-Key 头带上密钥：',
+    ja: 'クライアントが stdio ではなく Streamable HTTP を使う場合は、この URL を指定し、キーを X-Api-Key ヘッダーで送信してください：',
+  },
+  'apikey.toolsTitle': { en: 'Tools', zh: '工具', ja: 'ツール' },
+  'apikey.toolsLead': {
+    en: 'All {count} tools are available. Reads run immediately; a write returns a pending-approval message and waits for you to approve it in the MCP panel, then the same call returns the result.',
+    zh: '共 {count} 个工具可用。读操作直接执行；写操作会返回"待审批"，等你在这个应用的 MCP 面板里批准后，用同样的参数再调一次就能拿到结果。',
+    ja: '{count} 個のツールが利用できます。読み取りは即時実行され、書き込みは「承認待ち」を返します。MCP パネルで承認したあと、同じ引数で再度呼び出すと結果が返ります。',
+  },
+  'apikey.hitlNote': {
+    en: 'Manual — writes wait for your approval in the MCP panel. Auto — everything runs immediately.',
+    zh: '手动 —— 写操作需在本应用的 MCP 面板中人工批准。自动 —— 所有操作立即执行。',
+    ja: '手動 — 書き込みは MCP パネルでの承認を待ちます。自動 — すべての操作が即時実行されます。',
+  },
+  'apikey.hashNote': {
+    en: 'Keys are SHA-256 hashed before storage. The raw key is shown only once.',
+    zh: '密钥存储前经 SHA-256 哈希处理，原始密钥仅显示一次。',
+    ja: 'キーは保存前に SHA-256 でハッシュ化されます。生のキーは一度だけ表示されます。',
+  },
+  'apikey.devWarning': {
+    en: 'This is a development build, so the paths below are placeholders. Install the packaged app to get the real ones.',
+    zh: '这是开发版，下面的路径是占位符。安装打包后的应用才会得到真实路径。',
+    ja: 'これは開発ビルドのため、以下のパスはプレースホルダーです。実際のパスはパッケージ版で表示されます。',
+  },
+  'apikey.generated': {
+    en: '✅ Key generated — copy now, won’t be shown again:',
+    zh: '✅ 密钥已生成 —— 立即复制，不会再次显示：',
+    ja: '✅ キーが生成されました — 今すぐコピーしてください。再表示されません：',
+  },
+  'apikey.listTitle': { en: 'API Keys', zh: 'API 密钥', ja: 'APIキー' },
+  'apikey.usedTimes': { en: 'used {count}x', zh: '已用 {count} 次', ja: '{count} 回使用' },
+  'apikey.created': { en: 'Created', zh: '创建于', ja: '作成' },
+  'apikey.expires': { en: 'Expires', zh: '过期于', ja: '有効期限' },
+  'apikey.revoke': { en: 'Revoke', zh: '撤销', ja: '失効' },
+  'apikey.empty': { en: 'No API keys yet.', zh: '暂无 API 密钥。', ja: 'APIキーはまだありません。' },
+  'apikey.revokeTitle': { en: 'Revoke API Key', zh: '撤销 API 密钥', ja: 'APIキーを失効' },
+  'apikey.revokeMessage': {
+    en: 'This key will be revoked immediately. MCP clients using this key will be unable to connect. Are you sure?',
+    zh: '撤销后该密钥将立即失效，使用该密钥的 MCP 客户端将无法连接。确定要撤销吗？',
+    ja: 'このキーは直ちに失効し、このキーを使用する MCP クライアントは接続できなくなります。よろしいですか？',
+  },
+  'apikey.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'apikey.revokeFailed': { en: 'Revoke failed: {msg}', zh: '撤销失败: {msg}', ja: '失効失敗: {msg}' },
+
   // ═══ LLM Settings Tab ═══
   'llmTab.provider': { en: 'Provider', zh: '服务商', ja: 'プロバイダー' },
   'llmTab.baseUrl': { en: 'Base URL', zh: 'Base URL', ja: 'ベースURL' },
@@ -1805,6 +2343,13 @@ const I18N = {
     ja: 'ここに書いたノートはアシスタントが検索でき、後で引用できます。',
   },
   'empty.notes.action': { en: 'New note', zh: '新建笔记', ja: '新規ノート' },
+  // A library that is empty was probably filled somewhere else. This is the one moment
+  // where saying so is useful rather than nagging.
+  'empty.notes.import': {
+    en: 'Or import notes you already have…',
+    zh: '或者导入你已有的笔记…',
+    ja: 'すでにあるノートを取り込む…',
+  },
 
   'empty.tasks.title': { en: 'No tasks yet', zh: '还没有任务', ja: 'タスクはまだありません' },
   'empty.tasks.hint': {
@@ -1813,6 +2358,13 @@ const I18N = {
     ja: 'ここで作成するか、アシスタントにやることを伝えれば登録されます。',
   },
   'empty.tasks.action': { en: 'New task', zh: '新建任务', ja: '新規タスク' },
+  // Same reasoning as `empty.notes.import`: an empty task list is exactly the state of a
+  // team whose work already lives in a tracker.
+  'empty.tasks.import': {
+    en: 'Or import tasks from Redmine…',
+    zh: '或者从 Redmine 导入任务…',
+    ja: 'Redmine からタスクを取り込む…',
+  },
 
   'empty.reports.title': { en: 'No reports yet', zh: '还没有报告', ja: 'レポートはまだありません' },
   'empty.reports.hint': {
@@ -2303,6 +2855,301 @@ const I18N = {
     zh: '此版本缺少本地语音引擎，无法转写。录音与邮件仍可正常使用。',
     ja: 'このビルドには音声エンジンが含まれていないため、文字起こしは利用できません。録音とメールは利用できます。',
   },
+  // ═══ Importing notes from another app (notes panel + tasks panel) ═══
+  //
+  // The post-import summary is where the counts live, so these strings carry the whole
+  // explanation of what an import did or refused to do. `import.row.*` are labels in a
+  // grid; the rest are prose.
+  //
+  // The dialog title and the toolbar button that opens it are keyed `notes.` and `tasks.`
+  // rather than `import.` — they belong to the panel they sit in — but they are written
+  // down here, because this is where a reader looks for what the feature says.
+  'notes.import.title': { en: 'Import notes', zh: '导入笔记', ja: 'ノートの取り込み' },
+  'notes.import.button': {
+    en: 'Import notes from files',
+    zh: '从文件导入笔记',
+    ja: 'ファイルからノートを取り込む',
+  },
+  'tasks.import.button': {
+    en: 'Import tasks from Redmine',
+    zh: '从 Redmine 导入任务',
+    ja: 'Redmine からタスクを取り込む',
+  },
+  'import.filesTitle': { en: 'Import from files', zh: '从文件导入', ja: 'ファイルから取り込む' },
+  // The formats are listed by extension and nothing else: the format is what the user has
+  // in hand, not whichever application happens to write it. An app name in here also
+  // invites a section per app, which is what this one button replaced.
+  'import.filesLead': {
+    en: 'Markdown (.md, .markdown), plain text (.txt), saved web pages (.html, .htm) and single-page web archives (.mht, .mhtml). Each file becomes one note: its title comes from the note itself where it has one and from the file name otherwise, images are embedded, anything else becomes a placeholder line, and the file’s own date is kept where the format records one. Importing the same files again skips what is already there.',
+    zh: 'Markdown（.md / .markdown）、纯文本（.txt）、网页（.html / .htm）、单页网页存档（.mht / .mhtml）。每个文件成为一篇笔记：笔记自带标题就用它，没有就用文件名；图片会内嵌，其余内容变成一行占位；格式里记了日期的会保留。再次导入同一批文件时，已存在的笔记会被跳过。',
+    ja: 'Markdown（.md / .markdown）、プレーンテキスト（.txt）、保存したウェブページ（.html / .htm）、単一ページのウェブアーカイブ（.mht / .mhtml）。1 ファイルが 1 件のノートになります。ノート自身に見出しがあればそれをタイトルに、なければファイル名を使います。画像は埋め込み、それ以外は 1 行のプレースホルダーになります。形式が日付を持つ場合はそれを保持します。同じファイルを再度取り込むと、既存のノートはスキップされます。',
+  },
+  // The one cost of a single button, said here rather than discovered in the summary.
+  'import.filesImages': {
+    en: 'A saved web page keeps its images in a folder beside it, and a file pick cannot see folders — so those images arrive as a placeholder line, and the summary says how many.',
+    zh: '保存的网页会把图片放在它旁边的文件夹里，而「选择文件」看不到文件夹 —— 这些图片会变成占位行，汇总里会写明有多少张。',
+    ja: '保存したウェブページの画像は隣のフォルダーにありますが、ファイル選択ではフォルダーを参照できません。その画像はプレースホルダーの 1 行になり、件数は集計に表示されます。',
+  },
+  // A page holding a whole notebook cannot be split (see `html.ts`), so this is a refusal
+  // worth knowing before picking rather than a surprise in the summary afterwards.
+  'import.filesLimits': {
+    en: 'Up to 32 MB per .html note file and 100 MB per .mht. An export that put a whole notebook on one page becomes a single note — re-export it with one file per note instead.',
+    zh: '单个 .html 笔记文件上限 32 MB，单个 .mht 上限 100 MB。把整个笔记本导成一页的导出会变成一篇笔记 —— 请改用「每篇一个文件」重新导出。',
+    ja: '1 つの .html ノートファイルは最大 32 MB、1 つの .mht は最大 100 MB。ノートブック全体を 1 ページに書き出したものは 1 件のノートになります。ノートごとに 1 ファイルで書き出し直してください。',
+  },
+  'import.category': { en: 'Notebook (optional)', zh: '分类（可选）', ja: 'ノートブック（任意）' },
+  // "Markdown only" is the load-bearing clause: the other two formats name their notebook
+  // in their own file name, so a value typed here reaches the Markdown importer and
+  // nothing else. Silently ignoring it for two of three formats would be a promise the
+  // dialog does not keep.
+  'import.categoryHint': {
+    en: 'A file pick cannot see which folder a file came from, so one import lands in a single notebook — name it here. Leave it empty and they are filed as “imported”. Markdown files only: a saved web page or web archive names its own notebook.',
+    zh: '选择文件时看不到文件来自哪个文件夹，所以一次导入的内容归入同一个分类 —— 就在这里命名。留空则归入「imported」。仅对 Markdown 文件生效：网页与网页存档自带分类名。',
+    ja: 'ファイル選択では元のフォルダーが分からないため、1 回の取り込みは 1 つのノートブックにまとまります。ここで名前を付けます。空欄なら「imported」になります。Markdown ファイルにのみ適用されます（ウェブページとウェブアーカイブは自前のノートブック名を持ちます）。',
+  },
+  'import.chooseFiles': { en: 'Choose files…', zh: '选择文件…', ja: 'ファイルを選択…' },
+  // Picking and importing are two steps on purpose: the file dialog is where a wrong pick
+  // happens, and an import that starts the moment the dialog closes gives no chance to see
+  // what was actually selected before it is parsed and written.
+  'import.confirmHint': {
+    en: 'Nothing is imported until you confirm.',
+    zh: '在按下「确认导入」之前，不会导入任何东西。',
+    ja: '確定するまで何も取り込みません。',
+  },
+  'import.confirm': { en: 'Import these files', zh: '确认导入', ja: 'このファイルを取り込む' },
+  'import.selected': { en: '{n} file(s) selected', zh: '已选择 {n} 个文件', ja: '{n} 件のファイルを選択中' },
+  'import.clear': { en: 'Clear selection', zh: '清除选择', ja: '選択を解除' },
+  // Shown on the offending file in the list, before the run rather than in the summary
+  // afterwards. `buckets.ts` answers this, i.e. the same table the importer dispatches on.
+  'import.unsupported': {
+    en: 'not a format this imports — it will be skipped',
+    zh: '不是支持的格式，将被跳过',
+    ja: '対応していない形式のためスキップされます',
+  },
+  'import.moreFiles': { en: '…and {n} more', zh: '……另有 {n} 个', ja: '…ほか {n} 件' },
+  'import.options': { en: 'Options', zh: '选项', ja: 'オプション' },
+  'import.overwrite': { en: 'Overwrite notes that already exist', zh: '覆盖已存在的笔记', ja: '既存のノートを上書きする' },
+  'import.overwriteHint': {
+    en: 'Off by default. While it is off, importing the same files a second time leaves the notes you have edited since untouched — the note is yours now. With it on, the file wins.',
+    zh: '默认关闭。关闭时，第二次导入同一批文件不会动你后来编辑过的笔记 —— 笔记现在属于你。打开时，以文件为准。',
+    ja: '既定ではオフ。オフの間は、同じファイルを再度取り込んでも、その後編集したノートはそのまま残ります（ノートはあなたのものです）。オンの場合、ファイルの内容が優先されます。',
+  },
+  'import.working': { en: 'Importing…', zh: '正在导入…', ja: '取り込み中…' },
+  'import.starting': { en: 'Reading…', zh: '正在读取…', ja: '読み込み中…' },
+  'import.progress': {
+    en: '{done} / {total} files · {n} notes',
+    zh: '{done} / {total} 个文件 · {n} 篇笔记',
+    ja: '{done} / {total} ファイル · {n} 件のノート',
+  },
+  'import.stop': { en: 'Stop', zh: '停止', ja: '停止' },
+  'import.failed': { en: 'Import failed', zh: '导入失败', ja: '取り込みに失敗しました' },
+  'import.finished': { en: 'Import finished', zh: '导入完成', ja: '取り込み完了' },
+  'import.stopped': { en: 'Import stopped', zh: '导入已停止', ja: '取り込みを停止しました' },
+  'import.nothing': { en: 'Nothing was imported.', zh: '没有导入任何内容。', ja: '取り込まれたものはありません。' },
+  'import.details': { en: 'Details', zh: '明细', ja: '詳細' },
+  'import.row.created': { en: 'Created', zh: '新建', ja: '新規' },
+  'import.row.updated': { en: 'Updated', zh: '已更新', ja: '更新' },
+  'import.row.skipped': { en: 'Already imported, skipped', zh: '已导入，跳过', ja: '取り込み済み・スキップ' },
+  'import.row.images': { en: 'Images embedded', zh: '内嵌的图片', ja: '埋め込んだ画像' },
+  'import.row.dropped': { en: 'Images left as a placeholder', zh: '用占位替代的图片', ja: 'プレースホルダーにした画像' },
+  'import.row.attachments': { en: 'Other attachments, placeholder', zh: '其他附件（占位）', ja: 'その他の添付（プレースホルダー）' },
+  'import.row.unreadable': { en: 'Files that could not be read', zh: '无法读取的文件', ja: '読み込めなかったファイル' },
+  'import.row.empty': { en: 'Empty files', zh: '空文件', ja: '空のファイル' },
+  'import.library': { en: 'Notes in this library', zh: '笔记库现有', ja: 'ライブラリのノート数' },
+  'import.libraryCount': { en: '{n} notes', zh: '{n} 篇', ja: '{n} 件' },
+  'import.libraryUnknown': {
+    en: 'Unknown — the API is not responding.',
+    zh: '未知 —— API 无响应。',
+    ja: '不明 — API が応答していません。',
+  },
+  'import.libraryWarn': {
+    en: 'Past {max} notes the knowledge map is built from your notebooks instead of by the AI. That is the fallback, not a failure.',
+    zh: '超过 {max} 篇后，知识地图会改由笔记本自动生成，而不是交给 AI。那是降级方案，不是故障。',
+    ja: '{max} 件を超えると、知識マップは AI ではなくノートブックから自動生成されます。これはフォールバックであり、不具合ではありません。',
+  },
+  'notes.imported': { en: 'Imported', zh: '已导入', ja: '取り込み済み' },
+
+  // ─── What the notes dialog opens with ───
+  'import.notesLead': {
+    en: 'Your existing notes, brought in as ordinary notes — fully editable, searchable, and counted by the knowledge map.',
+    zh: '把你已有的笔记原样引进来，和在这里写的笔记完全一样：可编辑、可搜索、计入知识地图。',
+    ja: '既存のノートをそのまま取り込みます。ここで書いたノートと同じく編集・検索でき、知識マップにも反映されます。',
+  },
+
+  // ─── Redmine ───
+  'redmine.groupTasks': {
+    en: 'Tasks from Redmine',
+    zh: '从 Redmine 导入任务',
+    ja: 'Redmine からのタスク取り込み',
+  },
+  'redmine.tasksLead': {
+    en: 'Pull the tickets assigned to you so the task board, the Home totals, the daily brief and the assistant can finally see your real workload. Read-only, one direction.',
+    zh: '把分派给你的工单拉进来，让任务面板、首页总计、每日简报和助手第一次看见你真实的工作量。只读、单向。',
+    ja: '自分に割り当てられたチケットを取り込み、タスクボード・ホームの集計・デイリーブリーフ・アシスタントが実際の作業量を把握できるようにします。読み取り専用・一方向です。',
+  },
+  'redmine.title': { en: 'Redmine connection', zh: 'Redmine 连接', ja: 'Redmine 接続' },
+  'redmine.lead': {
+    en: 'Only the tickets assigned to you, from one project. Nothing is ever written back to Redmine, and mirrored tasks cannot be edited here — an edit would be undone by the next sync.',
+    zh: '只拉取一个项目中分派给你的工单。绝不写回 Redmine；镜像来的任务在这里不能编辑 —— 改了也会被下次同步覆盖。',
+    ja: '1 つのプロジェクトで自分に割り当てられたチケットのみを取り込みます。Redmine へ書き戻すことは一切なく、取り込んだタスクはここでは編集できません（編集しても次回の同期で上書きされます）。',
+  },
+  'redmine.syncing': { en: 'Syncing…', zh: '同步中…', ja: '同期中…' },
+  'redmine.idle': { en: 'Idle', zh: '空闲', ja: '待機中' },
+  'redmine.mirrored': { en: '{n} tickets mirrored', zh: '已镜像 {n} 个工单', ja: '{n} 件を取り込み済み' },
+  'redmine.lastSync': { en: 'Last sync: {when}', zh: '上次同步：{when}', ja: '最終同期: {when}' },
+  'redmine.never': { en: 'never', zh: '从未', ja: '未実行' },
+  'redmine.address': { en: 'Redmine address', zh: 'Redmine 地址', ja: 'Redmine のアドレス' },
+  'redmine.addressHint': {
+    en: 'The server root, not a page inside it. A deployment under a subpath is fine — http://host/redmine.',
+    zh: '填服务器根地址，不是某个页面。部署在子路径下也可以，例如 http://host/redmine。',
+    ja: 'サーバーのルートを入力してください（ページの URL ではありません）。サブパス配下の設置も可 — http://host/redmine。',
+  },
+  'redmine.apiKey': { en: 'API key', zh: 'API 密钥', ja: 'API キー' },
+  'redmine.apiKeyKeep': { en: 'Leave blank to keep the saved key', zh: '留空则保留已保存的密钥', ja: '空欄なら保存済みのキーを使用します' },
+  'redmine.apiKeyHint': {
+    en: 'Redmine → My account → API access key. Shown once and stored encrypted on this machine.',
+    zh: 'Redmine → 我的账户 → API 访问键。只显示一次，加密后保存在本机。',
+    ja: 'Redmine → マイアカウント → API アクセスキー。表示は一度きりで、この端末に暗号化して保存されます。',
+  },
+  'redmine.plainHttp': {
+    en: 'This address is plain http — the API key will cross the network unencrypted. Normal on an intranet; worth knowing anywhere else.',
+    zh: '这是明文 http，API 密钥会以未加密方式通过网络。内网属常态，其他场合请知悉。',
+    ja: 'このアドレスは http（平文）です。API キーは暗号化されずにネットワークを流れます。社内ネットワークでは通常ですが、それ以外では留意してください。',
+  },
+  'redmine.working': { en: 'Working…', zh: '处理中…', ja: '処理中…' },
+  'redmine.test': { en: 'Test connection', zh: '测试连接', ja: '接続テスト' },
+  'redmine.save': { en: 'Save', zh: '保存', ja: '保存' },
+  'redmine.saved': { en: 'Saved.', zh: '已保存。', ja: '保存しました。' },
+  'redmine.testOk': { en: 'Connected as {user}.', zh: '已连接，身份：{user}。', ja: '{user} として接続しました。' },
+  'redmine.project': { en: 'Project', zh: '项目', ja: 'プロジェクト' },
+  'redmine.projectPick': { en: 'Choose a project…', zh: '选择项目…', ja: 'プロジェクトを選択…' },
+  'redmine.projectNone': { en: 'Load the list first', zh: '请先加载列表', ja: 'まず一覧を読み込んでください' },
+  'redmine.loadProjects': { en: 'Load projects', zh: '加载项目', ja: 'プロジェクトを読み込む' },
+  'redmine.projectHint': {
+    en: 'Only this project is pulled. Loading the list also fetches the tracker and status names, which is what the mapping needs.',
+    zh: '只会拉取这个项目。加载列表同时会读取该服务器的跟踪标签与状态名称 —— 映射正是靠它们。',
+    ja: 'このプロジェクトのみ取り込みます。一覧の読み込み時にトラッカー名とステータス名も取得します（マッピングに必要）。',
+  },
+  'redmine.noProjects': {
+    en: 'That account can see no projects. Check the key\'s permissions on the Redmine side.',
+    zh: '该账号看不到任何项目。请检查密钥在 Redmine 侧的权限。',
+    ja: 'このアカウントから参照できるプロジェクトがありません。Redmine 側の権限をご確認ください。',
+  },
+  'redmine.enabled': { en: 'Sync automatically', zh: '自动同步', ja: '自動同期' },
+  'redmine.enabledHint': {
+    en: 'Every 30 minutes, plus once shortly after the app starts. Nothing runs while this is off.',
+    zh: '每 30 分钟一次，应用启动后不久也会跑一次。关掉后完全不再请求。',
+    ja: '30 分ごと、および起動直後に 1 回。オフの間は一切通信しません。',
+  },
+  'redmine.preview': { en: 'Preview', zh: '预览', ja: 'プレビュー' },
+  'redmine.previewTitle': { en: 'What a sync would do', zh: '同步会做什么', ja: '同期で起こること' },
+  'redmine.previewTotal': {
+    en: '{n} tickets match; the first {sampled} examined. Nothing has been written.',
+    zh: '共 {n} 个工单匹配；已检查前 {sampled} 个。尚未写入任何内容。',
+    ja: '{n} 件が該当。先頭 {sampled} 件を確認しました。まだ何も書き込んでいません。',
+  },
+  'redmine.previewWould': {
+    en: '{created} would be added, {updated} refreshed.',
+    zh: '{created} 个将新增，{updated} 个将刷新。',
+    ja: '{created} 件を追加、{updated} 件を更新します。',
+  },
+  'redmine.syncNow': { en: 'Sync now', zh: '立即同步', ja: '今すぐ同期' },
+  'redmine.full': { en: 'Full re-read', zh: '全量重读', ja: '全件を読み直す' },
+  'redmine.fullHint': {
+    en: 'Ignore the saved position and read everything again. Use it after changing the project or the user.',
+    zh: '忽略已保存的进度，从头重读全部。换了项目或用户之后用它。',
+    ja: '保存された位置を無視して全件を読み直します。プロジェクトやユーザーを変更した後に使います。',
+  },
+  'redmine.syncDone': {
+    en: 'Read {fetched}: {created} added, {updated} refreshed.',
+    zh: '读取 {fetched} 个：新增 {created}、刷新 {updated}。',
+    ja: '{fetched} 件を読み込み: 追加 {created}、更新 {updated}。',
+  },
+  'redmine.syncPartial': {
+    en: 'Read {fetched} and stopped at the page limit — {created} added. The position was NOT advanced, so the next sync continues from here.',
+    zh: '读取 {fetched} 个后到达翻页上限 —— 新增 {created}。进度未被推进，下次同步会从这里继续。',
+    ja: '{fetched} 件を読み込み、ページ上限で停止しました — 追加 {created}。位置は進めていないため、次回はここから継続します。',
+  },
+  'redmine.syncFailed': { en: 'The sync did not finish.', zh: '同步未能完成。', ja: '同期が完了しませんでした。' },
+  'redmine.readOnlyNote': {
+    en: 'Mirrored tickets are read-only here. To keep one as an ordinary task, detach it from the task board.',
+    zh: '镜像来的工单在这里是只读的。想把某一个变成普通任务，请在任务面板里「解除关联」。',
+    ja: '取り込んだチケットはここでは読み取り専用です。通常のタスクとして扱いたい場合はタスクボードで「切り離し」てください。',
+  },
+  'redmine.disconnect': { en: 'Disconnect', zh: '断开连接', ja: '接続を解除' },
+  'redmine.disconnectHint': {
+    en: 'What should happen to the tickets already imported?',
+    zh: '已经导入的工单怎么处理？',
+    ja: 'すでに取り込んだチケットはどう扱いますか？',
+  },
+  'redmine.discDetach': { en: 'Keep them as my own tasks', zh: '保留，变成我自己的任务', ja: '自分のタスクとして残す' },
+  'redmine.discDetachHint': {
+    en: 'Recommended. They stay, become editable, and stop being refreshed.',
+    zh: '推荐。它们会留下、变为可编辑，且不再被刷新。',
+    ja: '推奨。そのまま残り、編集可能になり、更新されなくなります。',
+  },
+  'redmine.discDelete': { en: 'Delete them', zh: '删除它们', ja: '削除する' },
+  'redmine.discKeep': { en: 'Leave them as they are', zh: '保持原样', ja: 'そのままにする' },
+  'redmine.discKeepHint': {
+    en: 'Only if you are reconnecting soon: they stay read-only, and with no connection nothing will refresh them.',
+    zh: '仅当你马上就要重连时选它：它们会保持只读，而没有连接就没东西再刷新它们。',
+    ja: 'すぐ再接続する場合のみ。読み取り専用のままになり、接続がないため更新もされません。',
+  },
+  'redmine.cancel': { en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'redmine.disconnected': { en: 'Disconnected. {n} tickets affected.', zh: '已断开连接。影响 {n} 个工单。', ja: '接続を解除しました。{n} 件に影響。' },
+
+  // ─── A task row that came from somewhere else ───
+  'tasks.mirrored': { en: 'Imported', zh: '已导入', ja: '取り込み済み' },
+  'tasks.mirroredHint': {
+    en: 'Mirrored from Redmine — read-only here, and it cannot be dragged to another column. Open it to detach it into an ordinary task.',
+    zh: '从 Redmine 镜像而来 —— 在这里只读，也不能拖到别的列。打开它可以解除关联、变成普通任务。',
+    ja: 'Redmine から取り込んだものです。ここでは読み取り専用で、他の列へドラッグもできません。開いて「切り離す」と通常のタスクになります。',
+  },
+  // ═══ Global search (Ctrl/⌘+K palette) ═══
+  'search.open': { en: 'Search', zh: '搜索', ja: '検索' },
+  'search.placeholder': {
+    en: 'Search chats, notes, tasks, meetings…',
+    zh: '搜索聊天、笔记、任务、会议…',
+    ja: 'チャット・ノート・タスク・会議を検索…',
+  },
+  'search.hint': {
+    en: 'Type to search chats, notes, tasks, meetings, email and reports.',
+    zh: '输入即可搜索聊天、笔记、任务、会议、邮件和报告。',
+    ja: '入力するとチャット・ノート・タスク・会議・メール・レポートを検索します。',
+  },
+  'search.searching': { en: 'Searching…', zh: '搜索中…', ja: '検索中…' },
+  'search.failed': { en: 'Search failed', zh: '搜索失败', ja: '検索に失敗しました' },
+  // The badge on a row that only the vector path found. Rendered, not optional: see
+  // lib/searchCore.ts on why a search with no usable threshold must label its recall.
+  'search.semanticHit': { en: 'related', zh: '语义相近', ja: '関連' },
+  'search.warming': {
+    en: 'Related results are still loading — only exact matches are shown.',
+    zh: '语义检索仍在加载，当前只显示精确匹配。',
+    ja: '関連検索はまだ読み込み中です。現在は完全一致のみ表示しています。',
+  },
+  'search.noKeyword': {
+    en: 'No exact match. These are the closest by meaning —',
+    zh: '没有精确匹配。以下是语义上最接近的几条 ——',
+    ja: '完全一致はありません。意味が近いものを表示しています —',
+  },
+  'search.footer': {
+    en: '↑↓ select · Enter open · Esc close',
+    zh: '↑↓ 选择 · 回车打开 · Esc 关闭',
+    ja: '↑↓ 選択 · Enter で開く · Esc で閉じる',
+  },
+  'search.count': { en: '{n} results', zh: '{n} 条结果', ja: '{n} 件' },
+  'search.msgNotFound': {
+    en: 'That item is no longer available.',
+    zh: '这条内容已经不存在了。',
+    ja: 'この項目はすでに存在しません。',
+  },
+  // Only ever an aria-label: the visible type cue is the row's icon.
+  'search.kindChat': { en: 'Chat', zh: '聊天', ja: 'チャット' },
+  'search.kindNote': { en: 'Note', zh: '笔记', ja: 'ノート' },
+  'search.kindTask': { en: 'Task', zh: '任务', ja: 'タスク' },
+  'search.kindMeeting': { en: 'Meeting', zh: '会议', ja: '会議' },
+  'search.kindEmail': { en: 'Email', zh: '邮件', ja: 'メール' },
+  'search.kindReport': { en: 'Report', zh: '报告', ja: 'レポート' },
 } as const satisfies Record<string, Record<string, string>>;
 
 export type I18NKey = keyof typeof I18N;

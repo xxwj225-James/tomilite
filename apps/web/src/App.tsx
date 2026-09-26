@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, type SearchHit } from '@/lib/api';
 import { tr, t } from '@/lib/i18n';
 import { ContentPanel } from '@/components/ContentPanel';
 import { useUICommandStore } from '@/stores/uiCommandStore';
@@ -25,7 +25,9 @@ import { MeetingIndicator } from '@/components/chat/MeetingIndicator';
 import { LlmBanner } from '@/components/chat/LlmBanner';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ConfirmDialogs } from '@/components/chat/ConfirmDialogs';
+import { SearchPalette, SidebarSearchButton } from '@/components/search/SearchPalette';
 import { TelemetryConsentDialog } from '@/components/TelemetryConsentDialog';
+import { CelebrationHost } from '@/components/Celebration';
 import { setConsent as telSetConsent, track as telTrack } from '@/lib/telemetry';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import type { StagedEdit } from '@/types/chat';
@@ -44,6 +46,7 @@ export function App() {
   // effect here: the store writes <html> from its setters, and
   // `public/theme-init.js` has already written it before React's first render.
   const [panel, setPanel] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { attachedFiles, setAttachedFiles, dragOver, setDragOver, handleFiles } = useFileAttach();
@@ -370,13 +373,57 @@ export function App() {
   // putting anything on screen, so scrolling on them would drag the view down
   // while the user is just opening a panel.
   const lastVisibleMsgRef = useRef<any>(null);
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null);
+  /** Set by `openSearchHit`, consumed by the jump effect below — and read by the auto-scroll
+   *  effect above as its "a jump is in flight, do not fight me" flag. One value, two readers:
+   *  two separate flags would be able to disagree. */
+  const pendingJumpRef = useRef<{ sessionId: string; messageId: string } | null>(null);
+  /** Bumped on every jump request. The effect below cannot rely on `messages` changing to
+   *  re-run: `useChatThreads.loadSession` returns early when the session is already in
+   *  memory, which is exactly the case of searching inside the conversation you are
+   *  looking at — the effect would never fire and the jump would quietly do nothing. */
+  const [jumpSeq, setJumpSeq] = useState(0);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // A search jump outranks this. Switching session loads the messages asynchronously,
+    // and that arrival would otherwise fire this effect and drag the view to the bottom
+    // a beat before the jump effect below tries to scroll to the matched message. The
+    // early return is before the ref update on purpose: `lastVisibleMsgRef` then still
+    // holds the older message, so the next message that actually arrives re-triggers
+    // this and ordinary auto-scrolling resumes.
+    if (pendingJumpRef.current) return;
     const visible = messages.filter((m: any) => !m.internal);
     const last = visible.length > 0 ? visible[visible.length - 1] : null;
     if (last === lastVisibleMsgRef.current) return;
     lastVisibleMsgRef.current = last;
     msgsRef.current?.scrollTo(0, msgsRef.current.scrollHeight);
   }, [messages]);
+  // ─── A search result pointed at one specific message ───
+  //
+  // Declared AFTER the auto-scroll effect, and backed by the early return in it: two
+  // effects racing on the same scroll position would otherwise depend on declaration order
+  // alone, which is too thin a thread to hang this on.
+  useEffect(() => {
+    const target = pendingJumpRef.current;
+    if (!target || target.sessionId !== currentSessionId) return;
+    const el = msgsRef.current?.querySelector(`[data-msg-id="${target.messageId}"]`);
+    // Not found yet — the session may still be loading. The 8-second deadline set when
+    // the jump was requested is what ends the wait; giving up here would abandon a jump
+    // that is merely slow.
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    pendingJumpRef.current = null;
+    setFlashMsgId(target.messageId);
+    // Held in a ref rather than returned as this effect's cleanup: the effect re-runs on
+    // every arriving message, and a cleanup would be torn down mid-flash by the next
+    // token of a streaming reply — leaving the highlight on screen permanently.
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlashMsgId(null), 1600);
+  }, [messages, currentSessionId, jumpSeq]);
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+  }, []);
+
   // Resize textarea only when line count changes (Enter/Shift+Enter), not on every keystroke
   const lineCount = query.split('\n').length;
   useEffect(() => {
@@ -393,13 +440,19 @@ export function App() {
     window.addEventListener('tl-navigate', handler);
     return () => window.removeEventListener('tl-navigate', handler);
   }, []);
+  // The palette owns the Ctrl/⌘+K listener (it has to know whether it is already open);
+  // this is only the receiving end of its "open me" signal, so that the sidebar button
+  // and the keyboard shortcut land on the same state.
+  useEffect(() => {
+    const handler = () => setSearchOpen(true);
+    window.addEventListener('tl-open-search', handler);
+    return () => window.removeEventListener('tl-open-search', handler);
+  }, []);
   // Stable refs for callback closures — avoids re-registering event listeners on session/lang change
   const langRef = useRef(lang);
   langRef.current = lang;
   const sessionIdRef = useRef(currentSessionId);
   sessionIdRef.current = currentSessionId;
-  const panelRef = useRef(panel);
-  panelRef.current = panel;
 
   // Menu navigation (used by MenuNav) — unsaved-changes gate + update-seen + clear notifications
   // Every menu key is now a real panel key, so this is a null-normaliser: the
@@ -421,6 +474,86 @@ export function App() {
       })
         .then(() => setNotifyCount(0))
         .catch(() => {});
+    }
+  };
+  // A deep link can outlive its row. Most panels say so themselves (each has a "has been
+  // deleted" notice), but the email panel has no such channel and cannot word a message —
+  // there is no shared notify helper in this app. The alert dialog behind `saveResult` is
+  // the existing general-purpose surface, so the panel raises a signal and App words it.
+  useEffect(() => {
+    const handler = () => setSaveResult({ ok: false, message: t('search.msgNotFound', lang) });
+    window.addEventListener('tl-search-miss', handler);
+    return () => window.removeEventListener('tl-search-miss', handler);
+  }, [lang, setSaveResult]);
+
+  // ─── A search result was opened ───
+  //
+  // Six kinds, six landing places. Three of them are plain "select this row" — note, task
+  // and report have had that protocol for a while (see useChatCardActions) — and the other
+  // three are assembled here.
+  //
+  // The pending stash always goes down BEFORE the navigation, and that order is the whole
+  // trick. When an editor holds unsaved changes `handleMenuNav` stops at a confirm dialog,
+  // so the panel is not mounted at that moment: an event dispatched now has no listener
+  // and is gone. The stash survives, and the panel consumes it when it does mount, or when
+  // it is re-activated after the user confirms. Same reasoning for going through
+  // `handleMenuNav` instead of dispatching `tl-navigate` as the chat cards do — that
+  // listener has no unsaved gate at all, and a search hitting a half-edited note must not
+  // silently drop the edit.
+  const openSearchHit = (hit: SearchHit) => {
+    setSearchOpen(false);
+
+    if (hit.kind === 'chat') {
+      // A chat hit that somehow carries no session cannot be jumped to. Dropping the click
+      // is the honest outcome; scrolling to a message in the wrong conversation is not.
+      if (!hit.sessionId) return;
+      pendingJumpRef.current = { sessionId: hit.sessionId, messageId: hit.id };
+      // The safety valve. `switchSession` loads asynchronously, so the scroll itself has
+      // to happen in the effect above — but that effect's partner (auto-scroll) returns
+      // early for as long as this ref is set. If the session never finishes loading, the
+      // app would silently lose "follow the conversation" forever. Eight seconds of no
+      // auto-scroll is a bounded, explainable cost; losing it permanently is not.
+      setTimeout(() => {
+        if (pendingJumpRef.current?.messageId === hit.id) pendingJumpRef.current = null;
+      }, 8000);
+      setJumpSeq((n) => n + 1);
+      switchSession(hit.sessionId);
+      return;
+    }
+
+    // The row's own title is only a placeholder here: each receiving panel re-fetches the
+    // full record by id and prefers it (see useTaskState's `f.title || d.title`). It gets
+    // used only when that fetch fails, and a stale title beats a blank one.
+    if (hit.kind === 'task') {
+      // No `key`: the panel selects by id and reads the issue number off the fetched row.
+      // The palette's title carries a "TL-181: " prefix for display, and parsing it back
+      // out to satisfy the event's old shape would be recovering data from a label.
+      const detail = { id: hit.id, title: hit.title, editMode: false };
+      (window as any).__tl_pendingTaskSelect = detail;
+      handleMenuNav('tasks');
+      window.dispatchEvent(new CustomEvent('tl-select-task', { detail }));
+    } else if (hit.kind === 'note') {
+      const detail = { id: hit.id, title: hit.title, editMode: false };
+      (window as any).__tl_pendingNoteSelect = detail;
+      handleMenuNav('notes');
+      window.dispatchEvent(new CustomEvent('tl-select-note', { detail }));
+    } else if (hit.kind === 'report') {
+      // No reportType here on purpose. Passing the palette's guess would reintroduce the
+      // bug useReportsState is being fixed for; omitting it lets the fetched row decide.
+      const detail = { id: hit.id, title: hit.title, editMode: false };
+      (window as any).__tl_pendingReportSelect = detail;
+      handleMenuNav('reports');
+      window.dispatchEvent(new CustomEvent('tl-select-report', { detail }));
+    } else if (hit.kind === 'meeting') {
+      const detail = { id: hit.id, title: hit.title, segmentQuery: hit.segmentQuery };
+      (window as any).__tl_pendingMeetingSelect = detail;
+      handleMenuNav('meeting');
+      window.dispatchEvent(new CustomEvent('tl-select-meeting', { detail }));
+    } else if (hit.kind === 'email') {
+      const detail = { id: hit.id };
+      (window as any).__tl_pendingEmailSelect = detail;
+      handleMenuNav('email');
+      window.dispatchEvent(new CustomEvent('tl-select-email', { detail }));
     }
   };
   // Morning check-in bubble click (used by MenuNav)
@@ -514,6 +647,23 @@ export function App() {
           onRenameCancel={() => setEditingSessionId(null)}
           onDelete={deleteSession}
           onCompress={compressChat}
+          search={<SidebarSearchButton onOpen={() => setSearchOpen(true)} lang={lang} />}
+          nav={
+            <MenuNav
+              panel={panel}
+              notifyCount={notifyCount}
+              mcpPending={mcpPending}
+              updateAvailable={updateAvailable}
+              updateSeen={updateSeen}
+              thinking={thinking}
+              morningNotify={morningNotify}
+              eveningNotify={eveningNotify}
+              notifyLoading={notifyLoading}
+              onNav={handleMenuNav}
+              onMorning={handleMorningNotify}
+              onEvening={handleEveningNotify}
+            />
+          }
         />
         <div className="main-chat-wrapper">
           {/* File paste / drag-drop attaches files to the chat input */}
@@ -546,6 +696,59 @@ export function App() {
               if (e.dataTransfer?.files?.length) await handleFiles(e.dataTransfer.files);
             }}
           >
+            <ContentPanel
+              panel={panel}
+              emailRefresh={emailRefresh}
+              meetingRefresh={meetingRefresh}
+              onClose={() => {
+                if ((window as any).__tl_unsaved) {
+                  setLeaveTarget({ type: 'close' });
+                  return;
+                }
+                (window as any).__tl_unsaved = null;
+                setPanel(null);
+              }}
+              onEditingNote={setEditingNote}
+              onEditingTask={setEditingTask}
+              onEditingReport={(r) => {
+                setEditingReport(r);
+                editingReportRef.current = r;
+              }}
+              onNoteAction={(action) => {
+                // Note editor AI actions (polish/translate/...) — sent as chat prompts
+                // prefixed with [Note editor action: ...] so the agent routes them correctly.
+                const actionLabels: Record<string, string> = {
+                  polish: tr(lang, '润色', '推敲', 'Polish'),
+                  translate: tr(
+                    lang,
+                    '翻译（先确认目标语言）',
+                    '翻訳（翻訳先の言語を確認）',
+                    'Translate (ask target language first)',
+                  ),
+                  summarize: tr(lang, '总结为3个要点', '3つの要点に要約', 'Summarize into 3 bullet points'),
+                  expand: tr(lang, '扩写为更详细的版本', '詳細版に拡張', 'Expand into a detailed version'),
+                };
+                if (!actionLabels[action] || !sendMessageRef.current) return;
+                const msg = `[Note editor action: ${actionLabels[action]}]\n\n${editingNote?.content?.substring(0, 2000) || ''}`;
+                sendMessageRef.current?.(undefined, msg);
+              }}
+              onReportAction={(action) => {
+                // Report editor AI actions map to agent tools like polish_report — the
+                // prompt includes the report snapshot for context.
+                const tool = action + '_report'; // polish → polish_report, summarize → summarize_report, etc.
+                if (!sendMessageRef.current) return;
+                const reportSnapshot = editingReportRef.current;
+                const msg = `[Report editor OPEN — call ${tool}]\nTitle: ${reportSnapshot?.title || ''}\nContent:\n\`\`\`\n${(reportSnapshot?.content || '').substring(0, 3000)}\n\`\`\``;
+                sendMessageRef.current?.(undefined, msg);
+              }}
+              noteRefresh={noteRefresh}
+              taskRefresh={taskRefresh}
+              reportRefresh={reportRefresh}
+              appliedEdit={appliedEdit}
+              appliedTaskEdit={appliedTaskEdit}
+              appliedReport={appliedReport}
+            />
+            <PanelResizeHandle panelOpen={!!panel} />
             <div className="app-viewport-chat">
               {/* `messagesCount` drives the compress/clear buttons, which act on
                   stored messages. The internal context signals are never stored,
@@ -638,24 +841,11 @@ export function App() {
                   onApply={handleApplyEdit}
                   onUndo={handleUndoEdit}
                   onPin={(t) => setPinnedText((prev) => (prev === t ? null : t))}
+                  flashMsgId={flashMsgId}
                 />
               </div>
               {/* Recording stays visible on every panel — see MeetingIndicator. */}
               <MeetingIndicator onOpen={() => handleMenuNav('meeting')} />
-              <MenuNav
-                panel={panel}
-                notifyCount={notifyCount}
-                mcpPending={mcpPending}
-                updateAvailable={updateAvailable}
-                updateSeen={updateSeen}
-                thinking={thinking}
-                morningNotify={morningNotify}
-                eveningNotify={eveningNotify}
-                notifyLoading={notifyLoading}
-                onNav={handleMenuNav}
-                onMorning={handleMorningNotify}
-                onEvening={handleEveningNotify}
-              />
               {!llmConfigured && !llmBannerDismissed && (
                 <LlmBanner
                   onConfigure={() => {
@@ -694,59 +884,6 @@ export function App() {
                 disabled={compressing}
               />
             </div>
-            <PanelResizeHandle panelOpen={!!panel} />
-            <ContentPanel
-              panel={panel}
-              emailRefresh={emailRefresh}
-              meetingRefresh={meetingRefresh}
-              onClose={() => {
-                if ((window as any).__tl_unsaved) {
-                  setLeaveTarget({ type: 'close' });
-                  return;
-                }
-                (window as any).__tl_unsaved = null;
-                setPanel(null);
-              }}
-              onEditingNote={setEditingNote}
-              onEditingTask={setEditingTask}
-              onEditingReport={(r) => {
-                setEditingReport(r);
-                editingReportRef.current = r;
-              }}
-              onNoteAction={(action) => {
-                // Note editor AI actions (polish/translate/...) — sent as chat prompts
-                // prefixed with [Note editor action: ...] so the agent routes them correctly.
-                const actionLabels: Record<string, string> = {
-                  polish: tr(lang, '润色', '推敲', 'Polish'),
-                  translate: tr(
-                    lang,
-                    '翻译（先确认目标语言）',
-                    '翻訳（翻訳先の言語を確認）',
-                    'Translate (ask target language first)',
-                  ),
-                  summarize: tr(lang, '总结为3个要点', '3つの要点に要約', 'Summarize into 3 bullet points'),
-                  expand: tr(lang, '扩写为更详细的版本', '詳細版に拡張', 'Expand into a detailed version'),
-                };
-                if (!actionLabels[action] || !sendMessageRef.current) return;
-                const msg = `[Note editor action: ${actionLabels[action]}]\n\n${editingNote?.content?.substring(0, 2000) || ''}`;
-                sendMessageRef.current?.(undefined, msg);
-              }}
-              onReportAction={(action) => {
-                // Report editor AI actions map to agent tools like polish_report — the
-                // prompt includes the report snapshot for context.
-                const tool = action + '_report'; // polish → polish_report, summarize → summarize_report, etc.
-                if (!sendMessageRef.current) return;
-                const reportSnapshot = editingReportRef.current;
-                const msg = `[Report editor OPEN — call ${tool}]\nTitle: ${reportSnapshot?.title || ''}\nContent:\n\`\`\`\n${(reportSnapshot?.content || '').substring(0, 3000)}\n\`\`\``;
-                sendMessageRef.current?.(undefined, msg);
-              }}
-              noteRefresh={noteRefresh}
-              taskRefresh={taskRefresh}
-              reportRefresh={reportRefresh}
-              appliedEdit={appliedEdit}
-              appliedTaskEdit={appliedTaskEdit}
-              appliedReport={appliedReport}
-            />
           </div>
         </div>
       </div>
@@ -792,7 +929,14 @@ export function App() {
         }}
         onStopDownloadCancel={() => setStopDownloadConfirm(false)}
       />
+      {/* Portals itself to the body, like every other dialog here, so its position in the
+          tree only decides when it exists — not where it lands. */}
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} onOpenHit={openSearchHit} />
       <TelemetryConsentDialog open={consentOpen} onAgree={onConsentAgree} onDecline={onConsentDecline} />
+      {/* Portals itself to the body and renders nothing until a milestone is crossed, so
+          where it sits in the tree does not matter — only that it is past the loading
+          screen, since there is nothing to celebrate while the app is still starting. */}
+      <CelebrationHost />
     </div>
   );
 }

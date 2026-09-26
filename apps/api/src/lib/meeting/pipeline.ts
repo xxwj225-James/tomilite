@@ -150,6 +150,14 @@ export interface ChatOk {
   inTokens: number | null;
   outTokens: number | null;
   costCny: number | null;
+  /**
+   * The provider's stop reason. `'length'` means the answer was cut off at
+   * `max_tokens`, which for every JSON caller here is indistinguishable from a
+   * malformed response — the text simply ends mid-object. Callers that parse JSON
+   * must check this *before* parsing, or they will report a syntax error where the
+   * truth is "ask for fewer items" or "raise the budget".
+   */
+  finishReason: string | null;
 }
 export interface ChatErr {
   ok: false;
@@ -164,6 +172,29 @@ export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /**
+   * Ask the provider to skip its reasoning pass. **On by default.**
+   *
+   * Every caller of this function either demands JSON or wants a plain extraction, and
+   * on those a reasoning pass is pure cost. The default is on rather than off because
+   * the alternative is a silent quality-of-response bug: Moonshot's Kimi models have
+   * thinking enabled server-side, so a request that does not disable it comes back with
+   * the reasoning in `reasoning_content` and a `content` that is truncated, empty, or
+   * — under `response_format: json_object` — not JSON at all. The caller sees a parse
+   * failure and blames its own prompt.
+   *
+   * Pass `false` to keep the reasoning trace.
+   */
+  noThinking?: boolean;
+  /**
+   * Set `'json_object'` to ask the provider for a JSON body.
+   *
+   * Sent unconditionally, matching the guard classifier — a provider that does not know
+   * the field ignores it, and the ones that do still wrap the answer in a ```json fence
+   * often enough that every caller strips fences anyway. Treat this as a hint that
+   * improves the odds, never as a guarantee about the shape of `content`.
+   */
+  responseFormat?: 'json_object';
 }
 
 /**
@@ -184,9 +215,15 @@ export async function chat(llm: LLMAccess, opts: ChatOptions): Promise<ChatResul
     max_tokens: opts.maxTokens ?? 1200,
     temperature: opts.temperature ?? 0,
   };
-  // Extraction work — thinking would only burn tokens here.
-  if (isDeepseekEndpoint(base)) body.thinking = { type: 'disabled' };
-  else if (base.includes('dashscope')) body.enable_thinking = false;
+  if (opts.responseFormat) body.response_format = { type: opts.responseFormat };
+  // Extraction work — thinking would only burn tokens here. Each provider spells it
+  // differently, and Moonshot is listed alongside DeepSeek because it defaults to
+  // thinking ON: omitting it there is not a no-op, it is the difference between a JSON
+  // body and a truncated one.
+  if (opts.noThinking !== false) {
+    if (isDeepseekEndpoint(base) || base.includes('moonshot')) body.thinking = { type: 'disabled' };
+    else if (base.includes('dashscope')) body.enable_thinking = false;
+  }
 
   try {
     const resp = await fetch(`${base}/chat/completions`, {
@@ -220,6 +257,7 @@ export async function chat(llm: LLMAccess, opts: ChatOptions): Promise<ChatResul
       inTokens: typeof doc?.usage?.prompt_tokens === 'number' ? doc.usage.prompt_tokens : null,
       outTokens: typeof doc?.usage?.completion_tokens === 'number' ? doc.usage.completion_tokens : null,
       costCny: costHeader ? Number(costHeader) || null : null,
+      finishReason: typeof doc?.choices?.[0]?.finish_reason === 'string' ? doc.choices[0].finish_reason : null,
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -1,8 +1,20 @@
 import { prisma } from '@tomilite/database';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 import { agentLog } from '../utils/logger.js';
-import { getProxyUrl } from '../utils/proxy.js';
+import { fetchWithProxyFallback } from '../utils/proxy.js';
 import { ftsTerms, toFtsMatch, unsearchableTerms } from '../../lib/fts.js';
+import { issueKey } from '../../lib/taskScope.js';
+
+/**
+ * A failed `fetch` reports only `TypeError: fetch failed`; the reason that matters is on
+ * `cause`. Losing it is what made the proxy bug above read as an unexplained empty search
+ * — "fetch failed" alone names neither the host nor the port that refused the connection.
+ */
+function describeFetchError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const code = (e as { cause?: { code?: string } })?.cause?.code;
+  return code ? `${msg} (${code})` : msg;
+}
 
 /**
  * Brave Search API. Requires BRAVE_API_KEY in the environment — there is no UI or
@@ -20,22 +32,12 @@ export async function braveSearch(
   if (!braveKey)
     return { results: [], source: 'brave', message: 'Brave API key not configured. Set BRAVE_API_KEY env var.' };
 
-  const proxy = getProxyUrl();
-  const fetchOpts: any = {};
-  if (proxy) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
-      const { ProxyAgent } = require('undici');
-      fetchOpts.dispatcher = new ProxyAgent(proxy);
-    } catch {}
-  }
-
   try {
-    const resp = await fetch('https://api.search.brave.com/res/v1/web/search?q=' + q + '&count=10', {
-      headers: { Accept: 'application/json', 'X-Subscription-Token': braveKey },
-      signal: AbortSignal.timeout(8000),
-      ...fetchOpts,
-    });
+    const resp = await fetchWithProxyFallback(
+      'https://api.search.brave.com/res/v1/web/search?q=' + q + '&count=10',
+      8000,
+      { headers: { Accept: 'application/json', 'X-Subscription-Token': braveKey } },
+    );
     agentLog('[brave_search] status:', resp.status);
     if (!resp.ok) return { results: [], source: 'brave', message: 'HTTP ' + resp.status };
     const data = await resp.json();
@@ -47,7 +49,7 @@ export async function braveSearch(
     agentLog('[brave_search] results:', webResults.length);
     return { results: webResults, source: 'brave' };
   } catch (e: any) {
-    return { results: [], source: 'brave', message: e.message };
+    return { results: [], source: 'brave', message: describeFetchError(e) };
   }
 }
 
@@ -70,25 +72,14 @@ export async function webSearch(
     const q = encodeURIComponent(query);
     const results: Array<{ title: string; url: string; snippet: string }> = [];
 
-    // Proxy support for web search (same mechanism as LLM client)
-    const proxy = getProxyUrl();
-    const fetchOpts: any = {};
-    if (proxy) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
-        const { ProxyAgent } = require('undici');
-        fetchOpts.dispatcher = new ProxyAgent(proxy);
-        agentLog('[web_search] using proxy:', proxy);
-      } catch {
-        /* undici not available */
-      }
-    }
+    // Both sources go through `fetchWithProxyFallback`: the system proxy when one
+    // applies to the host, and a direct retry when it turns out nothing was listening.
+    // A proxy that has been switched off must not be able to turn a search into zero
+    // results — see the header of `utils/proxy.ts`.
 
     // ── Primary: Bing RSS (structured XML, no JS rendering needed) ──
-    let resp = await fetch('https://www.bing.com/search?format=rss&q=' + q, {
+    const resp = await fetchWithProxyFallback('https://www.bing.com/search?format=rss&q=' + q, 10_000, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(10000),
-      ...fetchOpts,
     });
     agentLog('[web_search] bing rss status:', resp.status);
 
@@ -135,14 +126,12 @@ export async function webSearch(
 
     // ── Best-effort fallback: DuckDuckGo Lite HTML ──
     agentLog('[web_search] bing rss empty, trying ddg');
-    resp = await fetch('https://lite.duckduckgo.com/lite/?q=' + q, {
+    const ddg = await fetchWithProxyFallback('https://lite.duckduckgo.com/lite/?q=' + q, 3000, {
       headers: { 'User-Agent': 'TomiLite/1.0' },
-      signal: AbortSignal.timeout(3000),
-      ...fetchOpts,
     });
-    agentLog('[web_search] ddg status:', resp.status);
-    if (!resp.ok) return { results: [], source: 'error', message: 'HTTP ' + resp.status };
-    const html = await resp.text();
+    agentLog('[web_search] ddg status:', ddg.status);
+    if (!ddg.ok) return { results: [], source: 'error', message: 'HTTP ' + ddg.status };
+    const html = await ddg.text();
     agentLog('[web_search] ddg html length:', html.length);
     const links: Array<{ title: string; url: string }> = [];
     const seen = new Set<string>();
@@ -178,7 +167,7 @@ export async function webSearch(
     if (results.length === 0) return { results: [], source: 'empty', message: 'No results parsed' };
     return { results, source: 'ddg-fallback' };
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = describeFetchError(e);
     agentLog('[web_search] error:', msg);
     return { results: [], source: 'error', message: msg };
   }
@@ -201,7 +190,7 @@ export async function searchLocalData(
     for (const i of issues) {
       results.push({
         type: 'issue',
-        title: 'TL-' + i.issueNumber + ': ' + i.title,
+        title: issueKey(i) + ': ' + i.title,
         snippet: (i.description || '').substring(0, 200),
       });
     }

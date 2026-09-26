@@ -338,7 +338,12 @@ body {
 
 /* ─── Session Sidebar ─── */
 .session-sidebar {
-  width: 180px;
+  /* 220px is the app menu's floor: it holds icon + label + a trailing badge on
+     one row, and the widest label ("More" and its translation) still needs room
+     beside the 16px icon. At the 900px minimum window this leaves the panel and
+     the chat column 680px between them, which the panel's clamp already accounts
+     for. */
+  width: 220px;
   background: var(--surface-sidebar, var(--surface));
   display: flex;
   flex-direction: column;
@@ -980,106 +985,56 @@ body {
 .menu-overlay {
   display: none;
 }
-/* The wrapper exists so the overflow list can float above the row. It cannot
-   live inside `.menu-popup`: that element is an x-axis scroll container, and its
-   `overflow-y: hidden` would clip anything positioned above it. */
-.menu-nav {
-  position: relative;
-  flex-shrink: 0;
-}
-/* The trigger names itself as an anchor so the list can attach to it. It cannot
-   simply *be* the list's containing block — same scroll container as above, so
-   an absolutely positioned child would be clipped. Anchor positioning measures
-   across that boundary rather than nesting across it.
-   Without it the list is placed by `.menu-nav`'s right edge, which was harmless
-   while the row held ten items and nearly filled the column. With four
-   destinations the row is ~280px of ~1170px, so that edge sits hundreds of
-   pixels from the trigger: measured 634px at a 1920px window, and the menu
-   opened in the far corner instead of above the button that opened it. */
-.menu-more-trigger {
-  anchor-name: --tl-more-trigger;
-}
-.menu-more-list {
-  position: absolute;
-  /* Left edges line up rather than right ones. The list is 172px against a 56px
-     trigger, so matching right edges put the box 172px to the trigger's left —
-     measured at 319–491 with the trigger at 435–491, i.e. squarely over Tasks and
-     Meetings while the button it belongs to sat just off its right edge. Matching
-     left edges puts it over the empty run of the row instead, which is also where
-     the room is: the trigger is the fifth of five items in a bar that spans the
-     whole chat column.
-     `right: auto` is load-bearing. The list has a `min-width`, not a `width`, so
-     with both insets set it would stretch between them instead of sizing to its
-     content.
-     The first pair is the fallback for a renderer without anchor positioning —
-     the `anchor()` declarations are dropped at parse time there and these stand.
-     Where they are supported the later ones win. */
-  left: var(--space-4);
-  right: auto;
-  bottom: calc(100% + 6px);
-  position-anchor: --tl-more-trigger;
-  left: anchor(left);
-  bottom: calc(anchor(top) + 6px);
-  z-index: 30;
+/* ═══ Sidebar app menu ═══
+   Between the new-chat button and the session list. `flex-shrink: 0` so the
+   session list — the only `flex: 1` child — gives up the room instead: a menu
+   that scrolled away with the sessions would be a menu you cannot reach. */
+.side-menu {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  min-width: 172px;
+  gap: 1px;
   padding: var(--space-2);
-  background: var(--surface);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-}
-.menu-more-item {
-  width: 100%;
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-}
-/* The active indicator is a top-edge underline, which only reads as an indicator
-   in a horizontal row. In the vertical list the tinted background carries it. */
-.menu-more-item::before {
-  display: none;
-}
-.menu-more-item.menu-item--active {
-  background: var(--brand-soft);
-}
-/* Badges are pinned to the top-right corner in the row; in a list that puts them
-   on top of the label, so they ride the right edge of their row instead. */
-.menu-more-item .notif-badge,
-.menu-more-item .notif-dot {
-  position: static;
-  margin-left: auto;
+  border-bottom: 1px solid var(--edge-sidebar, var(--edge));
   flex-shrink: 0;
+}
+/* The sub-list is indented rather than boxed. At 220px there is no width to spare
+   for a second border, and the indent plus the row tint is enough to read as
+   "inside More". */
+.side-menu-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: var(--space-2);
+}
+.side-menu-chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.menu-item[aria-expanded='true'] .side-menu-chevron {
+  transform: rotate(180deg);
+}
+/* The notification bubbles are a row of their own at the end of the block. In the
+   chat row they were right-aligned at the far end of a 1000px bar; here the block
+   is the whole element, so "the end of it" is the equivalent position. */
+.side-menu-notify {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-1) 0;
 }
 
-.menu-popup {
-  background: linear-gradient(180deg, var(--surface-sidebar, var(--surface)), var(--bg));
-  border-top: 1px solid var(--edge-sidebar, var(--edge));
-  padding: 2px var(--space-4);
-  display: flex;
-  gap: 0;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
-  /* x-only. With a bare `overflow-x: auto` the y axis computes to `auto` as
-     well, which made the nav a two-axis scroll container — a second scroll
-     layer along the edge the theme change repaints. The nav only ever needs
-     to scroll sideways. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex-shrink: 0;
-}
+/* One row per item: icon, label, then whatever rides the right edge (badge, dot,
+   chevron). This was a two-line stack — icon over label — which is the shape a
+   horizontal toolbar needs; in a 220px column the label has room beside the icon,
+   and the stack only made the block twice as tall. */
 .menu-item {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -1087,7 +1042,6 @@ body {
   color: var(--muted);
   border: none;
   background: transparent;
-  min-width: 56px;
   transition:
     background var(--transition-fast),
     color var(--transition-fast);
@@ -1095,49 +1049,57 @@ body {
   font-weight: 500;
   position: relative;
   outline: none;
+  text-align: left;
   -webkit-appearance: none;
   font-family: inherit;
 }
-.menu-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 2px;
-  background: var(--brand);
-  border-radius: 1px;
-  transition: width var(--transition-base);
+/* The label absorbs the slack so the trailing marks (badge, dot, chevron) sit
+   against the right edge without each needing `margin-left: auto` — two auto
+   margins split the free space between them, which parks a dot mid-row. */
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.menu-item--active::before {
-  width: 16px;
+/* The notification bubbles are rows in shape but not in behaviour: they hold a
+   single glyph and must not stretch to the column, so they opt out of the
+   full-width row above. */
+.menu-item--icon {
+  width: auto;
 }
-.menu-item:hover::before {
-  width: 12px;
+.menu-item:hover {
+  background: var(--surface2);
+  color: var(--ink);
 }
 .menu-item:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
-.menu-item:hover {
-  color: var(--ink);
-}
 .menu-item--active {
   color: var(--ink);
   font-weight: 600;
+  background: var(--brand-soft);
 }
-.menu-item--active .menu-item-icon {
-  opacity: 1;
-  color: var(--brand);
-}
-.menu-item:hover .menu-item-icon {
-  opacity: 1;
+/* The active mark is an edge on the reading side of the row. It used to be a 2px
+   underline centered on the top edge, which only reads as an indicator when the
+   items are laid out in a row. */
+.menu-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--brand);
 }
 .menu-item-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   opacity: 0.55;
   color: var(--muted);
   transition:
@@ -1149,11 +1111,24 @@ body {
   color: var(--brand);
   opacity: 1;
 }
+/* `.notif-badge` and `.notif-dot` are corner-pinned — `position: absolute` with a
+   `top`/`right` pair — which was right when their host was a single button under a
+   chat column. In a row that puts the count on top of the label, so here they ride
+   the right edge instead. */
+.side-menu .notif-badge,
+.side-menu .notif-dot {
+  position: static;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 
-/* ═══ Content Panel (right slide-in) ═══
-   The panel is a flex sibling of the chat column, so opening it necessarily
-   re-lays-out the row — an overlay would have been the only way to avoid that,
-   and that changes the information architecture.
+/* ═══ Content Panel (opens between the sidebar and the chat column) ═══
+   The row is [panel][resize handle][chat], all three flex siblings, so opening
+   the panel necessarily re-lays-out the row — an overlay would have been the
+   only way to avoid that, and that changes the information architecture.
+   It used to be docked on the right, [chat][handle][panel]; only the order
+   changed, so the handle now reads `previousElementSibling` and the closed panel
+   slides the other way.
 
    What was making the motion read as a jerk rather than a slide was three
    properties that are NOT in the transition list, so they snapped on frame 1:
@@ -1182,15 +1157,17 @@ body {
     box-shadow var(--dur-3) var(--ease-out);
 }
 /* The clamp is a preference; the row not overflowing is a constraint. `%` here
-   resolves against `.app-viewport`, whose only other child is the chat column —
-   the sidebar sits outside it — so `100% - 360px` leaves the chat column exactly
-   its declared `min-width: 360px` and nothing more. Anything above that pushes
-   the row past `.app-viewport`, which is `overflow-x: scroll`: a sideways
-   scrollbar across the whole app, the same failure §1.1 found in the nav row.
-   That was already reachable — at the 900px minimum window width the plain clamp
-   asks for 380px and 360 + 380 = 740 > 720. */
+   resolves against `.app-viewport`, and the sidebar sits outside it, so the
+   budget is the panel plus the chat column plus the 6px resize handle between
+   them. Reserving 366px therefore leaves the chat column exactly its declared
+   `min-width: 360px` and nothing more — 360px of reservation was 6px short, and
+   the handle is only in the row while a panel is open, which is exactly when
+   this rule applies. Anything above that pushes the row past `.app-viewport`,
+   which is `overflow-x: scroll`: a sideways scrollbar across the whole app, the
+   same failure §1.1 found in the nav row. Note that the row is 220px narrower
+   than it was when the sidebar was 180px, so this clamp binds sooner now. */
 .panel--open {
-  flex: 0 0 max(0px, min(clamp(380px, 40%, 560px), 100% - 360px));
+  flex: 0 0 max(0px, min(clamp(380px, 40%, 560px), 100% - 366px));
   box-shadow: var(--shadow-lg);
   z-index: 2;
 }
@@ -1200,7 +1177,7 @@ body {
    is a modifier rather than a change to the shared clamp.
    Specificity (0,2,0) beats the (0,1,0) rule above, so source order is free. */
 .panel--open.panel--wide {
-  flex: 0 0 max(0px, min(clamp(420px, 46%, 680px), 100% - 360px));
+  flex: 0 0 max(0px, min(clamp(420px, 46%, 680px), 100% - 366px));
 }
 .panel-header,
 .panel-body {
@@ -1212,7 +1189,9 @@ body {
 .panel:not(.panel--open) .panel-header,
 .panel:not(.panel--open) .panel-body {
   opacity: 0;
-  transform: translateX(var(--move-lg));
+  /* Off the edge it is anchored to — the panel opens from the left, so a closed
+     one waits 16px to the left of its resting place. */
+  transform: translateX(calc(-1 * var(--move-lg)));
   /* `opacity: 0` on its own still leaves these in the paint tree as composited
      layers for the whole life of the app. `visibility: hidden` takes them out
      of it, so a closed panel costs nothing to paint and contributes no layer
@@ -1333,78 +1312,352 @@ pre code.hljs {
 .hljs-selector-pseudo {
   color: #ff7b72;
 }
-.km-content pre code.hljs {
-  background: var(--surface2);
-  color: var(--ink);
-}
-
 /* The code blocks keep their github-dark fill in both modes — that fill is
    already dark, so the *text* stays readable when the app goes dark. What
    stops working is the block's edge: #0d1117 against a #14171d surface is
    about 1.05:1, so the block dissolves into the page. A border restores the
    boundary without touching the syntax palette. Dark mode only — in light
-   mode the dark fill is its own boundary.
-   (`.km-content pre code.hljs` sets its own mode-aware fill and is excluded.) */
+   mode the dark fill is its own boundary. */
 :root[data-mode='dark'] pre code.hljs,
 :root[data-mode='dark'] .milkdown-editor pre {
   border: 1px solid var(--edge);
 }
 
-/* ═══ Knowledge Map ═══ */
-.km-content {
-  color: var(--ink);
+/* ═══ Knowledge Map ═══
+   The card is a tree on the left and a note card on the right, both scrolling
+   independently inside a fixed height. Fixed rather than content-sized because the
+   selection changes: a card that grew and shrank with each click would move the tree
+   under the pointer. */
+.kmap-body {
+  /* Both numbers live together because they are the pair that decides how much of the
+     tree is readable at once, and they only make sense changed as a pair. 220px fits
+     about 15 CJK characters of a topic name before the ellipsis, and 380px shows about
+     20 of the rows a seven-topic tree produces. Neither is content-sized, for the reason
+     above. */
+  --kmap-tree-w: 220px;
+  --kmap-body-h: 380px;
+  display: flex;
+  height: var(--kmap-body-h);
+  gap: var(--space-2);
 }
-.km-content h1 {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--ink);
-  margin: var(--space-2) 0 var(--space-3);
+.kmap-tree {
+  width: var(--kmap-tree-w);
+  flex: 0 0 var(--kmap-tree-w);
+  overflow-y: auto;
+  border-right: 1px solid var(--edge);
+  padding: var(--space-1) var(--space-2) var(--space-2) 0;
 }
-.km-content h2 {
-  font-size: var(--text-md);
-  font-weight: 700;
-  color: var(--ink);
-  margin: var(--space-4) 0 var(--space-2);
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--edge);
-}
-.km-content h3 {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--muted);
-  margin: var(--space-3) 0 var(--space-1);
-}
-.km-content ul {
-  padding-left: var(--space-4);
-  margin: var(--space-1) 0;
-}
-.km-content li {
-  margin-bottom: 4px;
-  padding: var(--space-2) var(--space-3);
+.kmap-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 3px 6px;
   border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+.kmap-tree-row:hover {
   background: var(--surface2);
-  transition: background var(--transition-fast);
+}
+/* A topic with no rows under it at all is a heading, not a control — rendering it as a
+   button would promise a click that does nothing. This used to be the rule for any topic
+   without sub-topics, which made a topic with a dozen notes and no children permanently
+   unfolded: the one node with the most to hide. Anything with a row under it is foldable
+   now, so `--static` reaches only the leaf that a deleted note left behind. */
+.kmap-tree-row--static {
   cursor: default;
 }
-.km-content li:hover {
-  background: var(--edge);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-xs);
+.kmap-tree-row--static:hover {
+  background: transparent;
 }
-.km-badge {
-  display: inline-block;
+.kmap-tree-caret {
+  flex: 0 0 auto;
+  width: 9px;
+  color: var(--muted);
+  font-size: 9px;
+  transition: transform var(--transition-fast);
+}
+.kmap-tree-caret--open {
+  transform: rotate(90deg);
+}
+.kmap-tree-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kmap-tree-count {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ═══ Fixing a topic: the 「⋯」 trigger, its menu, and the in-place name field ═══
+   Every row that is a real topic carries a trigger; `.kmap-tree-item` exists so that
+   trigger can sit *beside* the row rather than inside it, because the row is already a
+   button and a button inside a button is not a thing. The other rows render without this
+   wrapper at all, which is why nothing here needs a modifier for "not editable". */
+.kmap-tree-item {
+  display: flex;
+  align-items: center;
+}
+.kmap-tree-item > .kmap-tree-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kmap-tree-more {
+  flex: 0 0 auto;
+  width: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease-out);
+}
+/* Revealed on hover of the row, and kept visible while its own menu is open — a trigger
+   that vanishes under the pointer it just moved to would be unreachable. */
+.kmap-tree-item:hover .kmap-tree-more,
+.kmap-tree-more:focus-visible,
+.kmap-tree-more--open {
+  opacity: 1;
+}
+.kmap-tree-more:hover {
+  background: var(--surface2);
+  color: var(--ink);
+}
+/* Portalled to `body` and positioned fixed: the tree scrolls, and a popover inside it would
+   be clipped at the tree's own edges, which is where the last rows are. */
+.kmap-tree-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 132px;
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.kmap-tree-menu-item {
+  text-align: left;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
   font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.kmap-tree-menu-item:hover {
+  background: var(--surface2);
+}
+/* Deleting a topic does not delete a note, so this is not the destructive-red of a real
+   delete — it is only the one item in the list that cannot be undone by editing again. */
+.kmap-tree-menu-item--danger {
+  color: var(--red);
+}
+.kmap-tree-menu-item--danger:hover {
+  background: var(--red-soft);
+}
+/* Sits where the label was. The count beside it is left alone so the row does not reflow. */
+.kmap-tree-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 1px 5px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+/* The merge picker. Scrolls on its own axis so a twenty-topic map does not push the
+   dialog's own buttons off the screen. */
+.kmap-merge-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+.kmap-merge-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.kmap-merge-item:hover {
+  background: var(--surface2);
+}
+.kmap-merge-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.kmap-tree-leaf {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--ink);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kmap-tree-leaf:hover {
+  background: var(--surface2);
+}
+/* Selection has to survive being scrolled away from, so it is a fill rather than a hint. */
+.kmap-tree-leaf--on {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+.kmap-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3) 0;
+}
+.kmap-note-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.kmap-chip {
+  display: inline-block;
+  font-size: 10px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   background: var(--brand-soft);
   color: var(--brand);
-  margin: 0 1px;
   letter-spacing: 0.02em;
 }
-.km-content strong {
-  color: var(--ink);
+.kmap-excerpt {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: var(--space-2);
+  white-space: pre-wrap;
 }
+.kmap-sec {
+  margin-top: var(--space-3);
+}
+.kmap-sec-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-1);
+}
+.kmap-sec-hd::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--edge);
+}
+.kmap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kmap-link {
+  font-size: var(--text-xs);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kmap-link:hover {
+  background: var(--edge);
+}
+/* A link whose target does not exist is not a button — there is nothing to go to,
+   and making it look clickable is what produces "the link is broken" bug reports. */
+.kmap-link--broken {
+  background: transparent;
+  color: var(--muted);
+  text-decoration: line-through;
+  cursor: default;
+}
+.kmap-link--amb {
+  border: 1px dashed var(--amber);
+}
+.kmap-amb {
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+}
+.kmap-empty {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.5;
+}
+.kmap-banner {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--brand-soft);
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.kmap-banner-detail {
+  color: var(--muted);
+}
+.kmap-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--edge);
+}
+.kmap-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+  padding: var(--space-4);
+}
+/* The project pulse block that used to sit here is gone — it drew task counts and recent
+   titles under a tree of notes, which described a project rather than any knowledge in it.
+   Tasks, reports and meetings now reach the map as notes instead. See `lib/knowledgeDistill.ts`. */
 
 /* ═══ Cards ═══ */
 .card {
@@ -2252,6 +2505,300 @@ pre code.hljs {
   outline-offset: 1px;
   border-radius: var(--radius-sm);
 }
+
+/* ═══ Celebration — confetti burst + one line ═══
+
+   One keyframe serves all 24 pieces. The per-piece difference travels in custom
+   properties the component sets inline (--dx/--dy/--up/--rot/--delay/--piece-*),
+   so the stylesheet has one animation to maintain instead of a generated
+   keyframe per particle. Custom properties are not themselves interpolated —
+   the substitution happens at computed-value time, so `translate3d(0, 0, 0)`
+   becomes `translate3d(37px, -180px, 0)` and *that* interpolates.
+
+   `--celebration-ms` is set inline from the same constant that schedules the
+   unmount, so nothing in CSS hardcodes the lifetime and the message has always
+   finished fading before the layer is removed. Every internal timing is derived
+   from it by calc(); the ratios (0.8 for the pieces, 0.88 for the line) exist so
+   both end strictly before the deadline. */
+.celebration-layer {
+  position: fixed;
+  inset: 0;
+  /* Above the panel (20) and the nav (30) — this is not a panel-local decoration —
+     and below `.modal-overlay` (999), so a real dialog is never buried under it. */
+  z-index: 900;
+  /* The layer is not interactive and never will be: it removes itself. A click
+     aimed at the middle of the screen while a celebration is up has to reach
+     whatever is underneath it. */
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.celebration-burst {
+  position: absolute;
+  /* The origin sits a little below the viewport centre so the pieces appear to
+     come out from behind the message rather than through it. Zero-sized because
+     the pieces are positioned from this one point. */
+  left: 50%;
+  top: 55%;
+  width: 0;
+  height: 0;
+}
+.celebration-piece {
+  position: absolute;
+  width: var(--piece-w);
+  height: var(--piece-h);
+  background: var(--piece-color);
+  border-radius: 2px;
+  /* Delay as a longhand, not inside the shorthand: an unsubstitutable var() in
+     the shorthand's delay slot would invalidate the whole declaration at
+     computed-value time and the piece would not animate at all. `both` is
+     load-bearing — without `backwards` the pieces sit visible at the origin for
+     the length of their delay. */
+  animation: celebration-fly calc(var(--celebration-ms) * 0.8) linear both;
+  animation-delay: var(--delay, 0ms);
+}
+@keyframes celebration-fly {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  /* Thrown up, then falls — one keyframe, two arcs. Linear rather than
+     var(--ease-out): a ballistic piece decelerating into its landing reads as a
+     UI transition, not as confetti. */
+  38% {
+    transform: translate3d(calc(var(--dx) * 0.45), var(--up), 0) rotate(calc(var(--rot) * 0.4));
+  }
+  100% {
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+.celebration-line {
+  position: relative;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-md);
+  font-weight: 600;
+  animation: celebration-line calc(var(--celebration-ms) * 0.88) var(--ease-out) both;
+}
+@keyframes celebration-line {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+}
+/* ═══ Global search (Ctrl/⌘+K palette) ═══
+   The overlay, the card and its animation all come from `.modal-overlay`/`.modal` —
+   only the internals are new. Widths are set inline by the component, because `.modal`
+   is tuned for a 440px form and this needs a 640px list; that is the same split the
+   six existing dialogs use. */
+.search-palette {
+  display: flex;
+  flex-direction: column;
+  max-height: 68vh;
+  overflow: hidden;
+}
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+.search-input-icon {
+  color: var(--muted);
+  display: flex;
+  flex-shrink: 0;
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-md);
+}
+.search-input::placeholder {
+  color: var(--muted);
+}
+.search-spinner {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+/* The only scrolling region. `min-height: 0` is what lets it shrink below its content
+   inside the flex column instead of pushing the footer out of the card. */
+.search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.search-banner {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface2);
+  border-bottom: 1px solid var(--edge);
+}
+.search-empty {
+  padding: var(--space-5) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
+}
+.search-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+.search-hit + .search-hit {
+  border-top: 1px solid var(--edge);
+}
+.search-hit--active {
+  background: var(--brand-soft);
+}
+.search-hit-icon {
+  color: var(--muted);
+  display: flex;
+  flex-shrink: 0;
+  /* Nudged onto the first line's baseline: the icon is 18px, the row is one or two
+     lines of 11-12px text, and aligning to the flex start reads as floating. */
+  margin-top: 1px;
+}
+.search-hit-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.search-hit-title {
+  font-size: var(--text-sm);
+  color: var(--ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-hit-snippet {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.5;
+  /* Two lines at most: a snippet is orientation, not the answer. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.search-hit mark {
+  background: color-mix(in srgb, var(--amber) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+/* Only on a row the vector path alone found — see lib/searchCore.ts on why this label
+   is required rather than decorative. */
+.search-hit-badge {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-full);
+  padding: 1px var(--space-2);
+}
+.search-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--edge);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.search-foot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The sidebar's search box. It is a button, not an input — see SearchPalette.tsx. */
+.session-sidebar-search {
+  padding: 0 var(--space-3);
+}
+.session-search-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+.session-search-btn:hover {
+  background: var(--brand-soft);
+}
+.session-search-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+.session-search-label {
+  flex: 1;
+  text-align: left;
+}
+.session-search-kbd {
+  font-family: inherit;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+  flex-shrink: 0;
+}
+
+/* The message a search result jumped to. The ring goes on the bubble, not on `.msg`:
+   `.msg` is a full-width flex row, so ringing it would draw a band across the whole
+   transcript instead of around the message. Drawn with `box-shadow` rather than a border
+   because a border would change the bubble's box and shift the text by a pixel as the
+   highlight comes and goes — at the exact moment the user is looking at that spot. */
+.msg--flash .msg-bubble {
+  box-shadow: 0 0 0 2px var(--brand);
+  transition: box-shadow var(--transition-fast);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Global, not per-component. Previously this block only covered the notes
      table-of-contents, so every other animation kept playing — message
@@ -2276,6 +2823,21 @@ pre code.hljs {
   .tab-v-icon--sparkle,
   .blink-eye {
     animation: none !important;
+  }
+  /* The celebration needs saying out loud, because the blanket collapse above
+     does not shorten it — it *deletes* it. Both animations above end on
+     `opacity: 0`, so parking them on their final keyframe draws nothing at all
+     and the whole feature disappears for anyone who asked for less motion.
+     `animation: none` instead leaves the message at its base opacity, which is
+     the entire reduced-motion experience: the line appears, holds, and is
+     unmounted. The pieces are hidden here as well as skipped in JS — this is
+     the belt to that braces, and the two have to agree about what "no particles"
+     means. */
+  .celebration-line {
+    animation: none !important;
+  }
+  .celebration-piece {
+    display: none !important;
   }
   .toc-k,
   .toc-label {

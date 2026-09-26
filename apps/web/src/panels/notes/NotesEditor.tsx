@@ -44,6 +44,14 @@ export function NotesEditor(p: Props) {
   // The TOC rail finds the editor's scroll root through this — Milkdown owns that
   // node, so a ref on the wrapper is the only handle we get on it.
   const editorBoxRef = useRef<HTMLDivElement>(null);
+  // The four categories below are the ones this app writes by hand. Imported notes carry a
+  // folder or notebook name instead, and `chat_distill` writes 'chat' — values no <option>
+  // matches, which the browser renders as a BLANK selection while `p.category` still holds
+  // the real one. The note then looks uncategorised, and the next pick of any option moves
+  // it out of its notebook for good. Mirroring the unknown value as its own option keeps
+  // the control honest: what the user sees is what is stored, until they change it.
+  const KNOWN_CATEGORIES = ['general', 'architecture', 'api_docs', 'runbook'];
+  const unknownCategory = !KNOWN_CATEGORIES.includes(p.category);
 
   const doExport = async (format: 'xlsx' | 'docx' | 'html' | 'md' | 'pdf' | 'pptx') => {
     if (!p.selected?.id) return;
@@ -153,6 +161,11 @@ export function NotesEditor(p: Props) {
           <option value="architecture">{_t('架构', 'アーキテクチャ', 'Architecture')}</option>
           <option value="api_docs">{_t('API 文档', 'API ドキュメント', 'API Docs')}</option>
           <option value="runbook">{_t('操作手册', 'ランブック', 'Runbook')}</option>
+          {unknownCategory && (
+            <option value={p.category}>
+              {p.category || tt2('notes.uncategorized', lang)}
+            </option>
+          )}
         </select>
         {p.onNoteAction && (
           <>

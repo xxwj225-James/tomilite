@@ -31,6 +31,8 @@ export function Msg({
   onPin,
   isPinned,
   reasoningContent,
+  msgId,
+  flash,
 }: {
   role: 'user' | 'assistant';
   text: string;
@@ -44,6 +46,12 @@ export function Msg({
   onPin?: (t: string) => void;
   isPinned?: boolean;
   reasoningContent?: string;
+  /** Database id, and only that: optimistic and streaming messages have none. Used
+   *  solely as a scroll anchor by global search's deep link — see App.tsx. It is
+   *  deliberately NOT the React key; see the note in MsgList. */
+  msgId?: string;
+  /** Briefly highlighted because a search result pointed at it. */
+  flash?: boolean;
 }) {
   const lang = useLang();
   const thinkingRef = useRef<HTMLDivElement>(null);
@@ -58,7 +66,8 @@ export function Msg({
   }, [reasoningContent, thinkingOpen]);
   return (
     <div
-      className={cn('msg', role === 'user' ? 'msg--user' : 'msg--assistant')}
+      className={cn('msg', role === 'user' ? 'msg--user' : 'msg--assistant', flash && 'msg--flash')}
+      data-msg-id={msgId}
       style={isMonitor ? { marginBottom: 4 } : undefined}
     >
       {hasR && (

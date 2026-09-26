@@ -12,6 +12,7 @@ export function MsgList({
   onApply,
   onUndo,
   onPin,
+  flashMsgId,
 }: {
   messages: any[];
   thinking: boolean;
@@ -20,6 +21,8 @@ export function MsgList({
   onApply: (s: StagedEdit) => void;
   onUndo: (s: StagedEdit) => void;
   onPin: (t: string) => void;
+  /** The message a search result pointed at, highlighted briefly after the jump. */
+  flashMsgId?: string | null;
 }) {
   const lang = useLang();
   return (
@@ -34,7 +37,14 @@ export function MsgList({
           const pinned = pinnable && !!pinnedText && pinnedText === m.text;
           return (
             <Msg
+              // Deliberately the index, not `m.id`: optimistic and streaming messages
+              // carry no id, so keying by it would produce duplicate `undefined` keys in
+              // the list that re-renders most often in the app. The search deep link
+              // locates a row with `data-msg-id` instead, which does not affect
+              // reconciliation.
               key={i}
+              msgId={(m as any).id}
+              flash={!!(m as any).id && (m as any).id === flashMsgId}
               role={m.role}
               text={m.text}
               tool={m.tool}

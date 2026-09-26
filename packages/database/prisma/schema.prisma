@@ -93,6 +93,8 @@ model Issue {
   sortOrder       Float    @default(0)
   dueDate         String?
   gitRepo         String?
+  source          String? // 'redmine' = mirrored from an external tracker; NULL = written here
+  sourceId        String? // the tracker's own issue id, as a string — the merge key, with source
   // UTC — both. These two are the defaults lib/clockUtc.ts rewrites on existing installs
   // (SQLite cannot ALTER a default), because this is the table whose dates the task board
   // renders: a mixed column here was a visibly wrong day. Every write path passes
@@ -111,6 +113,7 @@ model Issue {
   meetingActionItems MeetingActionItem[]
 
   @@index([projectId, status])
+  @@index([source, sourceId])
 }
 
 // ═══ Kanban Board ═══

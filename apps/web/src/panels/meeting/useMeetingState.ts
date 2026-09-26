@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { useMeetingStore } from '@/stores/meetingStore';
+import { issueKey } from '@/lib/issueKey';
 import { captureSupported, startRecording, type Recorder, type RecorderLevels } from '@/lib/recorder';
 
 // ═══ Meeting state — all state + business logic for MeetingPanel ═══
@@ -633,7 +634,7 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
           );
           setNotice({
             title: nowStr('meeting.actions.taskCreated'),
-            message: `TL-${r.issue.issueNumber} ${r.issue.title}`,
+            message: `${issueKey(r.issue)} ${r.issue.title}`,
           });
           void fetchList('');
         } else if (r?.error === 'already_linked') {
@@ -837,6 +838,66 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
     [selectedId],
   );
 
+  const selectMeeting = useCallback((id: string | null) => {
+    setSelectedId(id);
+    setSegHits(null);
+    setSegSearch('');
+    setSegmentLimit(SEGMENT_PAGE);
+    setJobError(null);
+    setTranscribePct(null);
+    setAiStage(null);
+    setDetail(null);
+  }, []);
+
+  // ─── Deep link from global search ───
+  //
+  // A meeting row can match inside the transcript, and the palette then carries the term
+  // back as `segmentQuery` so the panel opens with its own segment search already filled.
+  // That cannot be done in the same tick as the selection: `runSegSearch` closes over
+  // `selectedId`, so calling the two together would search the OLD meeting's transcript —
+  // and, if the meeting is merely highlighted and not the segment, quietly return nothing.
+  // The term is parked in a ref and applied on the render where the selection has landed.
+  const pendingSegRef = useRef<{ id: string; q: string } | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as { detail?: { id?: string; segmentQuery?: string } }).detail;
+      if (!d?.id) return;
+      selectMeeting(d.id);
+      pendingSegRef.current = d.segmentQuery ? { id: d.id, q: d.segmentQuery } : null;
+    };
+    window.addEventListener('tl-select-meeting', h);
+    // Pending is consumed here rather than only on the event, because the unsaved-changes
+    // gate can hold the navigation back: the panel is not mounted when the event fires, so
+    // there is no listener yet. The stash outlives the event and is picked up on mount.
+    const consumePending = () => {
+      const pending = (window as any).__tl_pendingMeetingSelect;
+      if (pending) {
+        (window as any).__tl_pendingMeetingSelect = null;
+        h({ detail: pending } as any);
+      }
+    };
+    consumePending();
+    return () => window.removeEventListener('tl-select-meeting', h);
+  }, [selectMeeting]);
+  // Re-check when the panel becomes active — it stays mounted via lazy-mount, so `active`
+  // flipping is a real signal that the user just arrived here.
+  useEffect(() => {
+    if (!active) return;
+    const pending = (window as any).__tl_pendingMeetingSelect;
+    if (pending) {
+      (window as any).__tl_pendingMeetingSelect = null;
+      window.dispatchEvent(new CustomEvent('tl-select-meeting', { detail: pending }));
+    }
+  }, [active]);
+  useEffect(() => {
+    const p = pendingSegRef.current;
+    // `runSegSearch` is rebuilt whenever `selectedId` changes, so by the time this runs for
+    // the target meeting it is already closed over the right id.
+    if (!p || p.id !== selectedId) return;
+    pendingSegRef.current = null;
+    void runSegSearch(p.q);
+  }, [selectedId, runSegSearch]);
+
   return {
     lang,
     // library
@@ -848,16 +909,7 @@ export function useMeetingState(active?: boolean, refreshKey?: number) {
     fetchList,
     // detail
     selectedId,
-    selectMeeting: (id: string | null) => {
-      setSelectedId(id);
-      setSegHits(null);
-      setSegSearch('');
-      setSegmentLimit(SEGMENT_PAGE);
-      setJobError(null);
-      setTranscribePct(null);
-      setAiStage(null);
-      setDetail(null);
-    },
+    selectMeeting,
     detail,
     meeting,
     tab,

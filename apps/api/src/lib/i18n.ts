@@ -1,44 +1,16 @@
 /**
  * Backend i18n — centralized dictionary matching frontend @/lib/i18n pattern.
- * Usage: import { t } from '../lib/i18n.js'; → t('knowledge.noLlm', lang)
+ * Usage: import { t } from '../lib/i18n.js'; → t('knowledge.linksHeading', lang)
  */
 
 const I18N: Record<string, Record<string, string>> = {
   // ═══ Knowledge Map ═══
-  'knowledge.empty': {
-    en: 'No tasks, notes or reports yet. Start creating content to build your knowledge map.',
-    zh: '暂无任务、笔记或报告。开始创建内容来构建你的知识地图吧。',
-    ja: 'タスク、ノート、レポートはまだありません。コンテンツを作成してナレッジマップを構築しましょう。',
-  },
-  'knowledge.noLlm': {
-    en: 'No active LLM provider configured. Go to Settings → LLM to set up an API key.',
-    zh: '未配置 LLM。请在 Settings → LLM 中设置 API Key。',
-    ja: 'LLMが設定されていません。Settings → LLM でAPIキーを設定してください。',
-  },
-  'knowledge.noModel': {
-    en: 'No LLM model configured. Go to Settings → LLM to select a model.',
-    zh: '未配置 LLM 模型。请在 Settings → LLM 中选择模型。',
-    ja: 'LLMモデルが設定されていません。Settings → LLM でモデルを選択してください。',
-  },
-  'knowledge.fallbackTitle': { en: 'Knowledge Map', zh: '知识地图', ja: 'ナレッジマップ' },
-  'knowledge.fallbackDomains': { en: 'Core Domains', zh: '核心领域', ja: 'コアドメイン' },
-  'knowledge.fallbackTasks': {
-    en: '{n} tasks across various statuses',
-    zh: '{n} 个不同状态的任务',
-    ja: '{n}件の様々なステータスのタスク',
-  },
-  'knowledge.fallbackNotes': {
-    en: '{n} notes in the knowledge base',
-    zh: '{n} 条知识库笔记',
-    ja: '{n}件のナレッジベースノート',
-  },
-  'knowledge.fallbackReports': { en: '{n} reports generated', zh: '{n} 份报告', ja: '{n}件のレポート' },
-  'knowledge.fallbackHint': {
-    en: 'Start categorizing your work for a richer map.',
-    zh: '开始整理工作内容，构建更丰富的知识地图。',
-    ja: '作業を分類して、より豊かなマップを構築しましょう。',
-  },
-  'knowledge.fallbackError': { en: 'Generation failed', zh: '生成失败', ja: '生成失敗' },
+  //
+  // The only text this side of the app writes into a note. Everything the map itself
+  // displays is rendered from structured data by the web app, so its wording lives in
+  // the frontend dictionary — including the reason a tree fell back to categories,
+  // which travels as a machine code rather than as a sentence.
+  'knowledge.linksHeading': { en: '## Related', zh: '## 关联', ja: '## 関連' },
 
   // ═══ Standup / Daily Reports ═══
   'standup.eveningTitle': { en: '📋 Evening Report', zh: '📋 晚报', ja: '📋 イブニングレポート' },
@@ -156,6 +128,10 @@ const I18N: Record<string, Record<string, string>> = {
   // ═══ Chat → knowledge distillation ═══
   'distill.noteTitle': { en: 'Chat summary — {title}', zh: '会话纪要 — {title}', ja: '会話メモ — {title}' },
   'distill.untitled': { en: 'Untitled chat', zh: '未命名会话', ja: '無題の会話' },
+  // The title of a note distilled from a month of reports, used when the model did not
+  // name it. `{month}` is the `'YYYY-MM'` key — the one part of this that is the same in
+  // every language, which is why it is not translated.
+  'distill.reportTitle': { en: 'Monthly notes — {month}', zh: '月度纪要 — {month}', ja: '月次メモ — {month}' },
 
   'standup.morningTableHeader': {
     en: '| Priority | Key | Task |\n|----------|-----|------|',

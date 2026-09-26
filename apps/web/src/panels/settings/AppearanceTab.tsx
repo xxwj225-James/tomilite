@@ -1,6 +1,7 @@
 import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { useThemeStore } from '@/stores/themeStore';
+import { useCelebrationStore } from '@/stores/celebrationStore';
 import { MODES, THEMES, THEME_COLORS } from '@/lib/constants';
 import { cn } from '@/lib/cn';
 
@@ -19,6 +20,8 @@ export function AppearanceTab() {
   const setTheme = useThemeStore((s) => s.setTheme);
   const mode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
+  const celebrations = useCelebrationStore((s) => s.enabled);
+  const setCelebrations = useCelebrationStore((s) => s.setEnabled);
 
   return (
     <div className="p-2">
@@ -69,6 +72,28 @@ export function AppearanceTab() {
           </div>
           <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 'var(--space-3)' }}>
             {t('appearance.modeHint', lang)}
+          </p>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-hd">{t('appearance.celebrations', lang)}</div>
+        <div className="card-bd">
+          {/* A checkbox and not the `segmented` control above: those two are a choice between
+              two named states, this one is on or off. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={celebrations}
+              onChange={(e) => setCelebrations(e.target.checked)}
+              style={{ width: 16, height: 16 }}
+            />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>
+              {t('appearance.celebrationsEnable', lang)}
+            </span>
+          </label>
+          <p className="text-ink-muted" style={{ fontSize: 10, lineHeight: 1.6, marginTop: 'var(--space-3)' }}>
+            {t('appearance.celebrationsHint', lang)}
           </p>
         </div>
       </div>

@@ -1,130 +1,30 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../lib/gateway';
-import { isTask } from '../lib/taskScope.js';
+import { issueKey } from '../lib/taskScope.js';
 import { webSearch } from '../agent/tools/searchTools.js';
-import { ftsTerms, toFtsMatch, unsearchableTerms } from '../lib/fts.js';
+import { globalSearch } from '../lib/searchCore.js';
 
-// ═══ FTS5 Full-Text Search ═══
-// global_fts virtual table is created and maintained by ensureSearchIndexes() in
-// lib/ftsIndex.ts, which runs before the server listens.
-// Covers: Issue, KnowledgePage, SmartEmail, GitCommit, Report
-
-/**
- * LIKE fallback for queries the FTS index cannot serve: a term shorter than 3
- * characters (the trigram tokenizer indexes 3-character sequences, so 2-character
- * Chinese words like "迁移" are structurally unsearchable), or a MATCH that threw.
- *
- * Terms are OR'd one by one rather than searching for the raw string — "数据库 迁移"
- * is two words, not a substring.
- */
-async function fallbackSearch(q: string, limit: number) {
-  const terms = ftsTerms(q);
-  if (terms.length === 0) return [];
-  const results: Array<{ type: string; id: string; title: string; snippet: string; score: number }> = [];
-  const issues = await prisma.issue.findMany({
-    where: { OR: terms.flatMap((t) => [{ title: { contains: t } }, { description: { contains: t } }]) },
-    take: limit,
-  });
-  for (const i of issues)
-    results.push({
-      type: 'issue',
-      id: i.id,
-      title: `TL-${i.issueNumber}: ${i.title}`,
-      snippet: (i.description || '').substring(0, 150),
-      score: 50,
-    });
-  const pages = await prisma.knowledgePage.findMany({
-    where: { OR: terms.flatMap((t) => [{ title: { contains: t } }, { content: { contains: t } }]) },
-    take: limit,
-  });
-  for (const p of pages)
-    results.push({ type: 'note', id: p.id, title: p.title, snippet: (p.content || '').substring(0, 150), score: 40 });
-  return results.slice(0, limit);
-}
+// ═══ Search ═══
+//
+// `search.search` is a shell over lib/searchCore.ts, which owns the retrieval pipeline:
+// FTS5 keywords over global_fts plus an additive LIKE pass for terms shorter than 3
+// characters, cosine recall over the notes and reports that carry vectors, and RRF
+// fusion. The ranking rules live in lib/searchFusion.ts, which is pure, so they can be
+// asserted without a server — see scripts/test-search.mts.
+//
+// global_fts is created and maintained by ensureSearchIndexes() in lib/ftsIndex.ts,
+// which runs before the server listens. It covers seven source types; this endpoint
+// returns six, because `git` commits belong to the agent's search_local_data tool and
+// are not a kind the palette shows.
+//
+// There is no `knowledgeMap` here any more. It was the predecessor of `knowledge.map`
+// and had no callers; it was removed along with the old bespoke `fallbackSearch`.
 
 export const searchRouter = router({
-  knowledgeMap: publicProcedure.query(async () => {
-    // Mirrored emails and statuses with no place on the board are not tasks, so the
-    // count in the prompt matches the one the user sees. See lib/taskScope.ts.
-    const issues = (
-      await prisma.issue.findMany({
-        where: { projectId: 'proj-default' },
-        orderBy: { createdAt: 'desc' },
-      })
-    ).filter(isTask);
-    const pages = await prisma.knowledgePage.findMany({
-      where: { projectId: 'proj-default' },
-      orderBy: { updatedAt: 'desc' },
-    });
-    const recentDone = issues.filter((i) => i.status === 'done').slice(0, 10);
-    const context = {
-      project: { name: 'My Project', key: 'TL', totalIssues: issues.length },
-      issues: {
-        todo: issues.filter((i) => i.status === 'todo').length,
-        inProgress: issues.filter((i) => ['in_progress', 'in_review'].includes(i.status)).length,
-        done: issues.filter((i) => i.status === 'done').length,
-      },
-      recentDone: recentDone.map((i) => ({ key: `TL-${i.issueNumber}`, title: i.title })),
-      wiki: pages.slice(0, 5).map((p) => ({ title: p.title, category: p.category })),
-    };
-    const total = context.issues.todo + context.issues.inProgress + context.issues.done;
-    let summary = `${context.project.name}: ${context.issues.done}/${total} done. ${pages.length} wiki pages.`;
-    try {
-      const llm = await resolveLLM();
-      if (llm) {
-        const resp = await fetch(`${llm.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${llm.apiKey}` },
-          body: JSON.stringify({
-            model: llm.proModel || llm.flashModel,
-            max_tokens: 300,
-            messages: [{ role: 'user', content: `Write a 3-sentence project overview:\n${JSON.stringify(context)}` }],
-          }),
-          signal: AbortSignal.timeout(15000),
-        });
-        if (resp.ok) {
-          const d = await resp.json();
-          const c = d.choices?.[0]?.message?.content;
-          if (c) summary = c;
-        }
-      }
-    } catch {}
-    return { summary, stats: context.issues, recentDone: context.recentDone, wikiPages: context.wiki };
-  }),
-
   search: publicProcedure
     .input(z.object({ query: z.string(), limit: z.number().default(20) }))
-    .query(async ({ input }) => {
-      const q = input.query.trim();
-      if (!q) return [];
-
-      // FTS5 full-text search with BM25 rank-based relevance. Every term must be
-      // quoted by toFtsMatch: raw input can contain `-` (which fts5 parses as an
-      // operator) or a lone `"` (unterminated string), and both throw inside MATCH.
-      const match = toFtsMatch(q);
-      if (!match) return fallbackSearch(q, input.limit);
-      try {
-        const rows: any[] = await prisma.$queryRawUnsafe(
-          `SELECT type, title, body, ref_id, rank FROM global_fts WHERE global_fts MATCH ? ORDER BY rank LIMIT ?`,
-          match,
-          input.limit,
-        );
-        // An empty result does not necessarily mean "nothing there": a term shorter
-        // than 3 characters can never match the trigram index, so fall back to LIKE.
-        if (rows.length === 0 && unsearchableTerms(q).length > 0) return fallbackSearch(q, input.limit);
-        return rows.map((r: any) => ({
-          type: r.type,
-          id: r.ref_id,
-          title: r.title?.substring(0, 120) || '',
-          snippet: (r.body || '').substring(0, 150),
-          score: Math.max(1, 100 - Math.abs(r.rank || 0)),
-        }));
-      } catch (e: any) {
-        console.error('[Search] FTS5 failed:', e.message);
-        return fallbackSearch(q, input.limit);
-      }
-    }),
+    .query(({ input }) => globalSearch(input.query, input.limit)),
 
   // ═══ Web Search ═══
   //
@@ -173,7 +73,7 @@ export const searchRouter = router({
             return matchCount >= 2;
           })
           .map((i) => ({
-            key: `TL-${i.issueNumber}`,
+            key: issueKey(i),
             title: i.title,
             status: i.status,
             matchScore: Math.min(

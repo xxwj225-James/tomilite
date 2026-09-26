@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { marked } from 'marked';
 import { sanitizeHtml } from '@/lib/sanitize';
+import { issueKey } from '@/lib/issueKey';
+import { api } from '@/lib/api';
 
 // ═══ Tasks Editor View — task detail + edit form ═══
 
@@ -19,6 +22,8 @@ function statusBadge(status: string) {
 
 export function TasksEditor(p: Record<string, unknown>) {
   const lang = useLang();
+  const [detaching, setDetaching] = useState(false);
+  const mirrored = !!(p.selected as any)?.source;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--edge)', display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', background: 'linear-gradient(180deg, var(--surface), var(--surface2))' }}>
@@ -26,10 +31,15 @@ export function TasksEditor(p: Record<string, unknown>) {
           const dirty = !(p.selected as any)?.id && ((p.editTitle as string).trim() || (p.editDesc as string).trim());
           if (dirty) { (window as any).__tl_unsaved = 'tasks'; (p.setPendingBack as (v: boolean) => void)(true); (p.setTitleError as (v: boolean) => void)(false); } else { (window as any).__tl_unsaved = null; (p.setSelected as (v: null) => void)(null); (p.setEditing as (v: boolean) => void)(false); }
         }}>{tr(lang,'← 返回','← 戻る','← กลับ','← Hoki','← Назад','← Back')}</button>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{(p.selected as any)?.id ? `TL-${(p.selected as any).issueNumber}` : (tr(lang,'新任务','新規タスク','งานใหม่','Mahi Hou','Новая задача','New Task'))}</span>
-        {(p.selected as any)?.id && (p.selected as any)?.status !== 'done' && <button className="btn btn-brand btn-xs" onClick={() => { const next = !p.editing; (p.setEditing as (v: boolean) => void)(next); if (next) { const s = p.selected as any; const ot = p.onEditingTask as ((t: Record<string, unknown>) => void) | undefined; ot?.({ issueNumber: s.issueNumber, id: s.id, title: s.title, description: s.description || '', status: s.status, priority: s.priority, storyPoints: s.storyPoints || 0 }); } else { const ot = p.onEditingTask as ((t: null) => void) | undefined; ot?.(null); } }}>{p.editing ? (tr(lang,'取消','キャンセル','ยกเลิก','Whakakore','Отмена','Cancel')) : <span style={{display:'inline-flex',alignItems:'center',gap:2}}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{tr(lang,' 编辑',' 編集',' แก้ไข',' Whakatika',' Правка',' Edit')}</span>}</button>}
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{(p.selected as any)?.id ? issueKey(p.selected as any) : (tr(lang,'新任务','新規タスク','งานใหม่','Mahi Hou','Новая задача','New Task'))}</span>
+        {(p.selected as any)?.id && (p.selected as any)?.status !== 'done' && !(p.selected as any)?.source && <button className="btn btn-brand btn-xs" onClick={() => { const next = !p.editing; (p.setEditing as (v: boolean) => void)(next); if (next) { const s = p.selected as any; const ot = p.onEditingTask as ((t: Record<string, unknown>) => void) | undefined; ot?.({ issueNumber: s.issueNumber, id: s.id, title: s.title, description: s.description || '', status: s.status, priority: s.priority, storyPoints: s.storyPoints || 0 }); } else { const ot = p.onEditingTask as ((t: null) => void) | undefined; ot?.(null); } }}>{p.editing ? (tr(lang,'取消','キャンセル','ยกเลิก','Whakakore','Отмена','Cancel')) : <span style={{display:'inline-flex',alignItems:'center',gap:2}}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>{tr(lang,' 编辑',' 編集',' แก้ไข',' Whakatika',' Правка',' Edit')}</span>}</button>}
         {(!(p.selected as any)?.id || p.editing) && <button className="btn btn-brand btn-xs" onClick={p.handleSave as () => void} disabled={!!(p as any).saving || !(p.editTitle as string)?.trim()}>{(p as any).saving ? (tr(lang,'保存中...','保存中...','กำลังบันทึก...','Kei te Tiaki...','Сохранение...','Saving...')) : <span style={{display:'inline-flex',alignItems:'center',gap:3}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>{tr(lang,' 保存',' 保存',' บันทึก',' Tiaki',' Сохранить',' Save')}</span>}</button>}
-        {(p.selected as any)?.id && <button className="btn-ghost btn-xs" disabled={!!(p as any).deleting} style={{ color: (p as any).deleting ? 'var(--muted)' : 'var(--brand)' }} onClick={() => (p.handleDelete as (id: string) => void)((p.selected as any).id as string)}>{(p as any).deleting ? (tr(lang,'删除中...','削除中...','กำลังลบ...','Kei te Mukua...','Удаление...','Deleting...')) : (tr(lang,'删除','削除','ลบ','Mukua','Удалить','Delete'))}</button>}
+        {/* A mirrored row has no Edit and no Delete: the next sync would overwrite the one
+            and re-create the other. Detach is the way out, and it is offered here rather
+            than only in settings because this is where a user discovers the problem —
+            they clicked a ticket expecting to edit it. */}
+        {(p.selected as any)?.id && (p.selected as any)?.source && <button className="btn btn-secondary btn-xs" disabled={detaching} onClick={async () => { setDetaching(true); try { await api.issue.detach((p.selected as any).id as string); (p.setSelected as (v: null) => void)(null); await (p.refreshTasks as () => Promise<void>)?.(); } finally { setDetaching(false); } }}>{tr(lang,'解除关联','切り離す','แยกออก','Wetehia','Отвязать','Detach')}</button>}
+        {(p.selected as any)?.id && !(p.selected as any)?.source && <button className="btn-ghost btn-xs" disabled={!!(p as any).deleting} style={{ color: (p as any).deleting ? 'var(--muted)' : 'var(--brand)' }} onClick={() => (p.handleDelete as (id: string) => void)((p.selected as any).id as string)}>{(p as any).deleting ? (tr(lang,'删除中...','削除中...','กำลังลบ...','Kei te Mukua...','Удаление...','Deleting...')) : (tr(lang,'删除','削除','ลบ','Mukua','Удалить','Delete'))}</button>}
       </div>
       <div style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0, gap: 10 }}>
         {p.editing || !(p.selected as any)?.id ? (
@@ -76,6 +86,20 @@ export function TasksEditor(p: Record<string, unknown>) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Why there is no Edit button. A user who clicked a ticket expecting to change
+                it needs the reason, not just an absent control — and the reason is not
+                obvious: nothing about a mirrored row looks different from a local one. */}
+            {mirrored && (
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--edge)', borderRadius: 'var(--radius-md)', padding: '10px 12px', fontSize: 11, lineHeight: 1.7, color: 'var(--muted)' }}>
+                {tr(lang,
+                  '这个任务是从 Redmine 镜像来的，在这里只读 —— 本地修改会被下次同步覆盖。用上面的「解除关联」把它变成你自己的任务。',
+                  'このタスクは Redmine から取り込んだものです。ここでは読み取り専用で、ローカルでの変更は次回の同期で上書きされます。上の「切り離す」で自分のタスクにできます。',
+                  'งานนี้ถูกนำเข้าจาก Redmine จึงแก้ไขที่นี่ไม่ได้ — การแก้ไขจะถูกเขียนทับเมื่อซิงค์ครั้งถัดไป ใช้ "แยกออก" ด้านบนเพื่อทำให้เป็นงานของคุณเอง',
+                  'He mea tiki tēnei mahi nō Redmine, nō reira kāore e taea te whakatika i konei.',
+                  'Эта задача импортирована из Redmine и доступна только для чтения — правки будут перезаписаны при следующей синхронизации. Нажмите «Отвязать» выше, чтобы сделать её своей.',
+                  'This task is mirrored from Redmine and is read-only here — a local edit would be overwritten by the next sync. Use Detach above to make it your own.')}
+              </div>
+            )}
             <div style={{ background: 'var(--surface)', border: '1px solid var(--edge)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{(p.selected as any).title as string}</div>
               <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>

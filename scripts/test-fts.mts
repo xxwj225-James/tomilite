@@ -86,7 +86,7 @@ const ftsSql = () => {
 };
 const countTriggers = (like: string) =>
   one(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name LIKE '${like}\\_%' ESCAPE '\\'`);
-const SOURCE_TABLES = ['Issue', 'KnowledgePage', 'SmartEmail', 'GitCommit', 'Report'];
+const SOURCE_TABLES = ['Issue', 'KnowledgePage', 'SmartEmail', 'GitCommit', 'Report', 'ChatMessage', 'Meeting'];
 const sourceTotal = () => SOURCE_TABLES.reduce((n, t) => n + one(`SELECT count(*) FROM ${t}`), 0);
 
 /** A phrase that demonstrably exists in the corpus. Sections [2] and [4] use it to make
@@ -249,11 +249,11 @@ check('2-character Chinese is still unsearchable — documented limit, not a reg
 check('hostile query strings no longer throw', () => {
   for (const raw of ['"TL-181"', '"README"', '"a-b"', '"it\'s"']) console.log(`       MATCH ${raw} → ${ftsCount(raw)}`);
 });
-check('15 FTS triggers, 6 embed triggers, and the queue table', () => {
+check('21 FTS triggers, 6 embed triggers, and the queue table', () => {
   const fts = countTriggers('fts');
   const emb = countTriggers('embed');
   console.log(`       fts_*=${fts}  embed_*=${emb}`);
-  eq(fts, 15, 'fts triggers');
+  eq(fts, 21, 'fts triggers');
   eq(emb, 6, 'embed triggers');
   eq(one("SELECT count(*) FROM sqlite_master WHERE name='embed_queue'"), 1, 'embed_queue');
 });
@@ -319,6 +319,94 @@ check('the embed trigger queued it, and DELETE unqueues it', () => {
   eq(one('SELECT count(*) FROM embed_queue WHERE ref_id = ?', probeId), 0, 'queue rows after delete');
 });
 
+// ═══ 5b. The chat and meeting sources (INDEX_VERSION 3) ═══
+//
+// The two assertions that matter here are the ones that prove a trigger did NOT
+// fire. A missing column list on an UPDATE trigger is invisible in every other kind
+// of check — the index still ends up correct, it just gets rewritten on writes that
+// have nothing to do with the indexed text (a card being cancelled, a transcription
+// job reporting progress). Only a before/after comparison of the stored body catches it.
+console.log('\n[5b] chat and meeting sources');
+const chatProbeId = 'fts-verify-chat-probe';
+const meetingProbeId = 'fts-verify-meeting-probe';
+const chatSessionId = String(all('SELECT id FROM ChatSession LIMIT 1')[0]?.id ?? '');
+const indexedBody = (refId: string, type: string) =>
+  String(all('SELECT body FROM global_fts WHERE ref_id = ? AND type = ?', refId, type)[0]?.body ?? '');
+
+check('a chat message is indexed; a card-only UPDATE leaves the index alone', () => {
+  assert(chatSessionId !== '', 'no ChatSession in the snapshot to attach the probe to');
+  db.prepare('INSERT INTO ChatMessage(id,sessionId,role,text) VALUES(?,?,?,?)').run(
+    chatProbeId,
+    chatSessionId,
+    'user',
+    '聊天里讨论了 数据库迁移 方案',
+  );
+  assert(
+    one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND ref_id = ?', '"数据库迁移"', chatProbeId) >= 1,
+    'chat INSERT did not index',
+  );
+  const before = indexedBody(chatProbeId, 'chat');
+  // Five renderer call sites call updateMessage({card}) to cancel / delete / force-resolve
+  // a card. Without `AFTER UPDATE OF text` each of those re-tokenizes the whole message.
+  db.prepare('UPDATE ChatMessage SET card = ? WHERE id = ?').run('{"kind":"probe"}', chatProbeId);
+  eq(indexedBody(chatProbeId, 'chat'), before, 'a card-only UPDATE changed the indexed body');
+  db.prepare('UPDATE ChatMessage SET text = ? WHERE id = ?').run('聊天里改成了 向量检索 方案', chatProbeId);
+  assert(
+    one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND ref_id = ?', '"向量检索"', chatProbeId) >= 1,
+    'a text UPDATE did not re-index',
+  );
+});
+
+check('a meeting is indexed; a progress-only UPDATE leaves the index alone', () => {
+  db.prepare('INSERT INTO Meeting(id,title,transcript) VALUES(?,?,?)').run(
+    meetingProbeId,
+    '探针会议',
+    '会上讨论了 数据库迁移 方案',
+  );
+  assert(
+    one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND ref_id = ?', '"数据库迁移"', meetingProbeId) >= 1,
+    'meeting INSERT did not index',
+  );
+  const before = indexedBody(meetingProbeId, 'meeting');
+  // The transcription job writes transcribeProgress once per percent — ~100 writes per
+  // meeting, each of which would otherwise rewrite the entire transcript into the index.
+  db.prepare('UPDATE Meeting SET transcribeProgress = 50 WHERE id = ?').run(meetingProbeId);
+  eq(indexedBody(meetingProbeId, 'meeting'), before, 'a progress-only UPDATE changed the indexed body');
+  db.prepare('UPDATE Meeting SET minutes = ? WHERE id = ?').run('会议纪要：向量检索', meetingProbeId);
+  assert(
+    one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND ref_id = ?', '"向量检索"', meetingProbeId) >= 1,
+    'a minutes UPDATE did not re-index',
+  );
+});
+
+check('DELETE unindexes both new sources', () => {
+  db.prepare('DELETE FROM Meeting WHERE id = ?').run(meetingProbeId);
+  db.prepare('DELETE FROM ChatMessage WHERE id = ?').run(chatProbeId);
+  eq(one('SELECT count(*) FROM global_fts WHERE ref_id = ?', meetingProbeId), 0, 'meeting index rows after delete');
+  eq(one('SELECT count(*) FROM global_fts WHERE ref_id = ?', chatProbeId), 0, 'chat index rows after delete');
+});
+
+check('a 2-character Chinese word in a chat message is unreachable by MATCH, reachable by LIKE', () => {
+  // The same structural gap §4 pins for notes, now for the chat corpus. This is why the
+  // LIKE pass is not a nicety: "周会" and "迁移" have no other retrieval path. A probe is
+  // used rather than a word found in the snapshot, so a corpus without the word cannot
+  // make this pass for the wrong reason.
+  const probe = 'fts-verify-2char-probe';
+  const WORD = '周会';
+  db.prepare('INSERT INTO ChatMessage(id,sessionId,role,text) VALUES(?,?,?,?)').run(
+    probe,
+    chatSessionId,
+    'user',
+    `明天开${WORD}讨论迁移`,
+  );
+  const like = one('SELECT count(*) FROM ChatMessage WHERE text LIKE ? AND id = ?', `%${WORD}%`, probe);
+  const match = one('SELECT count(*) FROM global_fts WHERE global_fts MATCH ? AND ref_id = ?', `"${WORD}"`, probe);
+  console.log(`       LIKE '%${WORD}%' → ${like}, MATCH '"${WORD}"' → ${match}`);
+  eq(like, 1, 'the probe row is not findable by LIKE (the fallback path would not work either)');
+  eq(match, 0, 'a 2-char term unexpectedly matched the trigram index');
+  db.prepare('DELETE FROM ChatMessage WHERE id = ?').run(probe);
+});
+
 // ═══ 6. Idempotence and self-healing ═══
 console.log('\n[6] Idempotence and self-healing');
 const second: string = await ftsIndex.ensureSearchIndexes();
@@ -341,7 +429,7 @@ check('with the stamp restored, a further run is a no-op', () => eq(fourth, 'ok'
 // ═══ 7. Query helpers ═══
 console.log('\n[7] lib/fts query helpers');
 const { toFtsMatch, unsearchableTerms, ftsTerms } = ftsLib;
-check('INDEX_VERSION is 2', () => eq(ftsLib.INDEX_VERSION, 2));
+check('INDEX_VERSION is 3', () => eq(ftsLib.INDEX_VERSION, 3));
 check('quoting survives - and " in user input', () => {
   eq(toFtsMatch('id-1'), '"id-1"');
   eq(toFtsMatch('a"b'), '"a""b"');
@@ -453,7 +541,7 @@ if (!existsSync(prismaCli) || !existsSync(schemaPath)) {
   check('the refusal left every FTS object and trigger untouched', () => {
     eq(one("SELECT count(*) FROM sqlite_master WHERE name LIKE 'global_fts%'"), 6, 'global_fts + 5 shadow tables');
     eq(one("SELECT count(*) FROM sqlite_master WHERE name = 'embed_queue'"), 1, 'embed_queue');
-    eq(countTriggers('fts'), 15, 'fts triggers');
+    eq(countTriggers('fts'), 21, 'fts triggers');
     eq(countTriggers('embed'), 6, 'embed triggers');
     eq(one('SELECT count(*) FROM global_fts'), sourceTotal(), 'row count');
   });

@@ -85,12 +85,18 @@ export function useReportsState(
       const d = (e as any).detail;
       fetchReports();
       setTitle(d.title);
+      // The caller's type is a guess — a deep link from global search has no reportType at
+      // all, and the chat card's copy can be stale. Fetched first, guessed second, and the
+      // fetched one is re-applied below: without that second write a weekly report opened
+      // from a link sits in the editor labelled `daily`, and the next save writes `daily`
+      // back over the real row. That is silent data loss, not a mislabel.
       setReportType(d.reportType || 'daily');
       setCurrentReportId(d.id);
       api.report
         .byId(d.id)
         .then((r: any) => {
           if (r) {
+            setReportType(r.reportType || d.reportType || 'daily');
             setSelected({ id: d.id, title: d.title, content: r.content || '' });
             setContent(r.content || '');
             onEditingReport?.({ title: r.title, content: r.content || '', id: d.id });
@@ -141,9 +147,9 @@ export function useReportsState(
     skipFetchRef.current = false;
   }, [selected]);
   // Clear App.tsx editingReport when editor closes (returns to report list)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [selected] is the real trigger
   useEffect(() => {
     if (!selected) (onEditingReport as any)?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [selected] is the real trigger
   }, [selected]);
   // Re-check pending selection when panel becomes active (panel stays mounted via lazy-mount)
   useEffect(() => {
@@ -155,9 +161,9 @@ export function useReportsState(
     }
     fetchReports();
   }, [active]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [title, content, currentReportId] are the real triggers
   useEffect(() => {
     if (selected) onEditingReport?.({ title, content, id: currentReportId || undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onEditingReport recreated per render; [title, content, currentReportId] are the real triggers
   }, [title, content, currentReportId]);
   useEffect(() => {
     if (appliedReport) {
@@ -187,13 +193,13 @@ export function useReportsState(
     setReportType(e.target.value);
     if (reportReady) reportEditedRef.current = true;
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- selected identity changes on list refresh; selected?.id is the real trigger
   useEffect(() => {
     const dirty = selected && reportReady && reportEditedRef.current;
     (window as any).__tl_unsaved = dirty ? 'reports' : null;
     return () => {
       if ((window as any).__tl_unsaved === 'reports') (window as any).__tl_unsaved = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected identity changes on list refresh; selected?.id is the real trigger
   }, [title, content, reportType, reportReady, selected?.id]);
 
   // ─── Save ───

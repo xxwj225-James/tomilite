@@ -15,6 +15,9 @@ interface TaskEditPayload {
   status: string;
   priority: string;
   storyPoints?: number;
+  /** Present only on a row mirrored from an external tracker — see lib/issueKey.ts. */
+  source?: string | null;
+  sourceId?: string | null;
 }
 
 export function TasksPanel({ onEditingTask, appliedTaskEdit, taskRefresh, active }: {
@@ -36,7 +39,6 @@ export function TasksPanel({ onEditingTask, appliedTaskEdit, taskRefresh, active
         if (ok) { (window as unknown as Record<string, unknown>).__tl_unsaved = null; (s.setSelected as (v: null) => void)(null); (s.setEditing as (v: boolean) => void)(false); }
       }} onCancel={() => { (s.setPendingBack as (v: boolean) => void)(false); (window as unknown as Record<string, unknown>).__tl_unsaved = null; (s.setSelected as (v: null) => void)(null); (s.setEditing as (v: boolean) => void)(false); }} />
       <ConfirmDialog open={!!s.deleteTarget} title={tr(lang as string,'删除任务','タスク削除','ลบงาน','Mukua Mahi','Удалить задачу','Delete Task')} message={tr(lang as string,'删除此任务？此操作无法撤销。','このタスクを削除しますか？元に戻せません。','ลบงานนี้? ไม่สามารถยกเลิกได้','Mukua tēnei mahi? Kāore e taea te whakakore.','Удалить задачу? Это необратимо.','Delete this task? This action cannot be undone.')} lang={lang as string} confirmLabel={lang === 'zh' ? '删除' : lang === 'ja' ? '削除' : 'Delete'} cancelLabel={tr(lang as string,'取消','キャンセル','ยกเลิก','Whakakore','Отмена','Cancel')} onConfirm={s.executeDelete as () => void} onCancel={() => (s.setDeleteTarget as (v: null) => void)(null)} />
-      <ConfirmDialog open={s.batchDeleteOpen as boolean} title={tr(lang as string,'批量删除','一括削除','ลบเป็นชุด','Mukua Rōpū','Массовое удаление','Batch Delete')} message={lang === 'zh' ? `删除 ${(s.selectedIds as Set<string>).size} 个选中任务？此操作无法撤销。` : `Delete ${(s.selectedIds as Set<string>).size} selected task(s)? This action cannot be undone.`} lang={lang as string} confirmLabel={tr(lang as string,'删除','削除','ลบ','Mukua','Удалить','Delete')} cancelLabel={tr(lang as string,'取消','キャンセル','ยกเลิก','Whakakore','Отмена','Cancel')} onConfirm={s.executeBatchDelete as () => void} onCancel={() => (s.setBatchDeleteOpen as (v: boolean) => void)(false)} />
       <ConfirmDialog
         open={!!s.deletedNotify}
         variant="alert"

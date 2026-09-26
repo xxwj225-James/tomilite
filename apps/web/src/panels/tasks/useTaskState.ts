@@ -105,7 +105,6 @@ export function useTaskState(
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
 
   // ─── UI state ───
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const [pendingBack, setPendingBack] = useState(false);
@@ -114,7 +113,6 @@ export function useTaskState(
   const [deleting, setDeleting] = useState(false);
   const [deletedNotify, setDeletedNotify] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   // const showDragHint = false;
 
   // ─── Dirty tracking ───
@@ -215,6 +213,8 @@ export function useTaskState(
         description: selected.description || '',
         status: selected.status || 'todo',
         priority: selected.priority || 'medium',
+        source: (selected as { source?: string | null }).source ?? null,
+        sourceId: (selected as { sourceId?: string | null }).sourceId ?? null,
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- [active] only; sync effect at line 157 covers field changes
   }, [active]);
@@ -224,7 +224,13 @@ export function useTaskState(
     const h = (e: Event) => {
       const d = (e as any).detail;
       const num = d.key ? parseInt(d.key.replace('TL-', '')) : 0;
-      if (!num) {
+      // Guard on the id, not the display key. The key is a formatting detail of the
+      // payload, while the id is the thing being selected — a caller that knows only an
+      // id (a global-search hit, or the meeting panel's `__tl_pendingTaskSelect`) is
+      // still a legitimate selection, and requiring it to invent a "TL-…" string would
+      // make the event silently no-op. Everything downstream already prefers the fetched
+      // row's own `issueNumber` over `num`.
+      if (!d.id) {
         refreshTasks();
         return;
       }
@@ -259,6 +265,12 @@ export function useTaskState(
           status: f.status || d.status || 'todo',
           priority: f.priority || d.priority || 'medium',
           editing: editFlag,
+          // Fetched row first, event payload second. A deep link from global search only
+          // knows an id, and a mirrored row rendered from the payload alone would look like
+          // an ordinary local task — losing the "unlink from source" affordance, which is
+          // the only way back out of the read-only rule.
+          source: (f as { source?: string | null }).source ?? (d as { source?: string | null }).source ?? null,
+          sourceId: (f as { sourceId?: string | null }).sourceId ?? (d as { sourceId?: string | null }).sourceId ?? null,
         });
       };
       if (d.id) {
@@ -481,14 +493,6 @@ export function useTaskState(
     setSelected(null);
     refreshTasks();
   };
-  const executeBatchDelete = async () => {
-    for (const id of selectedIds) {
-      await api.issue.delete(id).catch(() => {});
-    }
-    setSelectedIds(new Set());
-    setBatchDeleteOpen(false);
-    refreshTasks();
-  };
 
   // ─── Sort/Filter helpers ───
   const toggleColumn = (field: string) => {
@@ -566,8 +570,6 @@ export function useTaskState(
     setCollapsedTypes,
     expandedCardId,
     setExpandedCardId,
-    selectedIds,
-    setSelectedIds,
     deleteTarget,
     setDeleteTarget,
     deleting,
@@ -578,8 +580,6 @@ export function useTaskState(
     setPendingBack,
     titleError,
     setTitleError,
-    batchDeleteOpen,
-    setBatchDeleteOpen,
     deletedNotify,
     setDeletedNotify,
     taskReady,
@@ -597,7 +597,6 @@ export function useTaskState(
     handleSaveWithResult,
     handleDelete,
     executeDelete,
-    executeBatchDelete,
     toggleColumn,
     visibleColDefs,
     toggleSort,

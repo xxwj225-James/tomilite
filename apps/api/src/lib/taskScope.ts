@@ -50,3 +50,39 @@ export const TASK_WHERE = {
   type: { not: 'email' },
   status: { in: [...TASK_STATUSES] },
 };
+
+// ═══ Where a task came from — a second, separate question ═══
+//
+// `isTask` answers "is this a task". This answers "may this app write to it", and the
+// two are deliberately not folded together: a mirrored Redmine issue IS a task and is
+// counted by every counter above (nothing here excludes it), but it is a copy of a
+// row someone else owns, so the next sync overwrites any local edit. Every counter
+// that means "the user's work" therefore counts it — that is the intended behaviour,
+// not an oversight — while every *writer* has to refuse it.
+//
+// `source` is NULL for every row this app writes. That is not a convention invented
+// here: it is what the v26 migration left on every existing row, and what the hourly
+// archiver's `source: null` predicate depends on.
+
+/** A row mirrored from an external system. Read-only locally. */
+export function isImported(issue: { source?: string | null }): boolean {
+  return !!issue.source;
+}
+
+/**
+ * The number a person reads. A mirrored row shows its own tracker's number (`#1234`),
+ * because that is the number its commits, its emails and its colleagues use — showing
+ * `TL-437` for Redmine #1234 would leave the real number only in the body's
+ * provenance line. Local rows keep `TL-n`.
+ *
+ * Deliberately NOT solved by setting `issueNumber` to the tracker's id: `issueNumber`
+ * has no unique constraint, three code paths already treat `(projectId, issueNumber)`
+ * as an identity, and the local `max + 1` sequence would eventually reach an imported
+ * id — from which point two rows share a number and `findFirst` picks arbitrarily.
+ *
+ * Duplicated in apps/web/src/lib/issueKey.ts; the web bundle cannot import from here.
+ * Same arrangement as lib/dbTime.ts.
+ */
+export function issueKey(i: { issueNumber: number; source?: string | null; sourceId?: string | null }): string {
+  return i.source === 'redmine' && i.sourceId ? '#' + i.sourceId : 'TL-' + i.issueNumber;
+}

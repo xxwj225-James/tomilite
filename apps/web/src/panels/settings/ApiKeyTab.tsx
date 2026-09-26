@@ -1,17 +1,55 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useLang } from '@/stores/useLang';
+import { t } from '@/lib/i18n';
 import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
 import { formatDbDate } from '@/lib/dbTime';
 
+/**
+ * The MCP setup instructions. What this tab used to show could not work:
+ *
+ *   "type": "http" with a "body": { "api_key": … } field
+ *
+ * `body` is not a field of the StreamableHTTP transport — no client reads it — and the
+ * URL pointed at `/api/mcp.execute`, a tRPC mutation that answers a plain JSON POST and
+ * knows nothing of `initialize`. It also told users to create `.claude/mcp.json`, which
+ * Claude Code never reads (the file is `.mcp.json`, in the project root). Anyone who
+ * followed it got a client that would not connect and no idea why.
+ *
+ * Both paths below are DETECTED by the API (`mcp.transportInfo`) rather than written
+ * down here, because the installer lets the user choose its own directory.
+ */
+interface TransportInfo {
+  apiPort: string;
+  appVersion: string;
+  exePath: string | null;
+  shimPath: string;
+  shimBuilt: boolean;
+  ready: boolean;
+}
+
+const PRE_STYLE: React.CSSProperties = {
+  background: 'var(--bg)',
+  padding: '6px 10px',
+  borderRadius: 4,
+  fontSize: 9,
+  marginTop: 2,
+  overflow: 'auto',
+  color: 'var(--muted)',
+  userSelect: 'text',
+  whiteSpace: 'pre',
+};
+
 export function ApiKeyTab() {
   const lang = useLang();
-  const t = (zh: string, ja: string, en: string) => (lang === 'zh' ? zh : lang === 'ja' ? ja : en);
   const [keys, setKeys] = useState<any[]>([]);
   const [newName, setNewName] = useState('');
   const [hitlMode, setHitlMode] = useState('manual');
   const [genResult, setGenResult] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
+  const [info, setInfo] = useState<TransportInfo | null>(null);
+  const [toolCount, setToolCount] = useState(0);
+
   const fetchKeys = () => {
     fetch('/api/apikey.list')
       .then((r) => r.json())
@@ -20,6 +58,16 @@ export function ApiKeyTab() {
   };
   useEffect(() => {
     fetchKeys();
+    fetch('/api/mcp.transportInfo')
+      .then((r) => r.json())
+      .then((d) => setInfo(d.result?.data || null))
+      .catch(() => {});
+    // Read the count from the catalogue rather than restating it here: a number written
+    // into a sentence is a number that goes stale.
+    fetch('/api/mcp.listTools')
+      .then((r) => r.json())
+      .then((d) => setToolCount((d.result?.data?.tools || []).length))
+      .catch(() => {});
   }, []);
 
   const generate = async () => {
@@ -45,163 +93,125 @@ export function ApiKeyTab() {
       })
       .catch((e: any) => {
         console.error('[revoke]', e);
-        alert(
-          t(
-            '撤销失败: ' + (e?.message || ''),
-            '失効失敗: ' + (e?.message || ''),
-            'Revoke failed: ' + (e?.message || ''),
-          ),
-        );
+        alert(t('apikey.revokeFailed', lang, { msg: e?.message || '' }));
         setRevokeTarget(null);
       });
   };
 
+  // Built with JSON.stringify so Windows backslashes are escaped correctly — hand-written
+  // snippets here are how the last ones ended up wrong.
+  //
+  // `API_PORT` is spelled out because the shim's own default (3192, the packaged app's
+  // port) is not the API's default (3091) — a developer running the API directly would
+  // otherwise get "the app does not appear to be running" from a shim aimed at the wrong
+  // port while the app is running fine. In the packaged app the two agree and this is
+  // simply redundant.
+  const stdioConfig = JSON.stringify(
+    {
+      mcpServers: {
+        tomilite: {
+          command: info?.exePath || '<…>\\TomiLite.exe',
+          args: [info?.shimPath || '<…>\\resources\\app\\apps\\api\\dist\\mcp-stdio.cjs'],
+          env: {
+            ELECTRON_RUN_AS_NODE: '1',
+            TL_MCP_API_KEY: 'tl_xxxxxxxxxxxx',
+            ...(info?.apiPort ? { API_PORT: info.apiPort } : {}),
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const httpConfig = JSON.stringify(
+    {
+      mcpServers: {
+        tomilite: {
+          type: 'http',
+          url: `http://127.0.0.1:${window.location.port || info?.apiPort || '3192'}/api/mcp`,
+          headers: { 'X-Api-Key': 'tl_xxxxxxxxxxxx' },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
   return (
     <div>
       <div className="card">
-        <div className="card-hd">{t('生成 API 密钥', 'APIキーを生成', 'Generate API Key')}</div>
+        <div className="card-hd">{t('apikey.generateTitle', lang)}</div>
         <div className="card-bd">
           <div className="form-grp">
-            <label className="form-label">{t('密钥名称', 'キー名', 'Key Name')}</label>
+            <label className="form-label">{t('apikey.nameLabel', lang)}</label>
             <input
               className="form-input"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder={t('例如: cursor-mcp', '例: cursor-mcp', 'e.g. cursor-mcp')}
+              placeholder={t('apikey.namePlaceholder', lang)}
             />
           </div>
           <div className="form-grp">
-            <label className="form-label">HITL {t('模式', 'モード', 'Mode')}</label>
+            <label className="form-label">{t('apikey.hitlLabel', lang)}</label>
             <select className="form-select" value={hitlMode} onChange={(e) => setHitlMode(e.target.value)}>
-              <option value="manual">
-                {t(
-                  '手动（读取以外需确认）',
-                  '手動（読み取り以外は確認が必要）',
-                  'Manual (all writes require confirmation)',
-                )}
-              </option>
-              <option value="auto">
-                {t('自动（自动批准所有操作）', '自動（すべての操作を自動承認）', 'Auto (auto-approve all operations)')}
-              </option>
+              <option value="manual">{t('apikey.hitlManual', lang)}</option>
+              <option value="auto">{t('apikey.hitlAuto', lang)}</option>
             </select>
           </div>
           <button className="btn btn-brand btn-sm" onClick={generate} disabled={!newName.trim()}>
-            {t('生成密钥', 'APIキーを生成', 'Generate Key')}
+            {t('apikey.generate', lang)}
           </button>
-          <div className="text-xs text-ink-muted mt-3" style={{ lineHeight: 1.6 }}>
-            <p style={{ fontWeight: 600, marginBottom: 4 }}>{t('使用方法', '使用方法', 'Usage')}</p>
-            <p className="mt-1">
-              <strong>{t('Claude Code 配置', 'Claude Code セットアップ', 'Claude Code Setup')}</strong>
-            </p>
-            <p>
-              {t(
-                '将以下内容添加到项目根目录的 .claude/mcp.json：',
-                '以下をプロジェクトルートの .claude/mcp.json に追加してください：',
-                'Add this to .claude/mcp.json in your project root:',
-              )}
-            </p>
-            <pre
-              style={{
-                background: 'var(--bg)',
-                padding: '6px 10px',
-                borderRadius: 4,
-                fontSize: 9,
-                marginTop: 2,
-                overflow: 'auto',
-                color: 'var(--muted)',
-              }}
-            >{`{
-  "mcpServers": {
-    "tomiLite": {
-      "type": "http",
-      "url": "http://localhost:${window.location.port || '3192'}/api/mcp.execute",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "api_key": "tl_xxxxxxxxxxxx"
-      }
-    }
-  }
-}`}</pre>
-            <p className="mt-1">
-              {t(
-                '将 tl_xxxxxxxxxxxx 替换为下方生成的完整密钥。api_key 字段为必填。',
-                'tl_xxxxxxxxxxxx を生成されたキーに置き換えてください。api_key フィールドは必須です。',
-                'Replace tl_xxxxxxxxxxxx with the full key generated below. The api_key field is required.',
-              )}
-            </p>
-            <p className="mt-1">
-              <strong>{t('请求格式', 'リクエスト形式', 'Request Format')}</strong>
-            </p>
-            <pre
-              style={{
-                background: 'var(--bg)',
-                padding: '6px 10px',
-                borderRadius: 4,
-                fontSize: 9,
-                marginTop: 2,
-                overflow: 'auto',
-                color: 'var(--muted)',
-              }}
-            >{`POST http://localhost:${window.location.port || '3192'}/api/mcp.execute
-Content-Type: application/json
 
-{
-  "tool": "create_note",
-  "arguments": { "title": "...", "content": "..." },
-  "api_key": "tl_xxxxxxxxxxxx"
-}`}</pre>
+          <div className="text-xs text-ink-muted mt-3" style={{ lineHeight: 1.6 }}>
+            <p style={{ fontWeight: 600, marginBottom: 4 }}>{t('apikey.usageTitle', lang)}</p>
+
+            {info && !info.ready && (
+              <p style={{ color: 'var(--red)' }}>{t('apikey.devWarning', lang)}</p>
+            )}
+
             <p className="mt-1">
-              {t(
-                'tool 支持: create_note, update_note, create_issue, update_issue, list_issues, create_report, update_report, delete_issue, search_notes, get_project_stats, get_focus_status。使用 tools/list 查看完整列表。',
-                '対応ツール: create_note, update_note, create_issue, update_issue, list_issues, create_report, update_report, delete_issue, search_notes, get_project_stats, get_focus_status。tools/list で全リストを確認。',
-                'Supported tools: create_note, update_note, create_issue, update_issue, list_issues, create_report, update_report, delete_issue, search_notes, get_project_stats, get_focus_status. Use tools/list for the full list.',
-              )}
+              <strong>{t('apikey.stdioTitle', lang)}</strong>
             </p>
+            <p>{t('apikey.stdioLead', lang)}</p>
+            <pre style={PRE_STYLE}>{stdioConfig}</pre>
+            <p className="mt-1">{t('apikey.keyNote', lang)}</p>
+
             <p className="mt-1">
-              <strong>HITL {t('模式', 'モード', 'Mode')}</strong>
+              <strong>{t('apikey.httpTitle', lang)}</strong>
             </p>
-            <p>
-              {t(
-                '• <strong>手动</strong> — 写操作需在本应用 MCP审批 面板中人工批准',
-                '• <strong>手動</strong> — 書き込み操作は MCP承認 パネルで手動承認が必要',
-                '• <strong>Manual</strong> — writes require human approval in the MCP Approve panel',
-              )}
-            </p>
-            <p>
-              {t(
-                '• <strong>自动</strong> — 所有操作自动执行（适用于受信任的本地工具）',
-                '• <strong>自動</strong> — すべての操作を自動実行（信頼されたローカルツール向け）',
-                '• <strong>Auto</strong> — all operations auto-executed (for trusted local tools)',
-              )}
-            </p>
-            <p className="mt-1">
-              {t(
-                '密钥存储前经 SHA-256 哈希处理，原始密钥仅显示一次。',
-                'キーは保存前に SHA-256 でハッシュ化されます。生のキーは一度だけ表示されます。',
-                'Keys are SHA-256 hashed before storage. Raw key shown only once.',
-              )}
-            </p>
+            <p>{t('apikey.httpLead', lang)}</p>
+            <pre style={PRE_STYLE}>{httpConfig}</pre>
+
+            {/* Hidden until the count arrives: the sentence reads "All 0 tools are
+                available" while the fetch is in flight, which is worse than silence. */}
+            {toolCount > 0 && (
+              <>
+                <p className="mt-1">
+                  <strong>{t('apikey.toolsTitle', lang)}</strong>
+                </p>
+                <p>{t('apikey.toolsLead', lang, { count: toolCount })}</p>
+              </>
+            )}
+
+            <p className="mt-1">{t('apikey.hitlNote', lang)}</p>
+            <p className="mt-1">{t('apikey.hashNote', lang)}</p>
           </div>
+
           {genResult && (
             <div
               className="mt-3"
               style={{
-                background: 'rgba(34,197,94,0.1)',
-                border: '1px solid rgba(34,197,94,0.3)',
+                background: 'var(--bg)',
+                border: '1px solid var(--brand)',
                 borderRadius: 8,
                 padding: 12,
               }}
             >
-              <div className="text-xs text-green mb-1">
-                {t(
-                  '✅ 密钥已生成 — 立即复制，不会再次显示：',
-                  '✅ キーが生成されました — 今すぐコピーしてください。再表示されません：',
-                  "✅ Key generated — copy now, won't be shown again:",
-                )}
+              <div className="text-xs mb-1" style={{ color: 'var(--brand)' }}>
+                {t('apikey.generated', lang)}
               </div>
-              <code className="text-sm text-ink-primary" style={{ wordBreak: 'break-all' }}>
+              <code className="text-sm text-ink-primary" style={{ wordBreak: 'break-all', userSelect: 'text' }}>
                 {genResult}
               </code>
             </div>
@@ -211,7 +221,7 @@ Content-Type: application/json
 
       <div className="card">
         <div className="card-hd">
-          {t('API 密钥', 'APIキー', 'API Keys')} <span className="text-ink-muted">{keys.length}</span>
+          {t('apikey.listTitle', lang)} <span className="text-ink-muted">{keys.length}</span>
         </div>
         <div>
           {keys.map((k: any) => (
@@ -219,7 +229,7 @@ Content-Type: application/json
               <div>
                 <div style={{ fontSize: 12, fontWeight: 500 }}>{k.name}</div>
                 <div className="text-ink-muted">
-                  {k.scopes} · {k.hitlMode} · used {k.useCount}x
+                  {k.scopes} · {k.hitlMode} · {t('apikey.usedTimes', lang, { count: k.useCount ?? 0 })}
                 </div>
                 {/* Two clocks on one line, on purpose. `createdAt` is born from the
                     column default (`datetime('now','localtime')`) and is read raw.
@@ -227,7 +237,8 @@ Content-Type: application/json
                     10 chars would print the UTC date — a day early for anyone west of
                     Greenwich. `formatDbDate` renders it in the viewer's zone. */}
                 <div className="text-ink-muted" style={{ fontSize: 9 }}>
-                  Created {k.createdAt?.substring(0, 10)} · Expires {formatDbDate(k.expiresAt)}
+                  {t('apikey.created', lang)} {k.createdAt?.substring(0, 10)} · {t('apikey.expires', lang)}{' '}
+                  {formatDbDate(k.expiresAt)}
                 </div>
               </div>
               <button
@@ -235,13 +246,13 @@ Content-Type: application/json
                 style={{ color: 'var(--brand)' }}
                 onClick={() => setRevokeTarget(k.id)}
               >
-                {t('撤销', '失効', 'Revoke')}
+                {t('apikey.revoke', lang)}
               </button>
             </div>
           ))}
           {keys.length === 0 && (
             <div className="text-ink-muted text-sm" style={{ padding: 12, textAlign: 'center' }}>
-              {t('暂无 API 密钥。', 'APIキーはまだありません。', 'No API keys yet.')}
+              {t('apikey.empty', lang)}
             </div>
           )}
         </div>
@@ -249,15 +260,11 @@ Content-Type: application/json
 
       <ConfirmDialog
         open={!!revokeTarget}
-        title={t('撤销 API 密钥', 'APIキーを失効', 'Revoke API Key')}
-        message={t(
-          '撤销后该密钥将立即失效，使用该密钥的 MCP 客户端将无法连接。确定要撤销吗？',
-          'このキーは直ちに失効し、このキーを使用する MCP クライアントは接続できなくなります。よろしいですか？',
-          'This key will be revoked immediately. MCP clients using this key will be unable to connect. Are you sure?',
-        )}
+        title={t('apikey.revokeTitle', lang)}
+        message={t('apikey.revokeMessage', lang)}
         lang={lang}
-        confirmLabel={t('撤销', '失効', 'Revoke')}
-        cancelLabel={t('取消', 'キャンセル', 'Cancel')}
+        confirmLabel={t('apikey.revoke', lang)}
+        cancelLabel={t('apikey.cancel', lang)}
         onConfirm={doRevoke}
         onCancel={() => setRevokeTarget(null)}
       />

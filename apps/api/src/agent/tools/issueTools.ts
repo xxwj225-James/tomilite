@@ -1,6 +1,6 @@
 import { prisma } from '@tomilite/database';
 import { utcStamp } from '../../lib/dbTime.js';
-import { TASK_STATUSES, TASK_WHERE } from '../../lib/taskScope.js';
+import { TASK_STATUSES, TASK_WHERE, isImported, issueKey } from '../../lib/taskScope.js';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
 /**
@@ -41,7 +41,7 @@ export async function listIssues(
     orderBy: { issueNumber: 'desc' },
     take: args.limit || 10,
   });
-  return issues.map((i) => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority }));
+  return issues.map((i) => ({ key: issueKey(i), title: i.title, status: i.status, priority: i.priority }));
 }
 
 /** Create a task/bug/story. Handles both create_issue (goes through dedup) and force_create_issue (skips dedup). */
@@ -80,7 +80,7 @@ export async function createIssue(
   });
   return {
     id: issue.id,
-    key: `TL-${issue.issueNumber}`,
+    key: issueKey(issue),
     title: issue.title,
     type: issue.type,
     priority: issue.priority,
@@ -97,7 +97,7 @@ export async function getIssue(args: Record<string, any>): Promise<any> {
     });
     if (!issue) return { error: `Issue TL-${args.issueNumber} not found` };
     return {
-      key: `TL-${issue.issueNumber}`,
+      key: issueKey(issue),
       title: issue.title,
       status: issue.status,
       priority: issue.priority,
@@ -116,7 +116,7 @@ export async function getIssue(args: Record<string, any>): Promise<any> {
       take: args.limit || 5,
     });
     return issues.map((i) => ({
-      key: `TL-${i.issueNumber}`,
+      key: issueKey(i),
       title: i.title,
       status: i.status,
       priority: i.priority,
@@ -135,6 +135,10 @@ export async function updateIssue(
     where: { projectId: DEFAULT_PROJECT_ID, issueNumber: args.issueNumber },
   });
   if (!issue) return { error: `Issue TL-${args.issueNumber} not found` };
+  // A mirrored row belongs to another tracker; an edit here is undone by the next
+  // sync. Returned as data rather than thrown, like every other failure on this
+  // surface — the agent reads it and can say so instead of the call looking broken.
+  if (isImported(issue)) return { error: `${issueKey(issue)} is mirrored from Redmine and is read-only here` };
   const data: any = {};
   if (args.title) data.title = args.title;
   if (args.status) data.status = args.status;
@@ -151,7 +155,7 @@ export async function updateIssue(
   }
   data.updatedAt = utcStamp();
   await prisma.issue.update({ where: { id: issue.id }, data });
-  return { key: `TL-${issue.issueNumber}`, updated: true };
+  return { key: issueKey(issue), updated: true };
 }
 
 /** Fill the task editor form. Does NOT save to DB. */

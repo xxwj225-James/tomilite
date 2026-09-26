@@ -3,7 +3,7 @@ import { prisma } from '@tomilite/database';
 import { onConsentChanged } from '../lib/telemetry.js';
 import { homedir } from 'node:os';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
-import { EMBED_DIMS, embedModelId, embedModelStatus, isModelInstalled } from '../lib/embed/index.js';
+import { EMBED_DIMS, embedModelId, embedModelStatus, isModelInstalled, resetEmbedStatus } from '../lib/embed/index.js';
 import { enqueueAllStale, embedBootSweep } from '../lib/embed/queue.js';
 
 const CURRENT_VERSION = '1.0.0';
@@ -260,6 +260,11 @@ Just the sentence. Nothing else.`,
    * and a tRPC call that blocks for minutes reads as a hang. It reports what it queued.
    */
   reembed: publicProcedure.mutation(async () => {
+    // Without this the button is a no-op for the one case the user is most likely to be
+    // pressing it in. A cached load failure makes `embedModelStatus()` report `failed`,
+    // which is not `absent`, so the sweep below skips its download branch and the drain
+    // refuses to run — leaving nothing for the retry to do but return `ok: true`.
+    resetEmbedStatus();
     await prisma.systemConfig.deleteMany({ where: { key: 'embed.backfillVersion' } });
     const queued = await enqueueAllStale(true);
     embedBootSweep().catch(() => {});

@@ -5,6 +5,7 @@ import { useLang } from '@/stores/LangContext';
 import { dispatchUICommand, useUICommandStore } from '@/stores/uiCommandStore';
 import type { ChatCard } from '@/types/chat';
 import type { ChatHook } from './useChatThreads';
+import { issueKey } from '@/lib/issueKey';
 
 // Pre-flight: instant panel navigation for explicit OPEN commands only.
 // Does NOT open panel for create commands — agent handles creation, C Plan cards show results.
@@ -66,6 +67,8 @@ export function useSendMessage({
     priority: string;
     storyPoints?: number;
     editing?: boolean;
+    source?: string | null;
+    sourceId?: string | null;
   } | null;
   editingReportRef: RefObject<{ title: string; content: string; id?: string } | null>;
   panel: string | null;
@@ -586,7 +589,10 @@ export function useSendMessage({
         contextMsg = `[Note editor OPEN: "${noteSnapshot.title || '(untitled)'}"${noteSnapshot.id ? '' : ' (unsaved)'}]\nContent:\n\`\`\`\n${noteSnapshot.content || '(empty)'}\n\`\`\`\n\n`;
       } else if (taskSnapshot?.issueNumber && taskSnapshot.editing) {
         // Existing task being actively EDITED — agent can use suggest_issue_edit
-        contextMsg = `[Task editor OPEN: TL-${taskSnapshot.issueNumber} "${taskSnapshot.title}"]\nStatus: ${taskSnapshot.status} | Priority: ${taskSnapshot.priority}${taskSnapshot.storyPoints ? ` | SP: ${taskSnapshot.storyPoints}` : ''}\nDescription: ${taskSnapshot.description || '(none)'}\n\n`;
+        // `{ ...taskSnapshot, issueNumber: … }` rather than `taskSnapshot`: the guard above
+        // proves the number exists but TypeScript cannot pass that proof through as an
+        // argument. See the note on `issueKey`'s signature.
+        contextMsg = `[Task editor OPEN: ${issueKey({ ...taskSnapshot, issueNumber: taskSnapshot.issueNumber })} "${taskSnapshot.title}"]\nStatus: ${taskSnapshot.status} | Priority: ${taskSnapshot.priority}${taskSnapshot.storyPoints ? ` | SP: ${taskSnapshot.storyPoints}` : ''}\nDescription: ${taskSnapshot.description || '(none)'}\n\n`;
       } else if (taskSnapshot?.issueNumber) {
         // Task is being VIEWED only (not editing) — treat as list view for agent context
         contextMsg = `[Tasks panel OPEN]\n`;
@@ -610,23 +616,28 @@ export function useSendMessage({
       const intentHints: string[] = [];
       const ql = q.toLowerCase();
       if (taskSnapshot?.issueNumber) {
+        // Rebuilt once with the number as a required property. The guard proves it exists,
+        // but TypeScript will not pass that proof into `issueKey`, whose parameter requires
+        // it — see the note on that signature. One rebuild here rather than three spreads
+        // inline, so the reason is stated once.
+        const task = { ...taskSnapshot, issueNumber: taskSnapshot.issueNumber };
         if (
           /^(close|complete|finish|done|关闭|完成|结束|关掉)(\s|$|任务|这个|它)/.test(ql) ||
           /\b(status|状态).*(done|完成)/.test(ql)
         ) {
           intentHints.push(
-            `User wants to CLOSE TL-${taskSnapshot.issueNumber}. Call update_issue with issueNumber=${taskSnapshot.issueNumber} status=done.`,
+            `User wants to CLOSE ${issueKey(task)}. Call update_issue with issueNumber=${task.issueNumber} status=done.`,
           );
         } else if (/(move|start|begin|开始|做|进行|in.progress|in_progress)/.test(ql) && !/done/i.test(ql)) {
           intentHints.push(
-            `User wants to MOVE TL-${taskSnapshot.issueNumber} to in_progress. Call update_issue with issueNumber=${taskSnapshot.issueNumber} status=in_progress.`,
+            `User wants to MOVE ${issueKey(task)} to in_progress. Call update_issue with issueNumber=${task.issueNumber} status=in_progress.`,
           );
         } else if (/set.*priority.*(high|low|critical|medium)/i.test(ql) || /(高|低|严重|中等).*优先/i.test(ql)) {
           const pm = ql.match(/priority.*(high|low|critical|medium)|(高|低|严重|中等).*优先/i);
           const p =
             pm?.[1] ||
             (pm?.[2] === '高' ? 'high' : pm?.[2] === '低' ? 'low' : pm?.[2] === '严重' ? 'critical' : 'medium');
-          intentHints.push(`User wants to change TL-${taskSnapshot.issueNumber} priority to ${p}. Call update_issue.`);
+          intentHints.push(`User wants to change ${issueKey(task)} priority to ${p}. Call update_issue.`);
         }
       }
       if (intentHints.length > 0) {

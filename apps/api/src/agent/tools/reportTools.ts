@@ -4,6 +4,7 @@ import { semanticRank } from '../utils/search.js';
 import { agentLog } from '../utils/logger.js';
 import { toFtsMatch } from '../../lib/fts.js';
 import { utcStamp } from '../../lib/dbTime.js';
+import { issueKey } from '../../lib/taskScope.js';
 
 /** List or search reports by title/content. Uses term-split OR search + FTS fallback. */
 export async function listReports(
@@ -249,7 +250,7 @@ export async function exportToExcel(args: Record<string, any>): Promise<any> {
         take: 200,
       });
       rows = issues.map((i) => ({
-        key: 'TL-' + i.issueNumber,
+        key: issueKey(i),
         title: i.title,
         type: i.type,
         status: i.status,
@@ -434,7 +435,7 @@ export async function exportToDoc(args: Record<string, any>): Promise<any> {
       content = issues
         .map(
           (i) =>
-            `## TL-${i.issueNumber} ${i.title}\nType: ${i.type} | Status: ${i.status} | Priority: ${i.priority}\n${i.description || ''}`,
+            `## ${issueKey(i)} ${i.title}\nType: ${i.type} | Status: ${i.status} | Priority: ${i.priority}\n${i.description || ''}`,
         )
         .join('\n\n');
       fname = (args.filename || 'tasks') + '.docx';
@@ -855,7 +856,7 @@ export async function exportToPptx(args: Record<string, any>): Promise<any> {
       content = issues
         .map(
           (i) =>
-            `## TL-${i.issueNumber} ${i.title}\n- Type: ${i.type} · Status: ${i.status} · Priority: ${i.priority}\n${i.description || ''}`,
+            `## ${issueKey(i)} ${i.title}\n- Type: ${i.type} · Status: ${i.status} · Priority: ${i.priority}\n${i.description || ''}`,
         )
         .join('\n\n');
       fname = (args.filename || 'tasks') + '.pptx';

@@ -10,6 +10,7 @@ import { McpServerTab } from './McpServerTab';
 import { MeetingTab } from './MeetingTab';
 import { AppearanceTab } from './AppearanceTab';
 
+// `appearance` is deliberately last — it is the settings-about-settings tab.
 const ALL_TABS = ['llm', 'apikey', 'email', 'git', 'standup', 'meeting', 'mcpServers', 'appearance'] as const;
 type TabKey = (typeof ALL_TABS)[number];
 
@@ -45,6 +46,10 @@ export function SettingsPanel() {
     standup: 'var(--purple)',
     meeting: 'var(--blue)',
     mcpServers: 'var(--cyan)',
+    // Reused rather than invented: the palette defines exactly four accents per theme
+    // and they are already shared (`--blue` is email and meeting, `--purple` is standup
+    // and appearance). `--cyan` above is a special case in the other direction — it is
+    // referenced here but has no theme definition, so it resolves to nothing.
     appearance: 'var(--purple)',
     about: 'var(--muted)',
   };

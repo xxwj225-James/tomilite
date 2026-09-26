@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
 import { formatDbDate } from '@/lib/dbTime';
+import { issueKey } from '@/lib/issueKey';
 import { useLang } from '@/stores/useLang';
 import { api } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
+import { ImportTasksDialog } from './ImportTasksDialog';
 
 // ═══ Tasks List View — tabs + drag-to-status + compact columns ═══
 
@@ -112,6 +114,10 @@ export function TasksList(p: Record<string, unknown>) {
   const lang = useLang();
   const t = (k: string, v?: Record<string, string>) => tt(lang, k, v);
 
+  // Both entry points into the import dialog live in this component, so the open flag
+  // does too — nothing outside the list needs to know it exists.
+  const [importOpen, setImportOpen] = useState(false);
+
   // ─── Column widths (resizable, persisted to localStorage) ───
   const defaultWidths = { num: 64, title: 220, priority: 52, type: 46, created: 68, due: 68, updated: 68 };
   const [colW, setColW] = useState<Record<string, number>>(() => {
@@ -165,6 +171,10 @@ export function TasksList(p: Record<string, unknown>) {
     const issueId = issue.id as string;
     const title = issue.title as string;
     if (activeTab === 'done') return;
+    // A mirrored row cannot be dragged between columns: the move would be a local write
+    // to a row the next sync overwrites, so the drag would appear to work and then undo
+    // itself. Refusing the drag is honest about it; the API refuses the write anyway.
+    if (issue.source) return;
     if (e.button !== 0) return;
     e.preventDefault();
     dragItemIdRef.current = issueId;
@@ -233,6 +243,8 @@ export function TasksList(p: Record<string, unknown>) {
       status: issue.status,
       priority: issue.priority,
       storyPoints: issue.storyPoints || 0,
+      source: (issue as any).source ?? null,
+      sourceId: (issue as any).sourceId ?? null,
     });
   };
 
@@ -406,6 +418,29 @@ export function TasksList(p: Record<string, unknown>) {
           >
             <polyline points="23 4 23 10 17 10" />
             <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+          </svg>
+        </button>
+        {/* Icon only, with the label in `title` — same shape as the refresh button it
+            sits next to, and the same one the notes list uses for its import. */}
+        <button
+          className="btn-ghost btn-xs"
+          style={{ width: 24, textAlign: 'center', flexShrink: 0 }}
+          onClick={() => setImportOpen(true)}
+          title={tt2('tasks.import.button', lang)}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 3v12" />
+            <polyline points="7 11 12 16 17 11" />
+            <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
           </svg>
         </button>
         <input
@@ -655,7 +690,18 @@ export function TasksList(p: Record<string, unknown>) {
                 hint={tt2('empty.tasks.hint', lang)}
                 actionLabel={tt2('empty.tasks.action', lang)}
                 onAction={handleNew}
-              />
+              >
+                {/* Second entry into the import dialog, and the one that matters most: a
+                    board with no tasks on it is exactly the state in which someone has a
+                    tracker full of work somewhere else. */}
+                <button
+                  className="btn-ghost btn-xs"
+                  style={{ marginTop: 'var(--space-2)', color: 'var(--brand)' }}
+                  onClick={() => setImportOpen(true)}
+                >
+                  {tt2('empty.tasks.import', lang)}
+                </button>
+              </EmptyState>
             ) : (
               <div className="text-ink-muted text-sm" style={{ padding: 20, textAlign: 'center' }}>
                 {tt2('empty.noResults', lang)}
@@ -695,14 +741,46 @@ export function TasksList(p: Record<string, unknown>) {
                       cursor: 'pointer',
                     }}
                   >
-                    TL-{issue.issueNumber as number}
+                    {/* Built field by field because this component takes its props as
+                        `Record<string, unknown>` (the panel's own convention), so the row
+                        has no usable type to hand `issueKey`. Same casts as the rest of
+                        this file — see `openTaskEditor` just below. */}
+                    {issueKey({
+                      issueNumber: issue.issueNumber as number,
+                      source: (issue.source as string | null) ?? null,
+                      sourceId: (issue.sourceId as string | null) ?? null,
+                    })}
                   </span>
                   <div
                     onClick={() => openTaskEditor(issue)}
                     style={{ flex: 1, minWidth: 120, paddingRight: 6, cursor: 'pointer' }}
                   >
-                    <div style={{ fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word' }}>
-                      {issue.title as string}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                      <span style={{ fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word' }}>
+                        {issue.title as string}
+                      </span>
+                      {/* Where the row came from, and why it will not move. Same badge as
+                          the notes list uses for an imported note — but for the opposite
+                          reason: an imported *note* is fully editable, an imported *task*
+                          is not, and the badge has to be on screen for the read-only
+                          rule to look intentional instead of broken. */}
+                      {!!issue.source && (
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            fontSize: 9,
+                            lineHeight: '14px',
+                            padding: '0 5px',
+                            borderRadius: 7,
+                            border: '1px solid var(--edge)',
+                            background: 'var(--surface2)',
+                            color: 'var(--muted)',
+                          }}
+                          title={tt2('tasks.mirroredHint' as any, lang)}
+                        >
+                          {tt2('tasks.mirrored' as any, lang)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {/* Priority → Updated: drag to change status */}
@@ -869,6 +947,15 @@ export function TasksList(p: Record<string, unknown>) {
           )}
         </div>
       </div>
+      <ImportTasksDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        // A sync changes both the rows and the tab counts, which is exactly the pair
+        // `refreshTasks` refetches — and it returns a promise, so a caller that wants to
+        // wait can. Nothing here needs to.
+        onChanged={() => void (get('refreshTasks') as () => Promise<void>)()}
+      />
+
       {/* Drag ghost — position mutated via ref during mousemove (no re-renders) */}
       <div
         ref={dragGhostRef}

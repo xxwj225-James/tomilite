@@ -8,6 +8,7 @@ import { toolLabels } from '../tools/registry.js';
 import { executeAgentTool } from '../tools/dispatcher.js';
 import type { GuardResult } from './guard.js';
 import type { AgentContext } from '../prompts/systemPrompt.js';
+import { issueKey } from '../../lib/taskScope.js';
 
 // ─── Dedup helpers ───
 
@@ -21,7 +22,7 @@ function getDedupTarget(toolName: string): DedupTarget {
   if (toolName === 'create_issue') {
     return {
       model: 'issue',
-      resultKey: (i: any) => 'TL-' + i.issueNumber,
+      resultKey: (i: any) => issueKey(i),
       resultTitle: (i: any) => i.title,
     };
   }

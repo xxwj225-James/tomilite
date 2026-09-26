@@ -125,7 +125,9 @@ export async function handleAgentStream(req: IncomingMessage, res: ServerRespons
       model,
       flashModel,
       remainingTokens,
-      proxy: getProxyUrl() || undefined,
+      // Target-aware: a provider pointed at a host on the system bypass list must not be
+      // reached through the proxy. `client.ts` only applies this for OpenAI/Anthropic.
+      proxy: getProxyUrl(baseUrl) || undefined,
     };
 
     const context = {

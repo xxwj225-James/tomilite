@@ -19,6 +19,20 @@ export const emailRouter = router({
       });
     }),
 
+  // ─── One email by id, whole row ───
+  //
+  // Exists for global search's deep link. listSmartEmails is not a substitute: the email
+  // panel calls it with `unprocessedOnly: true, limit: 50`, so its result is a different
+  // and much smaller set than "every email", while the search index covers them all — a
+  // hit found by search is usually absent from the panel's list.
+  //
+  // Returns the complete row rather than a select, and that is deliberate: the panel's
+  // openEmail() seeds its autosave baseline from `email.replyDraft`, so handing it a
+  // hand-picked subset would let the next autosave overwrite a real draft with ''.
+  byId: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => prisma.smartEmail.findUnique({ where: { id: input.id } })),
+
   // ─── Fetch full email body from IMAP on demand (by UID) ───
   fetchFullEmail: publicProcedure.input(z.object({ smartEmailId: z.string() })).query(async ({ input }) => {
     const email = await prisma.smartEmail.findUnique({ where: { id: input.smartEmailId } });

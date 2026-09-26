@@ -1,7 +1,7 @@
 import { router, publicProcedure, z } from '../../trpc.js';
 import { prisma } from '@tomilite/database';
 import { resolveLLM } from '../../lib/gateway.js';
-import { isTask } from '../../lib/taskScope.js';
+import { isTask, issueKey } from '../../lib/taskScope.js';
 import { DEFAULT_PROJECT_ID } from '../utils/constants.js';
 
 /** Non-streaming chat, board stats, project stats, LLM config status, intent classification */
@@ -91,7 +91,7 @@ export const agentRouter = router({
         name: col.name,
         count: col.cards.length,
         issues: col.cards.map((c) => ({
-          key: `TL-${c.issue?.issueNumber || '?'}`,
+          key: c.issue ? issueKey(c.issue) : 'TL-?',
           title: c.issue?.title || '',
           priority: c.issue?.priority || 'medium',
           description: c.issue?.description || '',
@@ -113,7 +113,7 @@ export const agentRouter = router({
       done: issues.filter((i) => i.status === 'done').length,
       issues: issues
         .slice(0, 10)
-        .map((i) => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority })),
+        .map((i) => ({ key: issueKey(i), title: i.title, status: i.status, priority: i.priority })),
     };
   }),
 

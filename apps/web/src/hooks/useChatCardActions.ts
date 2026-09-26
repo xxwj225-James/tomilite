@@ -4,6 +4,7 @@ import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/LangContext';
 import type { ChatCard } from '@/types/chat';
 import type { ChatHook } from './useChatThreads';
+import { issueKey } from '@/lib/issueKey';
 
 // ═══ Chat card actions: card event listeners (open/edit/delete/move/force-create/cancel-dedup/save-result) + delete handler ═══
 export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPanel, sendMessageRef, forceCreateRef, editingNote, editingTask, editingReport, setEditingNote, setEditingTask, setEditingReport, bumpTask, bumpNote, bumpReport }: {
@@ -14,10 +15,10 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
   sendMessageRef: RefObject<((payload?: string, noteActionPayload?: string) => void) | undefined>;
   forceCreateRef: RefObject<any>;
   editingNote: { id?: string; title: string; content: string; category: string } | null;
-  editingTask: { issueNumber?: number; title: string; description: string; status: string; priority: string; storyPoints?: number; editing?: boolean } | null;
+  editingTask: { issueNumber?: number; title: string; description: string; status: string; priority: string; storyPoints?: number; editing?: boolean; source?: string | null; sourceId?: string | null } | null;
   editingReport: { title: string; content: string } | null;
   setEditingNote: Dispatch<SetStateAction<{ id?: string; title: string; content: string; category: string } | null>>;
-  setEditingTask: Dispatch<SetStateAction<{ issueNumber?: number; title: string; description: string; status: string; priority: string; storyPoints?: number; editing?: boolean } | null>>;
+  setEditingTask: Dispatch<SetStateAction<{ issueNumber?: number; title: string; description: string; status: string; priority: string; storyPoints?: number; editing?: boolean; source?: string | null; sourceId?: string | null } | null>>;
   setEditingReport: Dispatch<SetStateAction<{ title: string; content: string } | null>>;
   bumpTask: () => void;
   bumpNote: () => void;
@@ -124,7 +125,7 @@ export function useChatCardActions({ chatHook, saveMsg, currentSessionId, setPan
     // Export cards have no DB record — just disable the chat card
     const isExport = card.type === 'export_xlsx' || card.type === 'export_doc';
     const doDisable = () => {
-      if (card.type === 'task') { bumpTask(); /* Clear editor if deleted task is currently open */ if (editingTask?.issueNumber && card.key === `TL-${editingTask.issueNumber}`) { setEditingTask(null); window.dispatchEvent(new CustomEvent('tl-close-task-editor')); } }
+      if (card.type === 'task') { bumpTask(); /* Clear editor if deleted task is currently open */ if (editingTask?.issueNumber && card.key === issueKey({ ...editingTask, issueNumber: editingTask.issueNumber })) { setEditingTask(null); window.dispatchEvent(new CustomEvent('tl-close-task-editor')); } }
       else if (card.type === 'note') { bumpNote(); if (editingNote?.id === card.id) { setEditingNote(null); window.dispatchEvent(new CustomEvent('tl-close-note-editor')); } }
       else if (card.type === 'report') { bumpReport(); if ((editingReport as any)?.id === card.id) { setEditingReport(null); window.dispatchEvent(new CustomEvent('tl-close-report-editor')); } }
       setMessages(prev => prev.map(m => { if (!m.card) return m; const updated = markDeleted(m.card); if (!updated) return m; if (m.id) { api.chat.updateMessage({ id: m.id as string, card: JSON.stringify(updated) }).catch((e: any) => console.warn('[deleteCard] updateMessage FAILED:', e?.message || e)); } else { console.warn('[deleteCard] m.id missing — card state NOT persisted, cardId=' + card.id); } return { ...m, card: updated }; }));

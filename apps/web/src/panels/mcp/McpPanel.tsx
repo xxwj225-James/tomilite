@@ -49,10 +49,14 @@ export function McpPanel() {
       body: JSON.stringify({ taskId }),
     });
     const d = await r.json().catch(() => ({}));
+    // `confirmById` answers {status:'approved', result, preview} — there is no `ok` field,
+    // so the old `d.result?.data?.ok` test was always undefined and every successful
+    // approval rendered as "action failed". Judge it by the status it actually returns.
+    const data = d.result?.data;
     setActionResult(
-      d.result?.data?.error
-        ? `❌ ${d.result.data.error}`
-        : d.result?.data?.ok
+      data?.error
+        ? `❌ ${data.error}`
+        : data?.status === 'approved' || data?.status === 'executed'
           ? tt2('mcp.approved', lang)
           : tt2('mcp.actionFailed', lang),
     );

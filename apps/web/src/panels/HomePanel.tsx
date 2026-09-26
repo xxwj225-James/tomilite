@@ -3,7 +3,10 @@ import { marked } from 'marked';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { t, tr } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
+import { useCelebrationStore } from '@/stores/celebrationStore';
 import { formatDbDateTime } from '@/lib/dbTime';
+import { issueKey } from '@/lib/issueKey';
+import { KnowledgeCard } from './home/KnowledgeCard';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function DashboardPanel() {
@@ -79,7 +82,7 @@ function DashboardPanel() {
                 <div className="kanban-col-bd">
                   {cards.map((issue: any) => (
                     <div key={issue.id} className="kanban-card">
-                      <div className="kanban-card-key">TL-{issue.issueNumber}</div>
+                      <div className="kanban-card-key">{issueKey(issue)}</div>
                       <div>{issue.title}</div>
                       <div className="text-ink-muted" style={{ fontSize: 9, marginTop: 2 }}>
                         {issue.priority} · {issue.storyPoints || '-'}sp
@@ -122,9 +125,6 @@ export function HomePanel({ active = true }: { active?: boolean }) {
     } catch {}
     setMottoRefreshing(false);
   };
-  const [knowledgeMap, setKnowledgeMap] = useState('');
-  const [mapLoading, setMapLoading] = useState(false);
-  const [mapGeneratedAt, setMapGeneratedAt] = useState('');
   const [healthGeneratedAt, setHealthGeneratedAt] = useState('');
   const [taskStats, setTaskStats] = useState<any>(null);
   const [taskStatsLoading, setTaskStatsLoading] = useState(false);
@@ -134,7 +134,13 @@ export function HomePanel({ active = true }: { active?: boolean }) {
     try {
       const r = await fetch('/api/health.taskStats');
       const d = await r.json();
-      setTaskStats(d.result?.data || null);
+      const data = d.result?.data || null;
+      setTaskStats(data);
+      // `done` is the same number this card prints below, and this fetch is the only place
+      // the app recomputes it — so it is also the only place a task milestone can be
+      // noticed. Pushed from the data rather than watched by a hook: the store owns the
+      // once-ever part, so a caller that happens to run twice is harmless.
+      if (data) useCelebrationStore.getState().observe('tasks', data.done);
     } catch {
     } finally {
       setTaskStatsLoading(false);
@@ -154,49 +160,20 @@ export function HomePanel({ active = true }: { active?: boolean }) {
       const data = d.result?.data;
       setHealth(data || null);
       if (data?.generatedAt) setHealthGeneratedAt(formatGenTime(data.generatedAt));
+      // From `level`, which is a machine code ('excellent'), not the score: the rung is the
+      // level the user reached, and the copy is the only thing that names it. This fetch
+      // runs on its own two-hour timer regardless of which panel is on screen, so this is
+      // the one milestone that can fire with the user's attention somewhere else.
+      if (data?.level) useCelebrationStore.getState().observe('health', data.level);
     } catch {}
     setHealthLoading(false);
   };
 
-  const fetchKnowledge = async (forceRefresh = false) => {
-    setMapLoading(true);
-    setKnowledgeMap(''); // clear old content immediately, show loading
-    try {
-      const r = await fetch('/api/knowledge.generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lang, force: forceRefresh }),
-      });
-      const d = await r.json();
-      const genData = d.result?.data;
-      setKnowledgeMap(
-        genData?.content ||
-          tr(
-            lang,
-            '无法生成。尝试点击刷新。',
-            'Unable to generate. Try clicking refresh.',
-            'Unable to generate. Try clicking refresh.',
-            'Unable to generate. Try clicking refresh.',
-            'Unable to generate. Try clicking refresh.',
-            'Unable to generate. Try clicking refresh.',
-          ),
-      );
-      if (genData?.generatedAt) setMapGeneratedAt(formatGenTime(genData.generatedAt));
-    } catch {
-      setKnowledgeMap(
-        tr(
-          lang,
-          '无法生成。请稍后再试。',
-          'Unable to generate. Try again later.',
-          'Unable to generate. Try again later.',
-          'Unable to generate. Try again later.',
-          'Unable to generate. Try again later.',
-          'Unable to generate. Try again later.',
-        ),
-      );
-    }
-    setMapLoading(false);
-  };
+  // The knowledge map used to be fetched here by a raw POST to `knowledge.generate` — a
+  // mutation that wrote a cache row on every miss, reached from the `[lang]` effect and a
+  // two-hour timer. Opening Home therefore spent the user's tokens, and a failed call was
+  // rendered as if it were content. The map now lives in its own component, reads through a
+  // pure query, and calls a model only when a button says so.
 
   useEffect(() => {
     // Daily motto: check cache first, generate only if not cached today
@@ -243,7 +220,6 @@ export function HomePanel({ active = true }: { active?: boolean }) {
 
   useEffect(() => {
     fetchHealth(true);
-    fetchKnowledge(true);
     // Task statistics are deliberately not fetched here — the effect below owns
     // them, and it already covers the first open, so calling it in both places
     // would double every load.
@@ -259,11 +235,12 @@ export function HomePanel({ active = true }: { active?: boolean }) {
     if (active) fetchTaskStats();
   }, [active]);
 
-  // Auto-refresh health + knowledge map every 2 hours
+  // Auto-refresh the health snapshot every 2 hours. The map is deliberately not on this
+  // timer: its generation costs money, and a map that rebuilds itself while the user is
+  // away is paying for a card nobody is looking at.
   useEffect(() => {
     const timer = setInterval(() => {
       fetchHealth();
-      fetchKnowledge();
     }, 2 * 3600000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchers recreated per render; timer registered once
@@ -556,59 +533,8 @@ export function HomePanel({ active = true }: { active?: boolean }) {
         )}
       </div>
 
-      {/* Knowledge Map */}
-      <div className="card" style={{ flexShrink: 0 }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--edge)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>{t('home.knowledgeMap', lang)}</span>
-            <button
-              className="btn-ghost btn-xs"
-              onClick={() => fetchKnowledge(true)}
-              disabled={mapLoading}
-              title={t('btn.refresh', lang)}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={mapLoading ? ({ animation: 'spin 1s linear infinite' } as any) : {}}
-              >
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-              </svg>
-            </button>
-          </div>
-          {mapGeneratedAt && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>{mapGeneratedAt}</div>}
-        </div>
-        <div style={{ padding: '0 14px 8px', fontSize: 9, color: 'var(--muted)' }}>{t('home.aiGenerated', lang)}</div>
-        <div style={{ padding: 12 }}>
-          {knowledgeMap ? (
-            <div
-              className="km-content"
-              style={{ fontSize: 11, lineHeight: 1.6 }}
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(
-                  (
-                    marked.parse(knowledgeMap.replace(/^# [^\n]+\n?/, '').replace(/^## [^\n]+\n?/, '')) as string
-                  ).replace(
-                    /\b(LLM|Agent|API|DeepSeek|OpenAI|Claude|GPT|RAG|MCP|Function Calling|Tool Use|Prompt Engineering|Transformer|Embedding|Tokenization|C方案|回归测试|去重|微服务|Docker|K8s|CI\/CD|Git|TypeScript|React|Node\.js|Prisma|SQLite|Vite|Electron)\b/gi,
-                    '<span class="km-badge">$&</span>',
-                  ),
-                ),
-              }}
-            />
-          ) : (
-            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: 16 }}>
-              {t('misc.loading', lang)}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Knowledge Map — tree + note card. Reads on activation; generates only on click. */}
+      <KnowledgeCard active={active} />
     </div>
   );
 }

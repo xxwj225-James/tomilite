@@ -3,6 +3,7 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import { tt } from '@/i18n/translations';
 import { useLang } from '@/stores/useLang';
 import { formatDbShort } from '@/lib/dbTime';
+import { issueKey } from '@/lib/issueKey';
 
 // ═══ Email Detail View — AI summary + reply draft + actions ═══
 
@@ -350,7 +351,7 @@ export function EmailDetail(p: Record<string, unknown>) {
                     textDecoration: 'underline',
                   }}
                 >
-                  TL-{get('linkedIssue').issueNumber} {get('linkedIssue').title}
+                  {issueKey(get('linkedIssue'))} {get('linkedIssue').title}
                 </a>
                 <button
                   className="btn btn-xs"

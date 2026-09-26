@@ -1,10 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
-import { tr } from '@/lib/i18n';
+import { t, tr } from '@/lib/i18n';
 import { nowDbUtc } from '@/lib/dbTime';
 import { useLang } from '@/stores/useLang';
 
 // ═══ Notes State Hook — all state + business logic for NotesPanel ═══
+
+/**
+ * Which notes a search term keeps — the one answer to that question.
+ *
+ * It lives here, exported, because two callers need it and they must not drift:
+ * `NotesList` decides what to *draw*, and `selectAll` decides what "select all" means
+ * over that same drawing. They were two separate expressions until the select-all
+ * checkbox existed, and the second one was wrong: it filtered on `content`, which
+ * `wiki.list` stopped carrying when the list projection was trimmed (see the comment in
+ * `NotesList`), so a search matching a note's **category** would have shown the note and
+ * silently left it out of "select all".
+ *
+ * Title and category are what the list renders and what it can therefore filter on.
+ * Matching the body is the one thing that went away with the projection.
+ */
+export function noteMatchesSearch(note: any, search: string): boolean {
+  if (!search) return true;
+  const s = search.toLowerCase();
+  return !!note?.title?.toLowerCase().includes(s) || !!note?.category?.toLowerCase().includes(s);
+}
 
 export function useNotesState(
   onEditingNote?: (n: any) => void,
@@ -30,6 +50,10 @@ export function useNotesState(
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [overwriteMsg, setOverwriteMsg] = useState<string | null>(null);
   const [deletedNotify, setDeletedNotify] = useState<string | null>(null);
+  /** Batch delete. The dialog is mounted by `NotesPanel`; the list only opens it. */
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const overwriteResolveRef = useRef<((ok: boolean) => void) | null>(null);
   const resolveOverwrite = (ok: boolean) => {
     overwriteResolveRef.current?.(ok);
@@ -38,6 +62,8 @@ export function useNotesState(
   };
   const [pendingBack, setPendingBack] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Backfill dialog. Opened from the list toolbar; mounted by NotesPanel. */
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [sortKey, setSortKey] = useState<'title' | 'category' | 'updatedAt'>('updatedAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -47,6 +73,12 @@ export function useNotesState(
 
   // ─── Derived ───
   const editing = !!(selected || (!selected && title));
+  // The note the editor is holding, if any. A backfill is a blind write into a note's
+  // tail, while the editor holds a load-time snapshot of the whole body that `handleSave`
+  // writes back wholesale — so writing under an open editor loses the link section on the
+  // next save. The button only exists in the list view, but `tl-select-note` (a chat card
+  // or a knowledge-map card) can populate `selected` while the dialog is open.
+  const linkDialogExcludeIds = editing && selected?.id ? [selected.id] : [];
 
   // ─── Fetch ───
   const fetchNotes = async () => {
@@ -239,12 +271,7 @@ export function useNotesState(
     });
   };
   const selectAll = () => {
-    const f = notes.filter(
-      (n: any) =>
-        !noteSearch ||
-        n.title?.toLowerCase().includes(noteSearch.toLowerCase()) ||
-        n.content?.toLowerCase().includes(noteSearch.toLowerCase()),
-    );
+    const f = notes.filter((n: any) => noteMatchesSearch(n, noteSearch));
     setSelectedIds(new Set(f.map((n: any) => n.id)));
   };
   const clearSelection = () => setSelectedIds(new Set());
@@ -297,6 +324,57 @@ export function useNotesState(
     }
     setDeleting(false);
     setDeleteTarget(null);
+  };
+
+  /**
+   * Delete every selected note, one call each.
+   *
+   * A loop and not a batch endpoint, because `wiki.delete` is already a bare
+   * `knowledgePage.delete` with nothing to cascade: the `global_fts` and `embed_queue`
+   * rows are removed by SQLite triggers on delete (`lib/ftsIndex.ts`), and the knowledge
+   * map has no edge table — its links are derived from `[[Title]]` in note bodies at read
+   * time. So there is no per-note application cost to amortise and no API surface worth
+   * adding.
+   *
+   * **Failures are counted, not swallowed.** The tasks panel's (now removed) version did
+   * `.catch(() => {})` and then reported success, which on a partial failure is a lie
+   * about someone's data. What actually went is tracked by its own set rather than
+   * inferred from the failure count, so the local list removal below matches the server.
+   */
+  const executeBatchDelete = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setBatchDeleting(true);
+    setBatchProgress({ done: 0, total: ids.length });
+    const gone = new Set<string>();
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await api.wiki.delete(ids[i]);
+        gone.add(ids[i]);
+      } catch {
+        // Counted below. One unreachable note must not abandon the other twenty-nine.
+      }
+      setBatchProgress({ done: i + 1, total: ids.length });
+    }
+    const failed = ids.length - gone.size;
+    setNotes((prev) => prev.filter((n: any) => !gone.has(n.id)));
+    // Deleting the note the editor is holding: same two moves as the single-note path
+    // above, for the same reasons — clear what is no longer there, and suppress the
+    // refetch that the editor-closing effect would otherwise trigger, since the local
+    // list is already correct.
+    if (selected?.id && gone.has(selected.id)) {
+      skipFetchRef.current = true;
+      setSelected(null);
+      setTitle('');
+      setContent('');
+      onEditingNote?.(null);
+    }
+    clearSelection();
+    setBatchDeleting(false);
+    setBatchDeleteOpen(false);
+    // A failure notice is the more important message when both happened.
+    if (failed) setDeletedNotify(t('notes.batchDeleteFailed', lang, { n: String(failed) }));
+    else onNoteAction?.(t('notes.batchDeleted', lang, { n: String(ids.length) }));
   };
 
   // ─── Export ───
@@ -373,6 +451,16 @@ export function useNotesState(
     }
   };
 
+  // ─── Link backfill ───
+  // Re-reads rather than patching rows locally: the server wrote `[[Title]]` into note
+  // bodies, and the list's `updatedAt` and the FTS queue both moved as a result.
+  const onLinksApplied = (written: number) => {
+    fetchNotes();
+    onNoteAction?.(
+      lang === 'zh' ? `为 ${written} 篇笔记补上了链接` : `Added links to ${written} note${written === 1 ? '' : 's'}`,
+    );
+  };
+
   return {
     notes,
     selected,
@@ -404,6 +492,10 @@ export function useNotesState(
     noteReady,
     noteEditedRef,
     editing,
+    linkDialogOpen,
+    setLinkDialogOpen,
+    linkDialogExcludeIds,
+    onLinksApplied,
     fetchNotes,
     onNoteContent,
     onNoteTitle,
@@ -417,6 +509,11 @@ export function useNotesState(
     handleDelete,
     executeDelete,
     deleting,
+    batchDeleteOpen,
+    setBatchDeleteOpen,
+    batchDeleting,
+    batchProgress,
+    executeBatchDelete,
     handleExport,
     onEditingNote,
     onNoteAction,

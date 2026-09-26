@@ -220,7 +220,14 @@ export async function embedPassage(text: string): Promise<number[] | null> {
 /** What is embedded for a note or report: the title carries most of the signal, so
  *  dropping it would make a well-titled note less findable than its body deserves. */
 export function embedTextFor(title: string | null, body: string | null): string {
-  return `${title || ''}\n${body || ''}`.trim();
+  // Inlined images are data URLs — `MarkdownEditor` writes them for a pasted or
+  // local-file image, and the note importer writes the same shape. They are hundreds of
+  // kilobytes of base64, they tokenize slowly, and they push the prose straight out of
+  // E5's 512-token window — so a note with one screenshot embedded ended up with a
+  // vector that represented the screenshot's base64 rather than its text. The alt text
+  // is kept, which is the only part of an image that carries meaning to the model.
+  const text = (body || '').replace(/!\[[^\]]*\]\(\s*data:[^)]*\)/g, '');
+  return `${title || ''}\n${text}`.trim();
 }
 
 // ─── Stored-vector envelope ───
@@ -301,4 +308,29 @@ export async function embedWarmup(): Promise<void> {
 export function setEmbedDownloading(on: boolean): void {
   downloading = on;
   if (on) status = 'downloading';
+}
+
+/**
+ * Forget a cached failure so the next call tries to build the session again.
+ *
+ * `getExtractor()` deliberately caches a failure for the life of the process — a broken
+ * ONNX runtime does not repair itself, and retrying costs 11 s to whichever query came
+ * next. The consequence is that `status === 'failed'` is a latch, and every caller that
+ * offers the user a retry is offering a button that does nothing: `embedModelStatus()`
+ * short-circuits on that latch before it ever looks at the disk, so even downloading the
+ * model by hand leaves the feature dead until the app restarts.
+ *
+ * This is the latch release. It is intentionally all-or-nothing — `extractorPromise`,
+ * the cached `status`, `loaded` and the one-line-per-process log guard are one fact
+ * stored in four places, and clearing three of them would leave the next attempt both
+ * retrying and silent.
+ *
+ * `downloading` is left alone: a download in flight is not a failure, and cancelling its
+ * flag here would let a second one start on top of it.
+ */
+export function resetEmbedStatus(): void {
+  extractorPromise = null;
+  loaded = false;
+  status = null;
+  loggedFailure = false;
 }

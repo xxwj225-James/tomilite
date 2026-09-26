@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { tt } from '@/i18n/translations';
 import { t as tt2 } from '@/lib/i18n';
+import { categoryLabel, sourceBadgeKey } from '@/lib/noteCategory';
 import { formatDbDate } from '@/lib/dbTime';
 import { EmptyState } from '@/components/EmptyState';
 import { useLang } from '@/stores/useLang';
+import { ImportNotesDialog } from './ImportNotesDialog';
+import { noteMatchesSearch } from './useNotesState';
 
 // ═══ Notes List View — search, sort, select, export ═══
 
@@ -21,6 +24,9 @@ interface Props {
   clearSelection: () => void;
   handleExport: (format: string) => void;
   fetchNotes: () => void;
+  setLinkDialogOpen: (v: boolean) => void;
+  /** Opens the batch-delete confirm. The dialog itself is mounted by `NotesPanel`. */
+  setBatchDeleteOpen: (v: boolean) => void;
   setSelected: (n: any) => void;
   setTitle: (t: string) => void;
   setContent: (c: string) => void;
@@ -32,13 +38,21 @@ export function NotesList(p: Props) {
   const lang = useLang();
   const t = (key: string, vars?: Record<string, string>) => tt(lang, key, vars);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  // Both entry points into the import dialog live in this component, so the open flag
+  // does too — nothing outside the list needs to know it exists.
+  const [importOpen, setImportOpen] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 20;
-  const filter = (n: any) =>
-    !p.noteSearch ||
-    n.title?.toLowerCase().includes(p.noteSearch.toLowerCase()) ||
-    n.content?.toLowerCase().includes(p.noteSearch.toLowerCase());
-  const sorted = [...p.notes].filter(filter).sort((a: any, b: any) => {
+  // Title and notebook only. `wiki.list` no longer carries `content` — see its comment
+  // in the API router — so this filter cannot see note bodies any more. Searching the
+  // body is the one thing that went away with the projection, and the alternative was
+  // shipping every note's full text (base64 images included) to the renderer so that a
+  // keystroke could look at it.
+  //
+  // Shared with `selectAll` rather than written twice: the header checkbox selects
+  // everything this filter keeps, and two expressions answering "which notes does the
+  // search keep" is how the checkbox and the list drift apart.
+  const sorted = [...p.notes].filter((n: any) => noteMatchesSearch(n, p.noteSearch)).sort((a: any, b: any) => {
     const av = a[p.sortKey] || '',
       bv = b[p.sortKey] || '';
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
@@ -49,6 +63,17 @@ export function NotesList(p: Props) {
   useEffect(() => {
     setPage(0);
   }, [sorted.length]);
+
+  // Header checkbox. `indeterminate` is a property and not an attribute, so it cannot be
+  // passed as a prop — it has to be assigned to the node. It reads the *current page*
+  // while `selectAll` takes the whole filtered set: the box belongs to the table it sits
+  // on, and a box that claims "all" while a later page is unselected would be lying.
+  const allRef = useRef<HTMLInputElement>(null);
+  const pageAllSelected = pageNotes.length > 0 && pageNotes.every((n: any) => p.selectedIds.has(n.id));
+  const pageSomeSelected = pageNotes.some((n: any) => p.selectedIds.has(n.id));
+  useEffect(() => {
+    if (allRef.current) allRef.current.indeterminate = pageSomeSelected && !pageAllSelected;
+  }, [pageSomeSelected, pageAllSelected]);
 
   // A blank editor is "new note" here — the editor creates on save. Named
   // because the empty state needs the same reset as any other entry point.
@@ -85,6 +110,82 @@ export function NotesList(p: Props) {
             <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
           </svg>
         </button>
+        {/* Backfill entry point. `tt2` and not the local `t` above: that one reads the
+            legacy dictionary, which would render this as the bare key string. */}
+        <button
+          className="btn-ghost btn-xs"
+          onClick={() => p.setLinkDialogOpen(true)}
+          title={tt2('notes.findLinks', lang)}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+            </svg>
+            {tt2('notes.findLinks', lang)}
+          </span>
+        </button>
+        {/* Icon only, with the label in `title`: this toolbar does not wrap
+            (`flexWrap` is set on the tasks list, not here), so a fourth labelled
+            button squeezes the search field, which is the only thing that flexes. */}
+        <button
+          className="btn-ghost btn-xs"
+          onClick={() => setImportOpen(true)}
+          title={tt2('notes.import.button', lang)}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 3v12" />
+            <polyline points="7 11 12 16 17 11" />
+            <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+          </svg>
+        </button>
+        {/* Icon only, and only when there is something to delete. Same reasoning as the
+            import button above: no `flexWrap` here, and a selection already brings the
+            labelled export button in beside the search field. `tt2` again — the local `t`
+            reads the legacy dictionary and would render the bare key.
+            Not `btn.delete`: that string carries a 🗑 emoji that would sit next to this
+            SVG as a second icon. */}
+        {p.selectedIds.size > 0 && (
+          <button
+            className="btn-ghost btn-xs"
+            onClick={() => p.setBatchDeleteOpen(true)}
+            title={tt2('notes.deleteSelected', lang, { n: String(p.selectedIds.size) })}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+            </svg>
+          </button>
+        )}
         <input
           className="form-input"
           autoComplete="off"
@@ -221,7 +322,16 @@ export function NotesList(p: Props) {
           fontWeight: 600,
         }}
       >
-        <span style={{ width: 18, flexShrink: 0 }} />
+        <span style={{ width: 18, flexShrink: 0 }}>
+          <input
+            ref={allRef}
+            type="checkbox"
+            checked={pageAllSelected}
+            onChange={() => (pageAllSelected ? p.clearSelection() : p.selectAll())}
+            title={tt2('notes.selectAll', lang)}
+            style={{ margin: 0, accentColor: 'var(--brand)', cursor: 'pointer', width: 18 }}
+          />
+        </span>
         <span
           style={{ flex: 1, cursor: 'pointer', userSelect: 'none' }}
           onClick={() => p.toggleSort('title')}
@@ -254,16 +364,13 @@ export function NotesList(p: Props) {
             className="list-row"
             style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}
             onClick={() => {
-              p.setSelected(n);
-              p.setTitle(n.title);
-              p.setContent(n.content || '');
-              p.setCategory(n.category || 'general');
-              p.onEditingNote?.({
-                id: n.id,
-                title: n.title,
-                content: n.content || '',
-                category: n.category || 'general',
-              });
+              // Routed through `tl-select-note` rather than setting state here. The list
+              // row carries no body any more — see the projection's comment in the API
+              // router — and the listener for this event is already the one place that
+              // fetches the full note before opening it (`useNotesState`). Giving the
+              // click its own second fetch-and-open path is how the two drift: the
+              // knowledge-map card crosses panels through the same event.
+              window.dispatchEvent(new CustomEvent('tl-select-note', { detail: { id: n.id } }));
             }}
           >
             <input
@@ -273,20 +380,49 @@ export function NotesList(p: Props) {
               onChange={() => p.toggleSelect(n.id)}
               style={{ margin: 0, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0, width: 18 }}
             />
-            <span
-              style={{
-                flex: 1,
-                fontSize: 13,
-                fontWeight: 500,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {n.title || t('notes.untitled')}
+            <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {n.title || t('notes.untitled')}
+              </span>
+              {/* Where a note came from — imports only. This badge used to fire on any
+                  non-empty `source`, which claimed a chat summary was imported; the harvest
+                  adds three more sources that are the user's own work, and the category
+                  column beside this already names where each came from. `sourceBadgeKey`
+                  has the reasoning. */}
+              {(() => {
+                const badge = sourceBadgeKey(n.source);
+                return badge ? (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontSize: 9,
+                      lineHeight: '14px',
+                      padding: '0 5px',
+                      borderRadius: 7,
+                      border: '1px solid var(--edge)',
+                      background: 'var(--surface2)',
+                      color: 'var(--muted)',
+                    }}
+                  >
+                    {tt2(badge, lang)}
+                  </span>
+                ) : null;
+              })()}
             </span>
             <span style={{ width: 100, fontSize: 11, textAlign: 'center', color: 'var(--muted)', flexShrink: 0 }}>
-              {n.category === 'chat' ? tt2('notes.categoryChat', lang) : n.category || 'general'}
+              {/* Shared with the map card. The inline `category === 'chat' ? … : category`
+                  this replaces printed the raw value for every other category — including
+                  the three the harvest writes, which the map renders in the reader's own
+                  language. Two screens, one column, one table. */}
+              {categoryLabel(n.category, lang)}
             </span>
             <span style={{ width: 100, fontSize: 11, textAlign: 'right', color: 'var(--muted)', flexShrink: 0 }}>
               {formatDbDate(n.updatedAt)}
@@ -303,7 +439,18 @@ export function NotesList(p: Props) {
             hint={tt2('empty.notes.hint', lang)}
             actionLabel={tt2('empty.notes.action', lang)}
             onAction={handleNew}
-          />
+          >
+            {/* Second entry into the import dialog, and the one that matters most: a
+                library that is empty because it was never filled is exactly the state
+                in which someone has notes elsewhere. */}
+            <button
+              className="btn-ghost btn-xs"
+              style={{ marginTop: 'var(--space-2)', color: 'var(--brand)' }}
+              onClick={() => setImportOpen(true)}
+            >
+              {tt2('empty.notes.import', lang)}
+            </button>
+          </EmptyState>
         ) : (
           sorted.length === 0 && (
             <div className="text-ink-muted text-sm" style={{ padding: 20, textAlign: 'center' }}>
@@ -350,6 +497,12 @@ export function NotesList(p: Props) {
           </button>
         </div>
       )}
+
+      <ImportNotesDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={p.fetchNotes}
+      />
     </div>
   );
 }

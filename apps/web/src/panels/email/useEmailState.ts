@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { useLang } from '@/stores/useLang';
 import { t as tt2 } from '@/lib/i18n';
+import { issueKey } from '@/lib/issueKey';
 import { marked } from 'marked';
 
 // ═══ Email State Hook — standalone, independent polling ═══
@@ -283,6 +284,46 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- startDraftGenerationInner declared below (TDZ); called later via click
   }, []);
 
+  // ─── Deep link from global search ───
+  //
+  // The loaded list is NOT a usable lookup here, and that is the whole reason this needs
+  // more than a `find`. `fetchEmails` asks for `unprocessedOnly: true, limit: 50`, while
+  // the search index covers every SmartEmail — so a hit usually is not in the array. It
+  // also cannot be faked with a partial row: `selectEmail` reads `replyDraft` as the
+  // autosave baseline (`lastSavedDraftRef`), so a row without one would make the next
+  // autosave overwrite a real draft with an empty string. Hence: full row from `byId`.
+  useEffect(() => {
+    const h = async (e: Event) => {
+      const id = (e as { detail?: { id?: string } }).detail?.id;
+      if (!id) return;
+      const loaded = emailsRef.current.find((x: any) => x.id === id);
+      if (loaded) return void selectEmail(loaded);
+      const full = await api.email.byId(id).catch(() => null);
+      if (full) return void selectEmail(full);
+      // Deleted since the index was built. There is no notify helper in this app; App owns
+      // the alert dialog and the wording, so this only raises the signal.
+      window.dispatchEvent(new CustomEvent('tl-search-miss'));
+    };
+    window.addEventListener('tl-select-email', h);
+    // Pending is consumed on mount as well as on the event: the unsaved-changes gate can
+    // hold the navigation back, and the event fired at that moment had no listener.
+    const pending = (window as any).__tl_pendingEmailSelect;
+    if (pending) {
+      (window as any).__tl_pendingEmailSelect = null;
+      void h({ detail: pending } as any);
+    }
+    return () => window.removeEventListener('tl-select-email', h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registered once; selectEmail/emailsRef are stable
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    const pending = (window as any).__tl_pendingEmailSelect;
+    if (pending) {
+      (window as any).__tl_pendingEmailSelect = null;
+      window.dispatchEvent(new CustomEvent('tl-select-email', { detail: pending }));
+    }
+  }, [active]);
+
   // ─── Batch select ───
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -440,6 +481,10 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
   useEffect(() => {
     if (!draftGenerating) return;
     const onKey = (e: KeyboardEvent) => {
+      // The search palette is on top and owns Escape while it is open. Its listener cannot
+      // suppress this one — stopImmediatePropagation only orders listeners on the same
+      // node, and both are on `window` — so the palette publishes a flag instead.
+      if ((window as any).__tl_paletteOpen) return;
       if (e.key === 'Escape' && draftAbortRef.current) {
         draftAbortRef.current.abort();
         setDraftGenerating(false);
@@ -583,7 +628,7 @@ export function useEmailState(emailRefresh?: number, active?: boolean) {
         new CustomEvent('tl-select-task', {
           detail: {
             id: linkedIssue.id,
-            key: `TL-${linkedIssue.issueNumber}`,
+            key: issueKey(linkedIssue),
             title: linkedIssue.title,
             status: linkedIssue.status,
             priority: linkedIssue.priority,

@@ -21,8 +21,14 @@
  * Bumped whenever the global_fts DDL, its triggers, or the embed_queue DDL
  * changes. Stamped into SystemConfig.ftsVersion by lib/ftsIndex.ts, which
  * re-evaluates it on every boot — a mismatch triggers a rebuild.
+ *
+ * v3 added the chat and meeting sources (with `AFTER UPDATE OF` triggers for both).
+ * The bump is load-bearing, not bookkeeping: needsRebuild()'s five predicates all
+ * pass on a v2 install — the DDL shape, the tokenizer and embed_queue are unchanged —
+ * so without it the new triggers would never be created and chat/meeting search would
+ * silently return nothing forever, with no log line and no recovery path.
  */
-export const INDEX_VERSION = 2;
+export const INDEX_VERSION = 3;
 
 /** Whitespace-split terms, empties dropped, exact duplicates removed. */
 export function ftsTerms(raw: string): string[] {

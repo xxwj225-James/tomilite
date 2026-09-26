@@ -3,7 +3,7 @@ import { prisma } from '@tomilite/database';
 import { t } from '../lib/i18n.js';
 import { resolveLLM, isDeepseekEndpoint } from '../lib/gateway.js';
 import { parseUtcMs, utcStamp } from '../lib/dbTime.js';
-import { isTask } from '../lib/taskScope.js';
+import { isTask, issueKey } from '../lib/taskScope.js';
 
 const DEFAULT_MORNING_TIME = '09:00';
 const DEFAULT_EVENING_TIME = '18:00';
@@ -75,12 +75,12 @@ async function gatherEveningData() {
   // `todayStart`. Nothing writes this table, so it is normally empty.
   const changelog = await prisma.issueChangelog.findMany({
     where: { field: 'status', createdAt: { gte: todayStr } },
-    include: { issue: { select: { issueNumber: true, title: true } } },
+    include: { issue: { select: { issueNumber: true, title: true, source: true, sourceId: true } } },
     orderBy: { createdAt: 'desc' },
     take: 20,
   });
   const moves = changelog.map((c) => ({
-    key: `TL-${c.issue?.issueNumber || '?'}`,
+    key: c.issue ? issueKey(c.issue) : 'TL-?',
     title: c.issue?.title || '',
     from: c.oldValue || 'new',
     to: c.newValue || '?',
@@ -105,7 +105,7 @@ async function generateEveningContent(
   todayEmails: any[] = [],
 ): Promise<string> {
   // Build data context for LLM
-  const taskList = allIssues.map((t) => `TL-${t.issueNumber} ${t.title} [${t.status}]`).join(', ') || 'none';
+  const taskList = allIssues.map((t) => `${issueKey(t)} ${t.title} [${t.status}]`).join(', ') || 'none';
   const noteList =
     allNotes
       .slice(0, 10)
@@ -257,7 +257,7 @@ Data:
       md += t('standup.priorityTableHeader', lang) + '\n';
       for (const item of items) {
         const status = item.status || 'todo';
-        md += `| ${PRIO_EMOJI[prio]} | TL-${item.issueNumber} | ${item.title} | ${STATUS_ICON[status]} ${t(STATUS_KEY[status], lang)} |\n`;
+        md += `| ${PRIO_EMOJI[prio]} | ${issueKey(item)} | ${item.title} | ${STATUS_ICON[status]} ${t(STATUS_KEY[status], lang)} |\n`;
       }
       md += '\n';
     }
@@ -266,7 +266,7 @@ Data:
   md += `---\n\n### ${t('standup.doneHeader', lang)}\n`;
   const doneTasks = allIssues.filter((i: any) => i.status === 'done');
   if (doneTasks.length === 0) md += t('standup.none', lang) + '\n';
-  else for (const t of doneTasks) md += `- TL-${t.issueNumber} ${t.title} ✅\n`;
+  else for (const t of doneTasks) md += `- ${issueKey(t)} ${t.title} ✅\n`;
 
   if (allNotes.length > 0) {
     md += `\n### ${t('standup.notesHeader', lang)}\n`;
@@ -417,7 +417,7 @@ export const standupRouter = router({
         return age !== null && age > 3 * dayMs;
       })
       .map((i) => ({
-        key: `TL-${i.issueNumber}`,
+        key: issueKey(i),
         title: i.title,
         priority: i.priority,
         daysStale: Math.floor((ageMs(i.updatedAt) ?? 0) / dayMs),
@@ -457,7 +457,7 @@ export const standupRouter = router({
         if (items.length === 0) continue;
         totalItems += items.length;
         const label = PRIO_LABEL[prio]?.[input.lang] || PRIO_LABEL[prio]?.en || prio;
-        for (const t of items.slice(0, 8)) rows.push(`| ${label} | TL-${t.issueNumber} | ${t.title} |`);
+        for (const t of items.slice(0, 8)) rows.push(`| ${label} | ${issueKey(t)} | ${t.title} |`);
       }
       if (totalItems > 0) {
         lines.push('\n' + t('standup.morningTableHeader', input.lang));
@@ -496,7 +496,7 @@ export const standupRouter = router({
         const taskList =
           openTasks
             .slice(0, 10)
-            .map((t) => `TL-${t.issueNumber} ${t.title} (${t.priority})`)
+            .map((t) => `${issueKey(t)} ${t.title} (${t.priority})`)
             .join('\n') || 'none';
         const overdueList =
           overdue
@@ -550,7 +550,7 @@ Style: Warm and encouraging. ONLY use real tasks from the list above. Skip empty
       overdueTasks: overdue,
       openTasks: openTasks
         .slice(0, 10)
-        .map((i) => ({ key: `TL-${i.issueNumber}`, title: i.title, status: i.status, priority: i.priority })),
+        .map((i) => ({ key: issueKey(i), title: i.title, status: i.status, priority: i.priority })),
       greeting,
     };
   }),

@@ -1,8 +1,10 @@
 import { ConfirmDialog } from '@tomilite/shared-ui/components/ConfirmDialog';
+import { t } from '@/lib/i18n';
 import { useLang } from '@/stores/useLang';
 import { useNotesState } from './useNotesState';
 import { NotesList } from './NotesList';
 import { NotesEditor } from './NotesEditor';
+import { LinksReviewDialog } from './LinksReviewDialog';
 
 // ═══ Notes Panel — state hook → List | Editor routing ═══
 
@@ -16,6 +18,30 @@ export function NotesPanel({ onEditingNote, onNoteAction, noteRefresh, appliedEd
       {!editing ? <NotesList {...s} /> : <NotesEditor {...s} />}
       <ConfirmDialog open={!!s.exportMsg} variant="alert" title={lang === 'zh' ? '导出' : 'Export'} message={(s.exportMsg as string) || ''} lang={lang} onConfirm={() => (s.setExportMsg as (v: null) => void)(null)} onCancel={() => (s.setExportMsg as (v: null) => void)(null)} />
       <ConfirmDialog open={!!s.overwriteMsg} variant="confirm" title={lang === 'zh' ? '覆盖确认' : 'Overwrite'} message={(s.overwriteMsg as string) || ''} lang={lang} confirmLabel={lang === 'zh' ? '覆盖' : 'Overwrite'} cancelLabel={lang === 'zh' ? '取消' : 'Cancel'} onConfirm={() => (s.resolveOverwrite as (ok: boolean) => void)(true)} onCancel={() => (s.resolveOverwrite as (ok: boolean) => void)(false)} />
+      {/* `loading` is what makes this safe to confirm: it hides Cancel and stops the
+          overlay from closing, so a delete in flight cannot be half-dismissed. The
+          message carries the progress because the loop is one round trip per note and a
+          long selection would otherwise look frozen — the mistake the links dialog makes
+          with its own long operation. */}
+      <ConfirmDialog
+        open={s.batchDeleteOpen}
+        variant="confirm"
+        title={t('notes.batchDeleteTitle', lang)}
+        message={
+          s.batchDeleting
+            ? t('notes.batchDeleting', lang, {
+                done: String(s.batchProgress.done),
+                total: String(s.batchProgress.total),
+              })
+            : t('notes.batchDeleteConfirm', lang, { n: String(s.selectedIds.size) })
+        }
+        lang={lang}
+        confirmLabel={t('dialog.delete', lang)}
+        cancelLabel={t('btn.cancel', lang)}
+        loading={s.batchDeleting}
+        onConfirm={() => void s.executeBatchDelete()}
+        onCancel={() => s.setBatchDeleteOpen(false)}
+      />
       <ConfirmDialog
         open={!!(s as any).deletedNotify}
         variant="alert"
@@ -24,6 +50,13 @@ export function NotesPanel({ onEditingNote, onNoteAction, noteRefresh, appliedEd
         lang={lang}
         onConfirm={() => ((s as any).setDeletedNotify as (v: null) => void)(null)}
         onCancel={() => ((s as any).setDeletedNotify as (v: null) => void)(null)}
+      />
+      <LinksReviewDialog
+        open={s.linkDialogOpen}
+        lang={lang}
+        excludeIds={s.linkDialogExcludeIds}
+        onClose={() => s.setLinkDialogOpen(false)}
+        onApplied={s.onLinksApplied}
       />
     </div>
   );

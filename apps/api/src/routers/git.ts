@@ -1,6 +1,7 @@
 import { router, publicProcedure, z } from '../trpc';
 import { prisma } from '@tomilite/database';
 import { localDayKey, parseUtc, parseUtcMs, utcStamp } from '../lib/dbTime.js';
+import { isImported } from '../lib/taskScope.js';
 
 // ─── Shared scanning logic — used by periodic interval in server.ts ───
 export async function scanGitWorkDirs() {
@@ -199,6 +200,11 @@ async function saveCommit(
         },
       });
 
+      // A mirrored row is somebody else's ticket: someone here writing "fix #1234" in a
+      // commit message must not close it, and the next sync would reopen it anyway. The
+      // `gitCommitRef` row above is still written — linking a commit to a mirrored
+      // ticket is genuinely useful and is read-only.
+      if (issue && isImported(issue)) continue;
       if (issue && (action === 'close' || action === 'fix')) {
         await prisma.issue.update({ where: { id: issue.id }, data: { status: 'done', remainingPoints: 0 } });
         await prisma.comment.create({

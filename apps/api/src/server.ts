@@ -1,19 +1,27 @@
-import { getProxyUrl } from './agent/utils/proxy.js';
-const proxyUrl = getProxyUrl();
-if (proxyUrl) console.warn('[server] Proxy detected:', proxyUrl);
+import { systemProxy } from './agent/utils/proxy.js';
+// One line at boot, and only when a proxy is actually in use — silence means requests go
+// direct, which is the state almost every user is in and the one the absence of this line
+// answers. Whether a proxy is in use is otherwise only visible as "the search tool comes
+// back empty"; see the header of `utils/proxy.ts` for the failure that made this worth
+// printing. The bypass list is here because "why is my local Redmine going through a
+// proxy" is the other half of that failure.
+const sysProxy = systemProxy();
+if (sysProxy.url) console.warn('[server] System proxy:', sysProxy.url, '| bypass:', sysProxy.bypass.join(';') || 'none');
 
 import { createServer } from 'node:http';
 import { router } from './trpc';
 import { issueRouter } from './routers/issue';
 import { boardRouter } from './routers/board';
 import { wikiRouter } from './routers/wiki';
+import { redmineRouter, scheduledRedmineSync } from './routers/redmine';
 import { gitRouter, scanGitWorkDirs } from './routers/git';
 import { focusRouter } from './routers/focus';
 import { systemRouter } from './routers/system';
 import { llmRouter } from './routers/llm';
 import { emailRouter } from './routers/email';
 import { agentRouter, handleAgentStream, initWorkspaceRoots } from './routers/agent';
-import { mcpRouter } from './routers/mcp';
+import { mcpRouter, sweepHitlTasks, executeMcp, mcpDefaultWaitMs } from './routers/mcp';
+import { handleMcpRequest } from './mcp/http';
 import { apikeyRouter } from './routers/apikey';
 import { healthRouter } from './routers/health';
 import { searchRouter } from './routers/search';
@@ -44,11 +52,22 @@ import * as telemetry from './lib/telemetry.js';
 // The one path to a Windows toast — shared with the meeting reminder sweep.
 import { sendNotification } from './lib/notify.js';
 
+/**
+ * What MCP clients are told this server is. Set by electron/main.js from the packaged
+ * app's own version; in `tsx` dev runs it is absent, and dev builds are not shipped.
+ */
+const APP_VERSION = process.env.TL_APP_VERSION || '0.0.0-dev';
+
 // ─── Compose all routers ───
 const appRouter = router({
   issue: issueRouter,
   board: boardRouter,
   wiki: wikiRouter,
+  // Mounted here, and deliberately NOT in the MCP server's allow-list (routers/mcp.ts):
+  // `sync` spends a stored credential against a third-party server and writes hundreds of
+  // rows, which is not something an LLM-composed call should be able to do. The agent
+  // reads the resulting rows through the tools it already has.
+  redmine: redmineRouter,
   git: gitRouter,
   focus: focusRouter,
   system: systemRouter,
@@ -159,7 +178,13 @@ const server = createServer(async (req, res) => {
     res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-TL-Token');
+  // X-Api-Key was missing, so a browser preflight for any MCP call failed outright; the
+  // Mcp-* headers are the ones a StreamableHTTP client sends on every request.
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-TL-Token, X-Api-Key, Mcp-Protocol-Version, Mcp-Method, Mcp-Name',
+  );
+  res.setHeader('Access-Control-Expose-Headers', 'Mcp-Protocol-Version');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -171,7 +196,12 @@ const server = createServer(async (req, res) => {
   // Localhost is exempt; non-localhost MUST present a valid token
   const remoteAddr = req.socket.remoteAddress || '';
   const isLocalhost = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
-  const isMcpPath = req.url?.startsWith('/api/mcp.'); // exact: /api/mcp.execute etc — NOT /api/mcpServers.*
+  // `/api/mcp` (the StreamableHTTP endpoint) and `/api/mcp.*` (execute, listTools, …)
+  // authenticate with an API key rather than the desktop token. The old prefix test had
+  // a dot in it, so bare `/api/mcp` was NOT exempt and a non-localhost MCP client was
+  // asked for a token it has no way to obtain. `/api/mcpServer.*` still does not match.
+  const urlPath = (req.url || '').split('?')[0];
+  const isMcpPath = urlPath === '/api/mcp' || urlPath.startsWith('/api/mcp.');
   if (req.url?.startsWith('/api') && !isMcpPath) {
     const token = (req.headers['x-tl-token'] || req.headers['authorization']?.replace('Bearer ', '')) as string;
     if (!isLocalhost && (!token || token !== API_TOKEN)) {
@@ -263,6 +293,32 @@ const server = createServer(async (req, res) => {
       if (!res.headersSent) {
         res.writeHead(500);
         res.end(e?.message || String(e));
+      }
+    }
+    return;
+  }
+
+  // ─── MCP over StreamableHTTP ───
+  // Mounted ahead of tRPC because it answers `/api/mcp` itself and consumes the request
+  // body. It reaches the very same `executeMcp` the tRPC route uses, in this process —
+  // which is the only way a waiting tool call can see the human's approval, since the
+  // HITL queue is a Map in this module's memory.
+  if (urlPath === '/api/mcp') {
+    try {
+      await handleMcpRequest(req, res, {
+        serverVersion: APP_VERSION,
+        callTool: (tool, args) =>
+          executeMcp(
+            { tool, arguments: args, wait_ms: mcpDefaultWaitMs() },
+            { xApiKey: (req.headers['x-api-key'] as string) || undefined },
+          ),
+      });
+    } catch (e: any) {
+      console.error('[MCP] 500:', e?.message || e);
+      if (!res.headersSent) {
+        res.setHeader('Content-Type', 'application/json');
+        res.writeHead(500);
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error' } }));
       }
     }
     return;
@@ -430,6 +486,13 @@ function startBackgroundTasks() {
   // Report archiver (hourly)
   startReportArchiver();
 
+  // MCP approvals — expire pending ones whose window has closed, every 60s. This used
+  // to happen only inside the execute path, so an approval nobody was waiting on stayed
+  // "pending" in the panel until the next tool call happened to sweep it.
+  setInterval(() => {
+    sweepHitlTasks();
+  }, 60_000);
+
   // The index rebuild dropped a large amount of duplicated data; VACUUM gives those
   // pages back to the filesystem. Deferred well past listen() because a VACUUM takes
   // an exclusive lock and would otherwise be visible as a slow startup.
@@ -519,7 +582,34 @@ function startBackgroundTasks() {
   // Workspace roots refresh (every 5 min)
   initWorkspaceRoots();
 
-  // Archive old data (3 months) — hide from UI, never delete
+  // Archive old data (3 months). Commits and emails are *hidden* (`archived: true`), but a
+  // finished local task is a hard DELETE, and it takes its comments, changelog, git-ref
+  // links and board cards with it (those relations cascade) while orphaning its subtasks
+  // (`Issue.children` is `onDelete: SetNull`, so a child survives with `parentId` cleared).
+  // That behaviour is pre-existing and this batch does not change it; it is written down
+  // here because the line above used to claim it was a hide.
+  //
+  // Mirrored rows are excluded from it entirely — see the `source: null` below.
+  // Redmine sync: once 4 minutes after boot, then every 30 minutes.
+  //
+  // The 4-minute delay is because the first tick of a startup timer lands while the app
+  // is still doing its own boot work — the embedding warmup, the FTS backfill — and a
+  // network round trip to somebody else's server has no business being in that queue.
+  //
+  // 30 minutes and not 5: the cursor makes each pass cheap, and the cost of a pass falls
+  // on a server the user does not administer. A ticket that appears 30 minutes late is
+  // not late. The sweep returns immediately when there is no config or it is disabled,
+  // and `runSync` re-enters as a no-op, so overlapping ticks are safe.
+  setTimeout(() => {
+    scheduledRedmineSync().catch(() => {});
+  }, 4 * 60_000);
+  setInterval(
+    () => {
+      scheduledRedmineSync().catch(() => {});
+    },
+    30 * 60_000,
+  );
+
   setInterval(
     async () => {
       try {
@@ -528,8 +618,16 @@ function startBackgroundTasks() {
         // archiver's cutoff has to be one too — it used to be an ISO `Z` string, which
         // never compared equal to it. See lib/dbTime.ts.
         const cutoff = cutoffIssue;
+        // `source: null` is not a filter of convenience — it is the whole safety of this
+        // line. A mirrored row is not stale work the user abandoned: it is a copy of
+        // someone else's tracker, and `status: 'done'` there means the ticket was
+        // closed, not that the user finished it. Without the predicate, importing 400
+        // Redmine issues silently became 87 an hour later — the closed ones are exactly
+        // the ones older than the 90-day cutoff, and the sync cursor has already moved
+        // past them, so they never come back. Every existing row is NULL and every
+        // writer in this repo keeps writing NULL, so this changes nothing for local work.
         const a1 = await prisma.issue.deleteMany({
-          where: { status: 'done', updatedAt: { lt: cutoffIssue } },
+          where: { status: 'done', updatedAt: { lt: cutoffIssue }, source: null },
         });
         const a2 = await prisma.gitCommit.updateMany({
           where: { timestamp: { lt: cutoff }, archived: false },
@@ -588,7 +686,7 @@ function startBackgroundTasks() {
 // see the Phase 2 note below). Those are delivered by lib/clockUtc.ts instead, which
 // self-heals on every boot like lib/ftsIndex.ts. The bump here is only so the additive
 // array re-runs.
-const SCHEMA_VERSION = 25; // Meeting gained the column recording which speech model ran
+const SCHEMA_VERSION = 26; // Issue gained the external-tracker reference (source/sourceId)
 
 // ─── Ensure database schema is up to date (runs db push only when needed) ───
 async function ensureSchema() {
@@ -782,6 +880,19 @@ async function ensureSchema() {
     // meeting to whatever was on disk that day, permanently. It now records the request
     // only, and this column holds the model that did the work.
     { version: 25, sql: 'ALTER TABLE "Meeting" ADD COLUMN "transcribeModel" TEXT' },
+    // ─── v26: external tracker mirroring (Redmine) ───
+    // `source`/`sourceId` are KnowledgePage's pair (v23), reused verbatim so both
+    // mirrored tables answer "where did this row come from" the same way, and so the
+    // merge lookup in routers/redmine.ts has an index with the same shape as the one
+    // routers/wiki.ts uses. NULL source = written by this app, which is what every
+    // existing row is and what every existing writer keeps writing — the hourly
+    // archiver's `source: null` predicate depends on exactly that.
+    { version: 26, sql: 'ALTER TABLE "Issue" ADD COLUMN "source" TEXT' },
+    { version: 26, sql: 'ALTER TABLE "Issue" ADD COLUMN "sourceId" TEXT' },
+    {
+      version: 26,
+      sql: 'CREATE INDEX IF NOT EXISTS "Issue_source_sourceId_idx" ON "Issue"("source", "sourceId")',
+    },
   ];
 
   for (const m of migrations) {

@@ -30,6 +30,12 @@ export function useEditorMonitors({
     priority: string;
     storyPoints?: number;
     editing?: boolean;
+    /** Mirrored-task provenance. `useTaskState` puts both on the value it hands to
+     *  `onEditingTask`, and `issueKey` needs them to render a mirrored task as `#<id>`
+     *  instead of `TL-<n>` — so they belong in the type rather than in an `as` at the one
+     *  call site that reads them. */
+    source?: string | null;
+    sourceId?: string | null;
   } | null>(null);
   const [editingReport, setEditingReport] = useState<{ title: string; content: string } | null>(null);
   const editingReportRef = useRef<{ title: string; content: string; id?: string } | null>(null);

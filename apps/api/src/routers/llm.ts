@@ -74,7 +74,7 @@ export const llmRouter = router({
     .mutation(async ({ input }) => {
       let code = 0, errMsg = '';
       const fetchOpts: any = {};
-      const proxy = getProxyUrl();
+      const proxy = getProxyUrl(input.baseUrl);
       if (proxy && (input.baseUrl?.includes('openai') || input.baseUrl?.includes('anthropic'))) {
         try { // eslint-disable-next-line @typescript-eslint/no-require-imports -- optional dep loaded lazily
           const { ProxyAgent } = require('undici'); fetchOpts.dispatcher = new ProxyAgent(proxy); } catch { /* undici not available */ }

@@ -5,6 +5,7 @@ import { chat } from './meeting/pipeline.js';
 import { track as telTrack } from './telemetry.js';
 import { t } from './i18n.js';
 import { DEFAULT_PROJECT_ID } from '../agent/utils/constants.js';
+import { parseLinks, replaceLinkSection, splitLinkSection } from './noteLinks.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Chat → Knowledge auto-distillation
@@ -195,9 +196,27 @@ export async function distillSession(sessionId: string, opts: { force?: boolean 
       where: { source: 'chat_distill', sourceId: sessionId },
     });
     const model = llm.flashModel || llm.proModel;
+
+    // The link section this app appended to the note (see lib/noteLinks.ts) is not
+    // transcript material. It is split off before the model sees anything, for two
+    // reasons that both end in the user losing links they added on purpose:
+    //
+    //   The window is a *summary* of the conversation, and this note's body is the
+    //   summary of an earlier window. Feeding the links in invites the model to
+    //   paraphrase them into prose or drop them as noise.
+    //
+    //   More decisively, the write below replaces the whole body. Whatever the model
+    //   does not repeat is gone — so a note with links on Monday had none on Tuesday,
+    //   and nothing the user did caused it.
+    //
+    // Re-attached verbatim after, which is why a distilled note keeps its links across
+    // an arbitrary number of re-distillations.
+    const prior = splitLinkSection(existing?.content ?? null);
+    const priorLinkTitles = parseLinks(prior.section).map((l) => l.title);
+
     const res = await chat(llm, {
       model,
-      messages: [{ role: 'user', content: buildPrompt(lang, existing?.content ?? null, fresh) }],
+      messages: [{ role: 'user', content: buildPrompt(lang, prior.body || null, fresh) }],
       maxTokens: 2000,
       temperature: 0,
     });
@@ -262,7 +281,12 @@ export async function distillSession(sessionId: string, opts: { force?: boolean 
     const title =
       verdict.title ||
       (session.title ? t('distill.noteTitle', lang, { title: session.title }) : t('distill.untitled', lang));
-    const content = (verdict.content || '').substring(0, MAX_CONTENT);
+    const body = (verdict.content || '').substring(0, MAX_CONTENT);
+    // Only touched when there is a section to carry over, so a note that never had links
+    // is stored byte-for-byte as the model wrote it.
+    const content = priorLinkTitles.length
+      ? replaceLinkSection(body, priorLinkTitles, t('knowledge.linksHeading', lang))
+      : body;
     let noteId: string;
     if (existing) {
       await prisma.knowledgePage.update({
